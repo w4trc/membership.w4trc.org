@@ -68,28 +68,42 @@ wrangler secret put ADMIN_SETUP_KEY
 For `ADMIN_SETUP_KEY`, pick something memorable — you'll need it in step 7.
 For `JWT_SECRET`, use a random string: `openssl rand -hex 32`
 
-### 5. Run the database schema
+### 5. Create a `.env` file
+
+The deploy and db scripts use `dotenv-cli` to pass your Cloudflare account credentials:
+
+```
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_API_TOKEN=your_api_token
+```
+
+### 6. Run the database schema
 
 ```bash
 npm run db:init
 ```
 
-### 6. Deploy the Worker
+To apply the family membership migration (if upgrading):
+```bash
+dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=schema/003_family_linking.sql
+```
+
+### 7. Deploy the Worker
 
 ```bash
 npm run deploy
 ```
 
-### 7. Create your admin account
+### 8. Create your admin account
 
 ```bash
-node scripts/setup-admin.js
+npm run setup-admin
 ```
 
 Follow the prompts. This calls the `/api/setup` endpoint (which auto-disables
 after the first admin account is created).
 
-### 8. Configure DNS
+### 9. Configure DNS
 
 In your Cloudflare DNS dashboard for `w4trc.org`:
 - Add a CNAME record: `members` → your worker (wrangler handles this via the route in `wrangler.toml`)
@@ -100,8 +114,11 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 ## Local Development
 
 ```bash
-# Initialize local D1
+# Initialize local D1 schema
 npm run db:init:local
+
+# (Optional) seed with sample data
+npm run db:seed:local
 
 # Start local dev server
 npm run dev
@@ -125,11 +142,17 @@ npm run dev
 ```
 users         → login accounts (email, password_hash, role)
 members       → member records (callsign, name, address, license info)
-memberships   → annual dues (year, status, amount_paid, payment_method)
+memberships   → annual dues (year, status, amount_paid, payment_method,
+                             covered_by_member_id for family linking)
 notes         → admin/board log notes on members
 audit_log     → security trail (every significant action)
 sessions      → active login sessions
 ```
+
+Schema migrations in `schema/`:
+- `001_initial.sql` — base schema
+- `002_seed.sql` — sample data for local dev
+- `003_family_linking.sql` — adds `covered_by_member_id` to memberships
 
 ---
 
@@ -182,6 +205,10 @@ GET    /api/admin/stats               Dashboard stats
 
 Payment methods tracked: `cash`, `check`, `paypal`, `other`
 
+Family members can be linked via `covered_by_member_id` — the secondary member's
+dues record points to the primary (paying) member's ID. This shows on the member
+detail, dues list, and audit log.
+
 ---
 
 ## Callsign Lookup
@@ -198,7 +225,7 @@ re-synced in the background if data is older than 7 days.
 
 ## Roadmap / Future Phases
 
-- **Phase 2**: Board member role (currently backend-ready, just needs UI)
+- **Phase 2**: Board member role — backend done, UI in progress
 - **Phase 3**: Member portal (members log in, view directory, edit their profile)
 - **Phase 4**: Public directory (opt-in, shows callsign, class, interests)
 - **Phase 5**: Online dues payment (PayPal, Stripe)
