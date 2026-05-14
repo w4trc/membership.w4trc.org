@@ -224,7 +224,8 @@ async function getDashboardStats(env) {
     env.DB.prepare(`
       SELECT COUNT(*) as total,
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
-             SUM(CASE WHEN is_arrl_member = 1 THEN 1 ELSE 0 END) as arrl_count
+             SUM(CASE WHEN is_arrl_member = 1 THEN 1 ELSE 0 END) as arrl_count,
+             SUM(CASE WHEN is_silent_key = 1 THEN 1 ELSE 0 END) as silent_key_count
       FROM members
     `).first(),
 

@@ -44,7 +44,7 @@ export async function handleMembers(request, env, path, user) {
 // ── GET /api/members ──────────────────────────────────────────────────────────
 async function listMembers(request, env, user, url) {
   const search   = url.searchParams.get('q')         || '';
-  const status   = url.searchParams.get('status')    || 'all'; // all|active|inactive
+  const status   = url.searchParams.get('status')    || 'all'; // all|active|inactive|silent_key
   const year     = url.searchParams.get('year')      || '';
   const page     = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   const pageSize = 50;
@@ -58,8 +58,9 @@ async function listMembers(request, env, user, url) {
     const s = `%${search}%`;
     params.push(s, s, s, s);
   }
-  if (status === 'active')   { where.push('m.is_active = 1'); }
-  if (status === 'inactive') { where.push('m.is_active = 0'); }
+  if (status === 'active')     { where.push('m.is_active = 1'); }
+  if (status === 'inactive')   { where.push('m.is_active = 0'); where.push('m.is_silent_key = 0'); }
+  if (status === 'silent_key') { where.push('m.is_silent_key = 1'); }
 
   const arrl = url.searchParams.get('arrl') || 'all';
   if (arrl === 'arrl')    { where.push('m.is_arrl_member = 1'); }
@@ -86,7 +87,7 @@ async function listMembers(request, env, user, url) {
   const dataSQL = `
     SELECT m.id, m.callsign, m.first_name, m.last_name, m.email,
            m.phone, m.city, m.state, m.license_class, m.membership_type,
-           m.is_active, m.is_arrl_member, m.callsign_mismatch, m.joined_date,
+           m.is_active, m.is_silent_key, m.is_arrl_member, m.callsign_mismatch, m.joined_date,
            (SELECT ms2.status FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
             LIMIT 1) AS current_year_status,
@@ -268,6 +269,7 @@ async function updateMember(request, env, user, memberId) {
       membership_type = ?,
       joined_date     = ?,
       is_active       = ?,
+      is_silent_key   = ?,
       is_arrl_member  = ?,
       bio             = ?,
       interests       = ?,
@@ -290,7 +292,9 @@ async function updateMember(request, env, user, memberId) {
     body.license_status  ?? existing.license_status,
     body.membership_type ?? existing.membership_type,
     body.joined_date     ?? existing.joined_date,
-    body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active,
+    // Silent Key forces is_active=0
+    body.is_silent_key ? 0 : (body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active),
+    body.is_silent_key !== undefined ? (body.is_silent_key ? 1 : 0) : existing.is_silent_key,
     body.is_arrl_member !== undefined ? (body.is_arrl_member ? 1 : 0) : existing.is_arrl_member,
     body.bio             ?? existing.bio,
     body.interests       ?? existing.interests,

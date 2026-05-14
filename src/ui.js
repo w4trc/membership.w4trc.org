@@ -175,6 +175,7 @@ tr:last-child td { border-bottom: none; }
 .badge-red    { background: rgba(231,76,60,.15);   color: var(--danger); }
 .badge-blue   { background: rgba(59,125,216,.15);  color: var(--accent); }
 .badge-gray   { background: rgba(136,146,170,.15); color: var(--text-muted); }
+.badge-purple { background: rgba(130,80,180,.15);  color: #7c3fbe; }
 
 /* Callsign */
 .callsign {
@@ -643,6 +644,7 @@ async function members() {
         <option value="all">All Status</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
+        <option value="silent_key">Silent Key</option>
       </select>
       <select id="arrl-filter" onchange="loadMembersTable()" style="width:140px">
         <option value="all">All Members</option>
@@ -691,7 +693,7 @@ async function loadMembersTable() {
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
               <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''}</td>
-              <td>\${m.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
+              <td>\${memberStatusBadge(m.is_active, m.is_silent_key)}</td>
               <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by)}</td>
               <td>
                 <button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button>
@@ -733,7 +735,7 @@ async function viewMember(id) {
         </div>
         <div class="spacer"></div>
         <div>
-          \${m.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}
+          \${memberStatusBadge(m.is_active, m.is_silent_key)}
           \${licenseBadge(m.license_class)}
         </div>
       </div>
@@ -1015,10 +1017,11 @@ async function openEditMember(id) {
       </div>
       \${fi('Joined Date','e-joined_date',m.joined_date||'','date')}
       <div class="form-group">
-        <label>Active</label>
-        <select id="e-is_active">
-          <option value="1" \${m.is_active?'selected':''}>Yes</option>
-          <option value="0" \${!m.is_active?'selected':''}>No (Inactive)</option>
+        <label>Status</label>
+        <select id="e-member_status">
+          <option value="active"     \${m.is_active && !m.is_silent_key ? 'selected' : ''}>Active</option>
+          <option value="inactive"   \${!m.is_active && !m.is_silent_key ? 'selected' : ''}>Inactive</option>
+          <option value="silent_key" \${m.is_silent_key ? 'selected' : ''}>Silent Key (SK)</option>
         </select>
       </div>
       \${fi('Emergency Contact Name','e-emergency_name',m.emergency_name||'')}
@@ -1066,7 +1069,8 @@ async function updateMember(id) {
     license_expiry:  gv('e-license_expiry'),
     membership_type: gv('e-membership_type'),
     joined_date:     gv('e-joined_date'),
-    is_active:       gv('e-is_active') === '1',
+    is_active:       gv('e-member_status') === 'active',
+    is_silent_key:   gv('e-member_status') === 'silent_key',
     is_arrl_member:  document.getElementById('e-is_arrl_member')?.checked || false,
     bio:             gv('e-bio'),
     interests:       gv('e-interests'),
@@ -1641,6 +1645,12 @@ async function resolveCallsign(memberId, action) {
     toast(action === 'keep' ? 'Record kept — flag cleared ✓' : 'Record updated from HamDB ✓');
     viewMember(memberId);
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+function memberStatusBadge(isActive, isSilentKey) {
+  if (isSilentKey) return '<span class="badge badge-purple">Silent Key</span>';
+  if (isActive)    return '<span class="badge badge-green">Active</span>';
+  return '<span class="badge badge-red">Inactive</span>';
 }
 
 function duesBadge(status, paid, coveredBy) {
