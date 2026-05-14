@@ -396,6 +396,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('audit');closeNav()" data-page="audit">
           <span class="icon">📋</span> Audit Log
         </a>
+        <a class="nav-item hidden" id="nav-cutoff" onclick="nav('cutoff');closeNav()" data-page="cutoff">
+          <span class="icon">⚡</span> Membership Cutoff
+        </a>
       </nav>
       <div class="sidebar-footer">
         <div class="user-pill">
@@ -522,6 +525,7 @@ function showApp() {
   document.getElementById('user-email').textContent = u.email;
   document.getElementById('user-role').textContent  = u.role;
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
+  if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   nav('dashboard');
 }
 
@@ -531,11 +535,11 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', users: 'User Accounts', audit: 'Audit Log' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const pages = { dashboard, members, memberships, users, audit };
+  const pages = { dashboard, members, memberships, users, audit, cutoff };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -1356,6 +1360,93 @@ async function updateDues(id, memberId) {
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
+// ── MEMBERSHIP CUTOFF ─────────────────────────────────────────────────
+async function cutoff() {
+  const yr = new Date().getFullYear();
+  setPage(\`
+    <div class="card" style="background:rgba(231,76,60,.05);border-color:rgba(231,76,60,.3);margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:8px;color:var(--danger)">⚠ Membership Cutoff Tool</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:0">
+        Sets all active members with no paid, honorary, waived, or family-covered record for the
+        selected year to <strong style="color:var(--text)">Inactive</strong>.
+        Silent Key members are never affected. Always run Preview before executing.
+      </p>
+    </div>
+    <div class="card">
+      <div class="flex gap-16 align-center">
+        <div class="form-group" style="width:200px;margin:0">
+          <label>Cutoff Year</label>
+          <select id="cutoff-year">
+            \${[yr - 1, yr, yr + 1].map(y => \`<option value="\${y}" \${y === yr ? 'selected' : ''}>\${y}</option>\`).join('')}
+          </select>
+        </div>
+        <div style="padding-top:20px">
+          <button class="btn btn-secondary" onclick="previewCutoff()">Preview</button>
+        </div>
+      </div>
+    </div>
+    <div id="cutoff-results"></div>
+  \`);
+}
+
+async function previewCutoff() {
+  const year = parseInt(document.getElementById('cutoff-year')?.value, 10);
+  const res  = document.getElementById('cutoff-results');
+  if (!res) return;
+  res.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api('POST', '/admin/cutoff', { year, dry_run: true });
+    const list = data.members || [];
+    res.innerHTML = \`
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center;gap:10px">
+          Preview — \${year} Cutoff
+          <span style="background:\${list.length ? 'var(--danger)' : 'var(--success)'};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">\${list.length}</span>
+        </div>
+        \${list.length === 0
+          ? \`<p style="color:var(--success)">✓ All active members have a paid or exempt record for \${year}. No cutoff needed.</p>\`
+          : \`<p style="color:var(--text-muted);margin-bottom:16px;font-size:13px">
+              \${list.length} member\${list.length !== 1 ? 's' : ''} would be set to Inactive.
+              Review the list below, then click Run Cutoff to proceed.
+            </p>
+            <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Callsign</th><th>Name</th><th>Email</th></tr></thead>
+              <tbody>
+                \${list.map(m => \`<tr>
+                  <td><span class="callsign">\${escHtml(m.callsign || '—')}</span></td>
+                  <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
+                  <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
+                </tr>\`).join('')}
+              </tbody>
+            </table>
+            </div>
+            <div class="divider"></div>
+            <button class="btn btn-danger" onclick="executeCutoff(\${year}, \${list.length})">
+              ⚡ Run Cutoff for \${year} (\${list.length} member\${list.length !== 1 ? 's' : ''})
+            </button>\`
+        }
+      </div>
+    \`;
+  } catch(e) { res.innerHTML = '<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'; }
+}
+
+async function executeCutoff(year, count) {
+  if (!confirm(\`Set \${count} member\${count !== 1 ? 's' : ''} to Inactive for \${year}?\\n\\nThis cannot be undone.\`)) return;
+  const res = document.getElementById('cutoff-results');
+  try {
+    const data = await api('POST', '/admin/cutoff', { year, dry_run: false });
+    const n = data.deactivated_count;
+    toast(\`Cutoff complete — \${n} member\${n !== 1 ? 's' : ''} set to Inactive ✓\`);
+    res.innerHTML = \`
+      <div class="card" style="border-color:var(--success)">
+        <div style="color:var(--success);font-weight:600;margin-bottom:8px">✓ Cutoff Complete</div>
+        <p style="font-size:13px;color:var(--text-muted)">\${n} member\${n !== 1 ? 's' : ''} set to Inactive for \${year}. Audit log entry recorded.</p>
+      </div>
+    \`;
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
 // ── USERS ─────────────────────────────────────────────────────────────
 async function users() {
   document.getElementById('topbar-actions').innerHTML =
@@ -1564,6 +1655,7 @@ function auditDetail(r) {
       return parts.join(', ');
     }
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
+    case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';
     case 'login.failed':       return [d.email, d.reason?.replace(/_/g, ' ')].filter(Boolean).join(' — ');
     case 'user.create':        return [d.email, d.role ? 'role: ' + d.role : ''].filter(Boolean).join(', ');
     case 'user.update': {

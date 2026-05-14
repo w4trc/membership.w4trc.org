@@ -58,6 +58,11 @@ export async function handleAdmin(request, env, path, user) {
     return getDashboardStats(env);
   }
 
+  // ── Membership cutoff ───────────────────────────────────────────────────
+  if (resource === 'cutoff' && method === 'POST') {
+    return runCutoff(request, env, user);
+  }
+
   return jsonError('Not found', 404);
 }
 
@@ -262,4 +267,55 @@ async function getDashboardStats(env) {
     recent_activity: recentActivity.results,
     not_renewed: notRenewed.results,
   });
+}
+
+async function runCutoff(request, env, user) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
+
+  const year   = parseInt(body.year, 10) || new Date().getFullYear();
+  const dryRun = body.dry_run !== false; // default to dry_run for safety
+
+  // Members who are active (not silent key) and have no paid/exempt record for the year
+  const exemptSubquery = `
+    SELECT ms.member_id FROM memberships ms
+    WHERE ms.year = ?
+      AND (
+        ms.amount_paid IS NOT NULL
+        OR ms.status = 'honorary'
+        OR ms.status = 'waived'
+        OR ms.covered_by_member_id IS NOT NULL
+      )
+  `;
+
+  const { results: affected } = await env.DB.prepare(`
+    SELECT m.id, m.callsign, m.first_name, m.last_name, m.email
+    FROM members m
+    WHERE m.is_active = 1
+      AND m.is_silent_key = 0
+      AND m.id NOT IN (${exemptSubquery})
+    ORDER BY m.last_name ASC, m.first_name ASC
+  `).bind(year).all();
+
+  if (dryRun) {
+    return jsonResponse({ dry_run: true, year, affected_count: affected.length, members: affected });
+  }
+
+  await env.DB.prepare(`
+    UPDATE members SET is_active = 0, updated_at = datetime('now')
+    WHERE is_active = 1
+      AND is_silent_key = 0
+      AND id NOT IN (${exemptSubquery})
+  `).bind(year).run();
+
+  await audit(env, {
+    userId:     user.id,
+    action:     'member.cutoff',
+    targetType: null,
+    targetId:   null,
+    detail:     { year, deactivated_count: affected.length, member_ids: affected.map(m => m.id) },
+    request,
+  });
+
+  return jsonResponse({ dry_run: false, year, deactivated_count: affected.length, members: affected });
 }
