@@ -1442,20 +1442,82 @@ async function audit() {
     setPage(\`
       <div class="card" style="padding:0">
         <table>
-          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>IP</th></tr></thead>
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
           <tbody>
-            \${data.log.map(r => \`<tr>
+            \${data.log.map(r => {
+              const _t = auditTarget(r), _d = auditDetail(r);
+              return \`<tr>
               <td style="color:var(--text-muted);white-space:nowrap">\${fmtDate(r.created_at)}</td>
               <td style="font-size:12px">\${escHtml(r.user_email||'—')}</td>
               <td><code style="font-size:11px;color:var(--accent)">\${escHtml(r.action)}</code></td>
-              <td style="font-size:12px;color:var(--text-muted)">\${escHtml(r.target_type||'')} \${r.target_id||''}</td>
-              <td style="font-size:12px;color:var(--text-muted)">\${escHtml(r.ip_address||'—')}</td>
-            </tr>\`).join('')}
+              <td style="font-size:12px">\${escHtml(_t)}</td>
+              <td style="font-size:12px;color:var(--text-muted)">\${escHtml(_d)}</td>
+            </tr>\`;
+            }).join('')}
           </tbody>
         </table>
       </div>
     \`);
   } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
+}
+
+function tryParseJson(str) {
+  if (!str) return null;
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+function auditTarget(r) {
+  const d = tryParseJson(r.detail);
+  if (r.target_type === 'member') {
+    const name = r.target_name || d?.name || '';
+    const call = r.target_callsign || d?.callsign || '';
+    if (name && call) return \`\${name} (\${call})\`;
+    if (name) return name;
+    if (call) return call;
+    return \`member #\${r.target_id}\`;
+  }
+  if (r.target_type === 'membership') {
+    const name = r.target_name || '';
+    const call = r.target_callsign ? \` (\${r.target_callsign})\` : '';
+    const year = r.target_year || d?.year || '';
+    if (name) return \`\${year ? year + ' dues — ' : ''}\${name}\${call}\`;
+    return \`membership #\${r.target_id}\`;
+  }
+  if (r.target_type === 'user') return d?.email || \`user #\${r.target_id}\`;
+  if (r.target_type === 'note') return d?.member_id ? \`note for member #\${d.member_id}\` : \`note #\${r.target_id}\`;
+  return '—';
+}
+
+function auditDetail(r) {
+  const d = tryParseJson(r.detail);
+  if (!d) return '';
+  switch (r.action) {
+    case 'member.update': {
+      if (!d.before || !d.changes) return '';
+      const skip = new Set(['updated_at', 'created_at', 'id']);
+      const changed = Object.keys(d.changes)
+        .filter(k => !skip.has(k) && String(d.changes[k] ?? '') !== String(d.before[k] ?? ''))
+        .map(k => k.replace(/_/g, ' '));
+      return changed.length ? \`Changed: \${changed.join(', ')}\` : '';
+    }
+    case 'membership.update': {
+      const c = d.changes || {};
+      const parts = [];
+      if (c.amount_paid != null) parts.push('paid $' + c.amount_paid);
+      if (c.payment_method)      parts.push(c.payment_method);
+      if (c.status)              parts.push('status: ' + c.status);
+      return parts.join(', ');
+    }
+    case 'membership.create':  return d.year ? 'Year ' + d.year : '';
+    case 'login.failed':       return [d.email, d.reason?.replace(/_/g, ' ')].filter(Boolean).join(' — ');
+    case 'user.create':        return [d.email, d.role ? 'role: ' + d.role : ''].filter(Boolean).join(', ');
+    case 'user.update': {
+      const skip = new Set(['password_hash', 'updated_at', 'created_at', 'id']);
+      const keys = Object.keys(d).filter(k => !skip.has(k)).map(k => k.replace(/_/g, ' '));
+      return keys.length ? \`Changed: \${keys.join(', ')}\` : '';
+    }
+    default: return '';
+  }
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────

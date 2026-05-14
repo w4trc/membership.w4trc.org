@@ -149,7 +149,26 @@ async function getAuditLog(env, url) {
   const params = action ? [`%${action}%`, limit, offset] : [limit, offset];
 
   const { results } = await env.DB.prepare(`
-    SELECT al.*, u.email as user_email
+    SELECT al.*, u.email as user_email,
+      CASE al.target_type
+        WHEN 'member' THEN (SELECT first_name || ' ' || last_name FROM members WHERE id = al.target_id)
+        WHEN 'membership' THEN (
+          SELECT m.first_name || ' ' || m.last_name
+          FROM memberships ms JOIN members m ON m.id = ms.member_id
+          WHERE ms.id = al.target_id
+        )
+      END as target_name,
+      CASE al.target_type
+        WHEN 'member' THEN (SELECT callsign FROM members WHERE id = al.target_id)
+        WHEN 'membership' THEN (
+          SELECT m.callsign
+          FROM memberships ms JOIN members m ON m.id = ms.member_id
+          WHERE ms.id = al.target_id
+        )
+      END as target_callsign,
+      CASE al.target_type
+        WHEN 'membership' THEN (SELECT year FROM memberships WHERE id = al.target_id)
+      END as target_year
     FROM audit_log al
     LEFT JOIN users u ON u.id = al.user_id
     ${where}
