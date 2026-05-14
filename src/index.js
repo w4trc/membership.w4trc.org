@@ -63,14 +63,14 @@ export default {
         return handleLookup(request, env, path, user);
       }
 
+      // Memberships — must be checked before /api/members (prefix overlap)
+      if (path.startsWith('/api/memberships')) {
+        return handleMemberships(request, env, path, user);
+      }
+
       // Members CRUD
       if (path.startsWith('/api/members')) {
         return handleMembers(request, env, path, user);
-      }
-
-      // Memberships (nested under members)
-      if (path.startsWith('/api/memberships')) {
-        return handleMemberships(request, env, path, user);
       }
 
       // Notes

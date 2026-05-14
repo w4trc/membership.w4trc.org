@@ -747,7 +747,7 @@ async function viewMember(id) {
                 <div class="spacer"></div>
                 <span style="font-size:12px;color:var(--text-muted)">\${ms.payment_method || ''} \${ms.check_number ? '#'+ms.check_number : ''}</span>
                 \${ms.paid_date ? \`<span style="font-size:12px;color:var(--text-muted)">\${ms.paid_date}</span>\` : ''}
-                <button class="btn btn-sm btn-secondary" onclick="openEditDues(\${ms.id})">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="openEditDues(\${ms.id}, \${m.id})">Edit</button>
               </div>
               \${ms.notes ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:6px">\${escHtml(ms.notes)}</div>\` : ''}
             </div>
@@ -1157,7 +1157,7 @@ async function saveDues(memberId) {
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
-async function openEditDues(id) {
+async function openEditDues(id, memberId) {
   const ms = await api('GET', '/memberships/' + id).catch(() => null);
   if (!ms) return;
   showModal(\`
@@ -1190,11 +1190,11 @@ async function openEditDues(id) {
     \${fi('Notes','ed-notes',ms.notes||'','textarea')}
   \`, 'Edit Membership Record – ' + ms.year, [
     { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
-    { label: 'Save', cls: 'btn-primary', fn: 'updateDues(' + id + ')' },
+    { label: 'Save', cls: 'btn-primary', fn: 'updateDues(' + id + ',' + (memberId || 'null') + ')' },
   ]);
 }
 
-async function updateDues(id) {
+async function updateDues(id, memberId) {
   const body = {
     status:          gv('ed-status'),
     membership_type: gv('ed-membership_type'),
@@ -1209,7 +1209,8 @@ async function updateDues(id) {
     await api('PUT', '/memberships/' + id, body);
     toast('Updated ✓');
     closeModal();
-    loadDuesTable();
+    if (memberId) viewMember(memberId);
+    else loadDuesTable();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
