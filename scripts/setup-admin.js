@@ -27,16 +27,13 @@ async function main() {
   const setupKey  = await q('ADMIN_SETUP_KEY (what you set as the secret): ');
   const email     = await q('Admin email [admin@w4trc.org]: ') || 'admin@w4trc.org';
   const password  = await q('Admin password (10+ chars): ');
-  const callsign  = await q('Your callsign [N4JHC]: ') || 'N4JHC';
-  const firstName = await q('First name: ');
-  const lastName  = await q('Last name: ');
 
   if (password.length < 10) {
     console.error('\n❌ Password must be at least 10 characters');
     process.exit(1);
   }
 
-  const body = JSON.stringify({ setup_key: setupKey, email, password, callsign, first_name: firstName, last_name: lastName });
+  const body = JSON.stringify({ setup_key: setupKey, email, password });
 
   console.log('\n── Run this curl command ──────────────────────────────────────────');
   console.log(`curl -X POST ${domain.trim()}/api/setup \\`);
