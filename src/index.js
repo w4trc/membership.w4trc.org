@@ -30,11 +30,6 @@ export default {
       });
     }
 
-    // ── One-time setup endpoint (disabled after first use) ──────────────
-    if (path === '/api/setup' && method === 'POST') {
-      return handleSetup(request, env);
-    }
-
     // ── Static UI (everything non-API) ──────────────────────────────────
     if (!path.startsWith('/api/')) {
       return serveUI(request, env);
@@ -42,6 +37,11 @@ export default {
 
     // ── API routes ───────────────────────────────────────────────────────
     try {
+      // ── One-time setup endpoint (disabled after first use) ────────────
+      if (path === '/api/setup' && method === 'POST') {
+        return handleSetup(request, env);
+      }
+
       // Global rate limiting on API
       const rl = await rateLimit(request, env);
       if (rl) return rl;
