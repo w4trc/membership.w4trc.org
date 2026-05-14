@@ -205,12 +205,20 @@ async function createMember(request, env, user) {
 
   // Auto-create current-year membership record if requested
   if (body.create_membership) {
-    const year    = new Date().getFullYear();
-    const amtDue  = body.membership_type === 'family' ? 30.00 : 20.00;
+    const year   = new Date().getFullYear();
+    const amtDue = body.membership_type === 'family' ? 30.00 : 20.00;
     await env.DB.prepare(`
-      INSERT OR IGNORE INTO memberships (member_id, year, status, membership_type, amount_due)
-      VALUES (?, ?, 'active', ?, ?)
-    `).bind(newId, year, body.membership_type || 'individual', amtDue).run();
+      INSERT OR IGNORE INTO memberships
+        (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, recorded_by)
+      VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      newId, year, body.membership_type || 'individual', amtDue,
+      body.ms_amount_paid    || null,
+      body.ms_paid_date      || null,
+      body.ms_payment_method || null,
+      body.ms_check_number   || null,
+      user.id
+    ).run();
   }
 
   const member = await env.DB.prepare('SELECT * FROM members WHERE id = ?').bind(newId).first();

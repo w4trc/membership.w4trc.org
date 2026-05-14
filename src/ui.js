@@ -837,9 +837,26 @@ function openAddMember() {
     </div>
     <div class="card" style="margin-top:16px">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
-        <input type="checkbox" id="f-create_ms" checked>
-        <span>Create \${new Date().getFullYear()} membership record now</span>
+        <input type="checkbox" id="f-create_ms" checked onchange="toggleMsFields()">
+        <span>Create \${new Date().getFullYear()} membership record and mark paid</span>
       </label>
+      <div id="f-ms-fields" style="margin-top:12px">
+        <div class="form-grid">
+          \${fi('Amount Paid','f-amount_paid','20.00','number')}
+          \${fi('Payment Date','f-paid_date',new Date().toISOString().slice(0,10),'date')}
+          <div class="form-group">
+            <label>Payment Method</label>
+            <select id="f-payment_method">
+              <option value="">— Select —</option>
+              <option value="cash">Cash</option>
+              <option value="check">Check</option>
+              <option value="paypal">PayPal</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          \${fi('Check Number','f-check_number','')}
+        </div>
+      </div>
     </div>
     \${fi('Notes (optional)','f-bio','','textarea')}
   \`, 'Add New Member', [
@@ -858,7 +875,14 @@ function openAddMember() {
 
 function updateAmtDue() {
   const type = document.getElementById('f-membership_type')?.value;
-  // Could update a displayed amount — placeholder for now
+  const amtEl = document.getElementById('f-amount_paid');
+  if (amtEl) amtEl.value = type === 'family' ? '30.00' : '20.00';
+}
+
+function toggleMsFields() {
+  const checked = document.getElementById('f-create_ms')?.checked;
+  const fields = document.getElementById('f-ms-fields');
+  if (fields) fields.hidden = !checked;
 }
 
 async function lookupAndFill() {
@@ -904,7 +928,11 @@ async function saveMember() {
     joined_date:     gv('f-joined_date'),
     bio:             gv('f-bio'),
     is_active:       true,
-    create_membership: document.getElementById('f-create_ms')?.checked,
+    create_membership:  document.getElementById('f-create_ms')?.checked,
+    ms_amount_paid:     gv('f-amount_paid') ? parseFloat(gv('f-amount_paid')) : null,
+    ms_paid_date:       gv('f-paid_date') || null,
+    ms_payment_method:  gv('f-payment_method') || null,
+    ms_check_number:    gv('f-check_number') || null,
   };
   if (!body.first_name || !body.last_name) return toast('First and last name are required', 'error');
   try {
