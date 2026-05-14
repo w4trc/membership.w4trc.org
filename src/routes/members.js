@@ -60,6 +60,10 @@ async function listMembers(request, env, user, url) {
   if (status === 'active')   { where.push('m.is_active = 1'); }
   if (status === 'inactive') { where.push('m.is_active = 0'); }
 
+  const arrl = url.searchParams.get('arrl') || 'all';
+  if (arrl === 'arrl')    { where.push('m.is_arrl_member = 1'); }
+  if (arrl === 'nonarrl') { where.push('m.is_arrl_member = 0'); }
+
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // If filtering by membership year, join memberships
@@ -81,7 +85,7 @@ async function listMembers(request, env, user, url) {
   const dataSQL = `
     SELECT m.id, m.callsign, m.first_name, m.last_name, m.email,
            m.phone, m.city, m.state, m.license_class, m.membership_type,
-           m.is_active, m.joined_date,
+           m.is_active, m.is_arrl_member, m.joined_date,
            (SELECT ms2.status FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
             LIMIT 1) AS current_year_status,
@@ -175,9 +179,9 @@ async function createMember(request, env, user) {
       callsign, first_name, last_name, email, phone,
       address, city, state, zip,
       license_class, license_expiry, license_status,
-      membership_type, joined_date, is_active,
+      membership_type, joined_date, is_active, is_arrl_member,
       bio, interests, emergency_name, emergency_phone
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(
     body.callsign         || null,
     body.first_name.trim(),
@@ -194,6 +198,7 @@ async function createMember(request, env, user) {
     body.membership_type  || 'individual',
     body.joined_date      || new Date().toISOString().slice(0,10),
     body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
+    body.is_arrl_member ? 1 : 0,
     body.bio              || null,
     body.interests        || null,
     body.emergency_name   || null,
@@ -262,6 +267,7 @@ async function updateMember(request, env, user, memberId) {
       membership_type = ?,
       joined_date     = ?,
       is_active       = ?,
+      is_arrl_member  = ?,
       bio             = ?,
       interests       = ?,
       emergency_name  = ?,
@@ -284,6 +290,7 @@ async function updateMember(request, env, user, memberId) {
     body.membership_type ?? existing.membership_type,
     body.joined_date     ?? existing.joined_date,
     body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active,
+    body.is_arrl_member !== undefined ? (body.is_arrl_member ? 1 : 0) : existing.is_arrl_member,
     body.bio             ?? existing.bio,
     body.interests       ?? existing.interests,
     body.emergency_name  ?? existing.emergency_name,

@@ -576,6 +576,10 @@ async function dashboard() {
           <div class="stat-val">\${msStats.stats?.family_count ?? '—'}</div>
           <div class="stat-label">Family Memberships</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-val">\${stats.members?.arrl_count ?? '—'}</div>
+          <div class="stat-label">ARRL Members</div>
+        </div>
       </div>
       <div class="card">
         <div class="card-title">Recent Activity</div>
@@ -611,6 +615,11 @@ async function members() {
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
       </select>
+      <select id="arrl-filter" onchange="loadMembersTable()" style="width:140px">
+        <option value="all">All Members</option>
+        <option value="arrl">ARRL Only</option>
+        <option value="nonarrl">Non-ARRL</option>
+      </select>
     </div>
     <div class="card" style="padding:0">
       <div id="members-table"><div class="spinner"></div></div>
@@ -623,11 +632,12 @@ async function members() {
 async function loadMembersTable() {
   const search = document.getElementById('member-search')?.value || '';
   const status = document.getElementById('status-filter')?.value || 'all';
+  const arrl   = document.getElementById('arrl-filter')?.value   || 'all';
   const tbl = document.getElementById('members-table');
   if (!tbl) return;
   tbl.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&page=\${state.memberPage}\`);
+    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&page=\${state.memberPage}\`);
     const { members: list, pagination: pg } = data;
 
     if (!list.length) {
@@ -651,7 +661,7 @@ async function loadMembersTable() {
               <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
-              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'}</td>
+              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''}</td>
               <td>\${m.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
               <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by)}</td>
               <td>
@@ -727,6 +737,7 @@ async function viewMember(id) {
           <div class="detail-grid">
             \${dfield('Type', m.membership_type)}
             \${dfield('Joined', m.joined_date)}
+            \${dfield('ARRL Member', m.is_arrl_member ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>')}
             \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id) : '<span class="badge badge-yellow">No Record</span>')}
           </div>
         </div>
@@ -835,6 +846,10 @@ function openAddMember() {
       </div>
       \${fi('Joined Date','f-joined_date',new Date().toISOString().slice(0,10),'date')}
     </div>
+    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
+      <input type="checkbox" id="f-is_arrl_member">
+      <span>ARRL Member</span>
+    </label>
     <div class="card" style="margin-top:16px">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
         <input type="checkbox" id="f-create_ms" checked onchange="toggleMsFields()">
@@ -928,6 +943,7 @@ async function saveMember() {
     joined_date:     gv('f-joined_date'),
     bio:             gv('f-bio'),
     is_active:       true,
+    is_arrl_member:  document.getElementById('f-is_arrl_member')?.checked || false,
     create_membership:  document.getElementById('f-create_ms')?.checked,
     ms_amount_paid:     gv('f-amount_paid') ? parseFloat(gv('f-amount_paid')) : null,
     ms_paid_date:       gv('f-paid_date') || null,
@@ -978,6 +994,10 @@ async function openEditMember(id) {
       \${fi('Emergency Contact Name','e-emergency_name',m.emergency_name||'')}
       \${fi('Emergency Phone','e-emergency_phone',m.emergency_phone||'')}
     </div>
+    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
+      <input type="checkbox" id="e-is_arrl_member" \${m.is_arrl_member ? 'checked' : ''}>
+      <span>ARRL Member</span>
+    </label>
     <div class="form-group mt-16">
       <label>Bio / Notes</label>
       <textarea id="e-bio">\${escHtml(m.bio||'')}</textarea>
@@ -1017,6 +1037,7 @@ async function updateMember(id) {
     membership_type: gv('e-membership_type'),
     joined_date:     gv('e-joined_date'),
     is_active:       gv('e-is_active') === '1',
+    is_arrl_member:  document.getElementById('e-is_arrl_member')?.checked || false,
     bio:             gv('e-bio'),
     interests:       gv('e-interests'),
     emergency_name:  gv('e-emergency_name'),

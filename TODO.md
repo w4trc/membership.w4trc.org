@@ -44,5 +44,5 @@ Things I'd suggest based on how the system is built and what a club like this ty
 ### Operational / Nice-to-Have
 - [ ] **Session list UI** — the `GET /api/admin/sessions` endpoint exists and returns active sessions, but there's no page for it in the UI yet. Useful for auditing who's logged in.
 - [ ] **Repeater access export** — if the club has a repeater with an access list, a filtered export (active members + callsign) could feed into that system directly.
-- [ ] **ARRL membership tracking** — add an `is_arrl_member` boolean to the members table. Needs to show on the member detail/edit form, appear as a filterable column on the members list, and have a count on the dashboard stats (or a dedicated export) for reporting. This is a real reporting requirement, not just nice-to-have.
+- [x] **ARRL membership tracking** — `is_arrl_member` field on members table (migration 004). Shows as ARRL badge in the members list, filterable by ARRL/non-ARRL, visible in member detail, editable in both add/edit forms, and counted in dashboard stats.
 - [ ] **Dark/light mode toggle** — the UI is dark-only right now. Not urgent, but some operators may prefer light mode.
