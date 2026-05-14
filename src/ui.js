@@ -657,7 +657,7 @@ async function loadMembersTable() {
         <tbody>
           \${list.map(m => \`
             <tr>
-              <td><span class="callsign">\${escHtml(m.callsign || '—')}</span></td>
+              <td><span class="callsign">\${escHtml(m.callsign || '—')}</span>\${m.callsign_mismatch ? ' <span class="badge badge-yellow" title="Callsign may have changed hands — open record to review">⚠</span>' : ''}</td>
               <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
@@ -696,6 +696,7 @@ async function viewMember(id) {
     const curMs = (m.memberships || []).find(ms => ms.year === currentYear);
 
     document.querySelector('.modal-body').innerHTML = \`
+      \${m.callsign_mismatch ? mismatchWarning(m) : ''}
       <div class="flex gap-16 align-center" style="margin-bottom:20px">
         <div>
           <div class="callsign" style="font-size:24px">\${escHtml(m.callsign || '—')}</div>
@@ -1582,6 +1583,35 @@ function licenseBadge(cls) {
   if (!cls) return '<span class="badge badge-gray">Unknown</span>';
   const map = { 'Amateur Extra': 'badge-blue', 'General': 'badge-green', 'Technician': 'badge-yellow' };
   return \`<span class="badge \${map[cls]||'badge-gray'}">\${escHtml(cls)}</span>\`;
+}
+
+function mismatchWarning(m) {
+  let hamData = {};
+  try { hamData = JSON.parse(m.hamdb_mismatch_data || '{}'); } catch {}
+  const hamName = [hamData.first_name, hamData.last_name].filter(Boolean).join(' ') || '(unknown)';
+  const ourName = [m.first_name, m.last_name].filter(Boolean).join(' ');
+  return \`
+    <div style="background:rgba(243,156,18,.1);border:1px solid rgba(243,156,18,.4);border-radius:var(--radius);padding:14px 16px;margin-bottom:20px">
+      <div style="font-weight:600;color:var(--warn);margin-bottom:6px">⚠ Callsign may have changed hands</div>
+      <div style="font-size:13px;margin-bottom:10px">
+        HamDB now shows <strong>\${escHtml(hamName)}</strong> for <span class="callsign" style="font-size:13px">\${escHtml(m.callsign)}</span>,
+        but our record has <strong>\${escHtml(ourName)}</strong>.
+        The callsign may have been reassigned by the FCC.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-secondary" onclick="resolveCallsign(\${m.id},'keep')">Keep Our Record</button>
+        <button class="btn btn-sm btn-danger"    onclick="resolveCallsign(\${m.id},'update')">Update from HamDB</button>
+      </div>
+    </div>
+  \`;
+}
+
+async function resolveCallsign(memberId, action) {
+  try {
+    await api('POST', \`/members/\${memberId}/resolve-callsign\`, { action });
+    toast(action === 'keep' ? 'Record kept — flag cleared ✓' : 'Record updated from HamDB ✓');
+    viewMember(memberId);
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
 function duesBadge(status, paid, coveredBy) {

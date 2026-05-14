@@ -31,7 +31,8 @@ export async function handleMembers(request, env, path, user) {
     return jsonError('Method not allowed', 405);
   }
 
-  if (sub === 'history') return getMemberHistory(request, env, user, memberId);
+  if (sub === 'history')          return getMemberHistory(request, env, user, memberId);
+  if (sub === 'resolve-callsign') return resolveCallsignMismatch(request, env, user, memberId);
 
   if (method === 'GET')    return getMember(request, env, user, memberId);
   if (method === 'PUT')    return updateMember(request, env, user, memberId);
@@ -85,7 +86,7 @@ async function listMembers(request, env, user, url) {
   const dataSQL = `
     SELECT m.id, m.callsign, m.first_name, m.last_name, m.email,
            m.phone, m.city, m.state, m.license_class, m.membership_type,
-           m.is_active, m.is_arrl_member, m.joined_date,
+           m.is_active, m.is_arrl_member, m.callsign_mismatch, m.joined_date,
            (SELECT ms2.status FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
             LIMIT 1) AS current_year_status,
@@ -331,4 +332,60 @@ async function getMemberHistory(request, env, user, memberId) {
   ).bind(memberId).all();
 
   return jsonResponse({ memberships: results });
+}
+
+// ── POST /api/members/:id/resolve-callsign ────────────────────────────────────
+async function resolveCallsignMismatch(request, env, user, memberId) {
+  if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+
+  const member = await env.DB.prepare(
+    'SELECT * FROM members WHERE id = ?'
+  ).bind(memberId).first();
+  if (!member) return jsonError('Member not found', 404);
+  if (!member.callsign_mismatch) return jsonError('No mismatch flag on this record', 400);
+
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
+  if (!['keep', 'update'].includes(body.action)) return jsonError('action must be "keep" or "update"', 400);
+
+  if (body.action === 'keep') {
+    // Clear the flag — admin confirmed this is still the same person
+    await env.DB.prepare(`
+      UPDATE members SET callsign_mismatch = 0, hamdb_mismatch_data = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(memberId).run();
+
+    await audit(env, { userId: user.id, action: 'member.callsign_mismatch_resolved', targetType: 'member', targetId: memberId, detail: { resolution: 'kept_existing', callsign: member.callsign }, request });
+  } else {
+    // Apply HamDB data to the record — the callsign now belongs to someone else
+    let hamData;
+    try { hamData = JSON.parse(member.hamdb_mismatch_data || '{}'); } catch { hamData = {}; }
+
+    await env.DB.prepare(`
+      UPDATE members SET
+        first_name         = ?,
+        last_name          = ?,
+        address            = ?,
+        city               = ?,
+        state              = ?,
+        zip                = ?,
+        callsign_mismatch  = 0,
+        hamdb_mismatch_data = NULL,
+        updated_at         = datetime('now')
+      WHERE id = ?
+    `).bind(
+      hamData.first_name ?? member.first_name,
+      hamData.last_name  ?? member.last_name,
+      hamData.address    ?? member.address,
+      hamData.city       ?? member.city,
+      hamData.state      ?? member.state,
+      hamData.zip        ?? member.zip,
+      memberId,
+    ).run();
+
+    await audit(env, { userId: user.id, action: 'member.callsign_mismatch_resolved', targetType: 'member', targetId: memberId, detail: { resolution: 'updated_from_hamdb', callsign: member.callsign, before: { first_name: member.first_name, last_name: member.last_name }, after: hamData }, request });
+  }
+
+  const updated = await env.DB.prepare('SELECT * FROM members WHERE id = ?').bind(memberId).first();
+  return jsonResponse(updated);
 }

@@ -9,6 +9,7 @@
  */
 
 import { jsonResponse, jsonError } from '../lib/response.js';
+import { audit } from '../lib/audit.js';
 
 const HAMDB_URL = 'https://api.hamdb.org/v1';
 
@@ -80,7 +81,7 @@ export async function handleLookup(request, env, path, user) {
       trustee:        ham.trustee || null,  // For club callsigns
     };
 
-    await updateMemberFromHamDB(env, callsign, normalized, force);
+    await updateMemberFromHamDB(env, callsign, normalized, force, user);
 
     return jsonResponse(normalized);
 
@@ -90,25 +91,76 @@ export async function handleLookup(request, env, path, user) {
   }
 }
 
-async function updateMemberFromHamDB(env, callsign, data, force = false) {
+async function updateMemberFromHamDB(env, callsign, data, force = false, user = null) {
   try {
-    const condition = force
-      ? 'WHERE callsign = ?'
-      : 'WHERE callsign = ? AND (hamdb_synced_at IS NULL OR hamdb_synced_at < datetime(\'now\', \'-7 days\'))';
-    await env.DB.prepare(`
-      UPDATE members SET
-        license_class   = ?,
-        license_expiry  = ?,
-        license_status  = ?,
-        hamdb_synced_at = datetime('now')
-      ${condition}
-    `).bind(
-      data.license_class,
-      data.license_expiry,
-      data.license_status,
-      callsign,
-    ).run();
-  } catch {
-    // Background task, ignore errors
+    const member = await env.DB.prepare(
+      'SELECT id, last_name, callsign_mismatch FROM members WHERE callsign = ?'
+    ).bind(callsign).first();
+
+    if (!member) return; // Callsign not in our system, nothing to update
+
+    const staleCondition = 'hamdb_synced_at IS NULL OR hamdb_synced_at < datetime(\'now\', \'-7 days\')';
+    if (!force) {
+      const isStale = await env.DB.prepare(
+        `SELECT 1 FROM members WHERE callsign = ? AND (${staleCondition})`
+      ).bind(callsign).first();
+      if (!isStale) return; // Not due for a sync yet
+    }
+
+    // Compare last names to detect if the callsign changed hands
+    const storedLast = (member.last_name || '').trim().toLowerCase();
+    const hamdbLast  = (data.last_name  || '').trim().toLowerCase();
+    const mismatch   = storedLast && hamdbLast && storedLast !== hamdbLast;
+
+    if (mismatch) {
+      // Callsign appears to have changed hands — update license fields only,
+      // flag the record, and store what HamDB returned for admin review
+      const wasAlreadyFlagged = member.callsign_mismatch === 1;
+      await env.DB.prepare(`
+        UPDATE members SET
+          license_class      = ?,
+          license_expiry     = ?,
+          license_status     = ?,
+          hamdb_synced_at    = datetime('now'),
+          callsign_mismatch  = 1,
+          hamdb_mismatch_data = ?
+        WHERE callsign = ?
+      `).bind(
+        data.license_class,
+        data.license_expiry,
+        data.license_status,
+        JSON.stringify({ first_name: data.first_name, last_name: data.last_name, address: data.address, city: data.city, state: data.state, zip: data.zip }),
+        callsign,
+      ).run();
+
+      if (!wasAlreadyFlagged) {
+        await audit(env, {
+          userId: user?.id ?? null,
+          action: 'member.callsign_mismatch',
+          targetType: 'member',
+          targetId: member.id,
+          detail: { callsign, stored_last: member.last_name, hamdb_last: data.last_name },
+        });
+      }
+    } else {
+      // Names match (or no stored name yet) — safe to update, clear any prior flag
+      await env.DB.prepare(`
+        UPDATE members SET
+          license_class      = ?,
+          license_expiry     = ?,
+          license_status     = ?,
+          hamdb_synced_at    = datetime('now'),
+          callsign_mismatch  = 0,
+          hamdb_mismatch_data = NULL
+        WHERE callsign = ?
+      `).bind(
+        data.license_class,
+        data.license_expiry,
+        data.license_status,
+        callsign,
+      ).run();
+    }
+  } catch (err) {
+    console.error('updateMemberFromHamDB error:', err);
   }
 }
