@@ -550,6 +550,10 @@ async function dashboard() {
     ]);
 
     const yr = new Date().getFullYear();
+    const notRenewed = stats.not_renewed || [];
+    const month = new Date().getMonth() + 1; // 1-based
+    const inGrace = month >= 1 && month <= 3;
+
     setPage(\`
       <div class="stat-grid">
         <div class="stat-card">
@@ -581,6 +585,31 @@ async function dashboard() {
           <div class="stat-label">ARRL Members</div>
         </div>
       </div>
+      \${notRenewed.length > 0 ? \`
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center;gap:10px">
+          Not Yet Renewed — \${yr}
+          <span style="background:var(--warn);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">\${notRenewed.length}</span>
+        </div>
+        <p style="color:var(--text-muted);margin:0 0 12px">\${inGrace
+          ? \`Active in \${yr - 1} — still in grace period through March 31. Send renewal reminders now.\`
+          : \`Active in \${yr - 1} but have not renewed for \${yr}. Grace period ended April 1.\`
+        }</p>
+        <table>
+          <thead><tr><th>Callsign</th><th>Name</th><th>Email</th><th></th></tr></thead>
+          <tbody>
+            \${notRenewed.map(m => \`
+              <tr>
+                <td><strong>\${escHtml(m.callsign || '—')}</strong></td>
+                <td>\${escHtml(m.first_name + ' ' + m.last_name)}</td>
+                <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
+                <td><button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button></td>
+              </tr>
+            \`).join('')}
+          </tbody>
+        </table>
+      </div>
+      \` : ''}
       <div class="card">
         <div class="card-title">Recent Activity</div>
         <table>
