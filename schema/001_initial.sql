@@ -1,9 +1,6 @@
 -- KARC Membership System - Initial Schema
 -- Kingsport Amateur Radio Club (W4TRC)
 
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-
 -- ============================================================
 -- USERS (login accounts, separate from member records)
 -- ============================================================
