@@ -10,6 +10,8 @@
     "db:seed": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=schema/002_seed.sql",
     "db:init:local": "wrangler d1 execute karc-membership --local --file=schema/001_initial.sql",
     "db:seed:local": "wrangler d1 execute karc-membership --local --file=schema/002_seed.sql",
+    "db:migrate": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file",
+    "db:migrate:local": "wrangler d1 execute karc-membership --local --file",
     "setup-admin": "node scripts/setup-admin.js"
   },
   "devDependencies": {
