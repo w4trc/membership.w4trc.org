@@ -1040,10 +1040,18 @@ async function loadDuesTable() {
   const yr = state.memberYear;
   document.querySelectorAll('.year-pill').forEach(p => p.classList.toggle('active', p.textContent == yr));
 
-  const [duesData, statsData] = await Promise.all([
-    api('GET', '/memberships?year=' + yr),
-    api('GET', '/memberships/stats?year=' + yr),
-  ]);
+  let duesData, statsData;
+  try {
+    [duesData, statsData] = await Promise.all([
+      api('GET', '/memberships?year=' + yr),
+      api('GET', '/memberships/stats?year=' + yr),
+    ]);
+  } catch(e) {
+    const el = document.getElementById('dues-table');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:24px;text-align:center">Failed to load dues data.</p>';
+    toast(e.data?.error || e.message || 'Failed to load dues', 'error');
+    return;
+  }
 
   const st = statsData?.stats || {};
   document.getElementById('dues-stats').innerHTML = \`
