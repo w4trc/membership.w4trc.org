@@ -11,12 +11,12 @@ export async function hashPassword(password) {
   const keyMat  = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
   const salt    = crypto.getRandomValues(new Uint8Array(16));
   const bits    = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
     keyMat, 256
   );
   const hashArr  = Array.from(new Uint8Array(bits));
   const saltArr  = Array.from(salt);
-  return btoa(JSON.stringify({ salt: saltArr, hash: hashArr, iter: 310000 }));
+  return btoa(JSON.stringify({ salt: saltArr, hash: hashArr, iter: 100000 }));
 }
 
 export async function verifyPassword(password, stored) {
