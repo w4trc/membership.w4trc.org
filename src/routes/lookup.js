@@ -26,6 +26,8 @@ export async function handleLookup(request, env, path, user) {
   if (request.method !== 'GET') return jsonError('Method not allowed', 405);
 
   // /api/lookup/N4JHC → callsign = 'N4JHC'
+  const url       = new URL(request.url);
+  const force     = url.searchParams.get('force') === '1';
   const segments  = path.split('/');
   const callsign  = segments[3]?.toUpperCase().trim();
 
@@ -80,7 +82,7 @@ export async function handleLookup(request, env, path, user) {
 
     // Also update the member record in DB if we have a member with this callsign
     // (background sync — fire and forget)
-    updateMemberFromHamDB(env, callsign, normalized);
+    updateMemberFromHamDB(env, callsign, normalized, force);
 
     return jsonResponse(normalized);
 
@@ -90,15 +92,18 @@ export async function handleLookup(request, env, path, user) {
   }
 }
 
-async function updateMemberFromHamDB(env, callsign, data) {
+async function updateMemberFromHamDB(env, callsign, data, force = false) {
   try {
+    const condition = force
+      ? 'WHERE callsign = ?'
+      : 'WHERE callsign = ? AND (hamdb_synced_at IS NULL OR hamdb_synced_at < datetime(\'now\', \'-7 days\'))';
     await env.DB.prepare(`
       UPDATE members SET
         license_class   = ?,
         license_expiry  = ?,
         license_status  = ?,
         hamdb_synced_at = datetime('now')
-      WHERE callsign = ? AND (hamdb_synced_at IS NULL OR hamdb_synced_at < datetime('now', '-7 days'))
+      ${condition}
     `).bind(
       data.license_class,
       data.license_expiry,

@@ -1004,7 +1004,7 @@ async function updateMember(id) {
 async function lookupCallsign(callsign, memberId) {
   if (!callsign) return;
   try {
-    const data = await api('GET', '/lookup/' + callsign);
+    const data = await api('GET', '/lookup/' + callsign + '?force=1');
     if (data.found) {
       toast('License data synced from HamDB ✓');
       viewMember(memberId);
