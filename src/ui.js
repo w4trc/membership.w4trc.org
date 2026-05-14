@@ -999,7 +999,7 @@ async function loadDuesTable() {
     api('GET', '/memberships/stats?year=' + yr),
   ]);
 
-  const st = statsData.stats;
+  const st = statsData?.stats || {};
   document.getElementById('dues-stats').innerHTML = \`
     <div class="stat-card"><div class="stat-val">\${st.active_count||0}</div><div class="stat-label">Paid Members</div></div>
     <div class="stat-card"><div class="stat-val">\${st.honorary_count||0}</div><div class="stat-label">Honorary</div></div>

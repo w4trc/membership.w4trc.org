@@ -165,5 +165,5 @@ async function getStats(request, env, user, url) {
     `SELECT COUNT(*) as count FROM members WHERE is_active = 1`
   ).first();
 
-  return jsonResponse({ year, stats, total_active_members: totalMembers?.count });
+  return jsonResponse({ year, stats: stats ?? {}, total_active_members: totalMembers?.count ?? 0 });
 }
