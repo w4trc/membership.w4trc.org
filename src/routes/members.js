@@ -11,6 +11,7 @@
 import { isAdmin, isBoardOrAbove } from '../lib/auth.js';
 import { jsonResponse, jsonError }  from '../lib/response.js';
 import { audit }                    from '../lib/audit.js';
+import { normalizeName }            from '../lib/normalize.js';
 
 // Route dispatcher
 export async function handleMembers(request, env, path, user) {
@@ -186,8 +187,8 @@ async function createMember(request, env, user) {
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(
     body.callsign         || null,
-    body.first_name.trim(),
-    body.last_name.trim(),
+    normalizeName(body.first_name),
+    normalizeName(body.last_name),
     body.email            || null,
     body.phone            || null,
     body.address          || null,
@@ -279,8 +280,8 @@ async function updateMember(request, env, user, memberId) {
     WHERE id = ?
   `).bind(
     body.callsign        ?? existing.callsign,
-    body.first_name      ?? existing.first_name,
-    body.last_name       ?? existing.last_name,
+    body.first_name !== undefined ? normalizeName(body.first_name) : existing.first_name,
+    body.last_name  !== undefined ? normalizeName(body.last_name)  : existing.last_name,
     body.email           ?? existing.email,
     body.phone           ?? existing.phone,
     body.address         ?? existing.address,

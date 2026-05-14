@@ -10,6 +10,7 @@
 
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
+import { normalizeName } from '../lib/normalize.js';
 
 const HAMDB_URL = 'https://api.hamdb.org/v1';
 
@@ -67,8 +68,8 @@ export async function handleLookup(request, env, path, user) {
     const normalized = {
       found:          true,
       callsign:       ham.call,
-      first_name:     ham.fname || '',
-      last_name:      ham.name  || '',
+      first_name:     normalizeName(ham.fname || ''),
+      last_name:      normalizeName(ham.name  || ''),
       address:        ham.addr1 || '',
       city:           ham.addr2 || '',
       state:          ham.state || '',
