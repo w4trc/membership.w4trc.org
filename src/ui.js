@@ -997,7 +997,7 @@ async function updateMember(id) {
     await api('PUT', '/members/' + id, body);
     toast('Member updated ✓');
     closeModal();
-    loadMembersTable();
+    viewMember(id);
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
