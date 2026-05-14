@@ -80,9 +80,7 @@ export async function handleLookup(request, env, path, user) {
       trustee:        ham.trustee || null,  // For club callsigns
     };
 
-    // Also update the member record in DB if we have a member with this callsign
-    // (background sync — fire and forget)
-    updateMemberFromHamDB(env, callsign, normalized, force);
+    await updateMemberFromHamDB(env, callsign, normalized, force);
 
     return jsonResponse(normalized);
 
