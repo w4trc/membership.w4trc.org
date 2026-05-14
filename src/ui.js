@@ -727,7 +727,7 @@ async function viewMember(id) {
           <div class="detail-grid">
             \${dfield('Type', m.membership_type)}
             \${dfield('Joined', m.joined_date)}
-            \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid) : '<span class="badge badge-yellow">No Record</span>')}
+            \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id) : '<span class="badge badge-yellow">No Record</span>')}
           </div>
         </div>
         \${m.emergency_name ? \`<div class="detail-section"><h4>Emergency Contact</h4><div class="detail-grid">\${dfield('Name', m.emergency_name)}\${dfield('Phone', m.emergency_phone)}</div></div>\` : ''}
@@ -742,7 +742,7 @@ async function viewMember(id) {
             <div class="card" style="margin-bottom:8px;padding:12px">
               <div class="flex align-center gap-8">
                 <strong>\${ms.year}</strong>
-                \${duesBadge(ms.status, ms.amount_paid)}
+                \${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id)}
                 \${ms.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : ''}
                 <div class="spacer"></div>
                 <span style="font-size:12px;color:var(--text-muted)">\${ms.payment_method || ''} \${ms.check_number ? '#'+ms.check_number : ''}</span>
@@ -1078,7 +1078,7 @@ async function loadDuesTable() {
               \${ms.covered_by_first_name ? \`<div style="font-size:11px;color:var(--text-muted)">Covered under: \${ms.covered_by_callsign ? escHtml(ms.covered_by_callsign) + ' ' : ''}\${escHtml(ms.covered_by_first_name)} \${escHtml(ms.covered_by_last_name)}</div>\` : ''}
             </td>
             <td>\${ms.membership_type==='family'?'<span class="badge badge-blue">Family</span>':'<span class="badge badge-gray">Individual</span>'}</td>
-            <td>\${duesBadge(ms.status, ms.amount_paid)}</td>
+            <td>\${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id)}</td>
             <td>$\${Number(ms.amount_due||0).toFixed(2)}</td>
             <td>\${ms.amount_paid != null ? '$' + Number(ms.amount_paid).toFixed(2) : '<span class="text-muted">—</span>'}</td>
             <td>\${escHtml(ms.payment_method||'—')}</td>
@@ -1111,7 +1111,7 @@ async function openAddDues(memberId, memberName) {
           <option value="family">Family ($30.00)</option>
         </select>
       </div>
-      <div class="form-group" id="d-covered-by-wrap" style="display:none">
+      <div class="form-group" id="d-covered-by-wrap" hidden>
         <label>Covered under (optional)</label>
         <select id="d-covered_by_member_id" onchange="onCoveredByChange()">\${memberOpts}</select>
       </div>
@@ -1149,7 +1149,7 @@ async function openAddDues(memberId, memberName) {
 function updateDueAmt() {
   const type = document.getElementById('d-membership_type')?.value;
   const coverWrap = document.getElementById('d-covered-by-wrap');
-  if (coverWrap) coverWrap.style.display = type === 'family' ? '' : 'none';
+  if (coverWrap) coverWrap.hidden = (type !== 'family');
   if (type !== 'family') {
     const el = document.getElementById('d-covered_by_member_id');
     if (el) el.value = '';
@@ -1212,7 +1212,7 @@ async function openEditDues(id, memberId) {
           <option value="family"     \${ms.membership_type==='family'?'selected':''}>Family ($30.00)</option>
         </select>
       </div>
-      <div class="form-group" id="ed-covered-by-wrap" style="\${ms.membership_type==='family'?'':'display:none'}">
+      <div class="form-group" id="ed-covered-by-wrap" \${ms.membership_type==='family'?'':'hidden'}>
         <label>Covered under (optional)</label>
         <select id="ed-covered_by_member_id" onchange="onEditCoveredByChange()">\${memberOpts}</select>
       </div>
@@ -1238,7 +1238,7 @@ async function openEditDues(id, memberId) {
 function updateEditDueAmt() {
   const type = document.getElementById('ed-membership_type')?.value;
   const coverWrap = document.getElementById('ed-covered-by-wrap');
-  if (coverWrap) coverWrap.style.display = type === 'family' ? '' : 'none';
+  if (coverWrap) coverWrap.hidden = (type !== 'family');
   if (type !== 'family') {
     const el = document.getElementById('ed-covered_by_member_id');
     if (el) el.value = '';
@@ -1473,9 +1473,10 @@ function licenseBadge(cls) {
   return \`<span class="badge \${map[cls]||'badge-gray'}">\${escHtml(cls)}</span>\`;
 }
 
-function duesBadge(status, paid) {
+function duesBadge(status, paid, coveredBy) {
   if (status === 'honorary') return '<span class="badge badge-blue">Honorary</span>';
   if (status === 'waived')   return '<span class="badge badge-gray">Waived</span>';
+  if (coveredBy)             return '<span class="badge badge-green">Covered</span>';
   if (paid != null)          return '<span class="badge badge-green">Paid</span>';
   if (status === 'active')   return '<span class="badge badge-yellow">Unpaid</span>';
   if (status === 'expired')  return '<span class="badge badge-red">Expired</span>';
