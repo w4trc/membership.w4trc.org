@@ -13,12 +13,12 @@ routes = [
 [[d1_databases]]
 binding = "DB"
 database_name = "karc-membership"
-database_id = "YOUR_D1_DATABASE_ID_HERE"
+database_id = "3f035a24-d216-42c8-9587-4a6a0cc22e24"
 
 # KV namespace for rate limiting
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "YOUR_KV_NAMESPACE_ID_HERE"
+id = "10a64914bfe34022a48b986a7b4b07a7"
 
 # Environment variables (non-secret)
 [vars]

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute karc-membership --file=schema/001_initial.sql",
-    "db:seed": "wrangler d1 execute karc-membership --file=schema/002_seed.sql",
+    "db:init": "wrangler d1 execute karc-membership --remote --file=schema/001_initial.sql",
+    "db:seed": "wrangler d1 execute karc-membership --remote --file=schema/002_seed.sql",
     "db:init:local": "wrangler d1 execute karc-membership --local --file=schema/001_initial.sql",
     "db:seed:local": "wrangler d1 execute karc-membership --local --file=schema/002_seed.sql",
     "setup-admin": "node scripts/setup-admin.js"
