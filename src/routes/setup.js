@@ -34,7 +34,14 @@ export async function handleSetup(request, env) {
   if (!email || !password) return jsonError('email and password required', 400);
   if (password.length < 10) return jsonError('Password must be at least 10 characters', 400);
 
-  // Create the member record first
+  // Check for conflicts before writing anything
+  if (callsign) {
+    const dup = await env.DB.prepare(`SELECT 1 FROM members WHERE callsign = ?`)
+      .bind(callsign.toUpperCase()).first();
+    if (dup) return jsonError('A member with that callsign already exists', 409);
+  }
+
+  // Create member record, then user — clean up member if user insert fails
   const memberResult = await env.DB.prepare(`
     INSERT INTO members (callsign, first_name, last_name, email, membership_type, joined_date, is_active)
     VALUES (?, ?, ?, ?, 'individual', date('now'), 1)
@@ -47,12 +54,17 @@ export async function handleSetup(request, env) {
 
   const memberId = memberResult.meta.last_row_id;
 
-  // Hash password and create admin user
   const hash = await hashPassword(password);
-  await env.DB.prepare(`
-    INSERT INTO users (email, password_hash, role, member_id)
-    VALUES (?, ?, 'admin', ?)
-  `).bind(email.toLowerCase().trim(), hash, memberId).run();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO users (email, password_hash, role, member_id)
+      VALUES (?, ?, 'admin', ?)
+    `).bind(email.toLowerCase().trim(), hash, memberId).run();
+  } catch (err) {
+    await env.DB.prepare(`DELETE FROM members WHERE id = ?`).bind(memberId).run().catch(() => {});
+    if (err.message?.includes('UNIQUE')) return jsonError('An account with that email already exists', 409);
+    throw err;
+  }
 
   return jsonResponse({
     ok: true,
