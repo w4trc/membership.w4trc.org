@@ -1,0 +1,32 @@
+name = "karc-membership"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "4b724b576c4285b15dfd8aa32fc83af7"
+
+# Route to custom domain
+routes = [
+  { pattern = "members.w4trc.org/*", zone_name = "w4trc.org" }
+]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "karc-membership"
+database_id = "YOUR_D1_DATABASE_ID_HERE"
+
+# KV namespace for rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+# Environment variables (non-secret)
+[vars]
+ENVIRONMENT = "production"
+CLUB_NAME = "Kingsport Amateur Radio Club"
+CLUB_CALLSIGN = "W4TRC"
+CLUB_DOMAIN = "members.w4trc.org"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# JWT_SECRET        - random 64-char string for signing sessions
+# ADMIN_SETUP_KEY   - one-time key for /api/setup endpoint
