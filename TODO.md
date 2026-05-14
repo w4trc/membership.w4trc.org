@@ -1,0 +1,48 @@
+# W4TRC Membership System — TODO
+
+---
+
+## From Our Conversations
+
+These are things you've mentioned, noted, or that came up while building the system.
+
+### In Progress
+- [ ] **Board role UI** — backend is fully implemented (`board` role enforced on all routes), but the frontend nav shows all items regardless of role. Board users can currently navigate to User Accounts and Audit Log pages (which then fail with 403). Nav needs to hide admin-only sections based on `state.user.role`.
+
+### Completed ✓
+- [x] Family membership linking (`covered_by_member_id` on memberships, migration 003)
+- [x] Payment details on membership creation (amount paid, method, date, check number inline with member add form)
+- [x] Audit log with target names, callsigns, and membership years for better readability
+- [x] Mobile sidebar with hamburger toggle and backdrop
+- [x] Force-refresh on callsign lookup (`?force=true` param to bypass 7-day cache)
+- [x] Background callsign sync after member record update
+
+---
+
+## Ideas Worth Considering
+
+Things I'd suggest based on how the system is built and what a club like this typically needs.
+
+### Near-Term (Low Effort, High Value)
+- [ ] **CSV/roster export** — a "Download CSV" button on the Members page. Useful for the club secretary, ARRL reporting, or emergency contact lists. Could filter by year, status, or membership type.
+- [ ] **License expiry warnings** — members whose FCC license expires within 90 days should get a flag on their record and/or a dashboard widget. Licenses expire every 10 years and club members often forget.
+- [ ] **Upcoming renewals widget on Dashboard** — list of members who were active last year but haven't renewed yet this year. The data is already there (membership history + current year status).
+- [ ] **Keyboard shortcut to add member** — a `/` focus-search or `N` to open the new member form. Small quality-of-life for whoever enters renewals each year.
+
+### Medium-Term
+- [ ] **Batch mark-as-paid** — checkbox selection on the Dues page to mark multiple members paid at once (same method/date). Useful at a club meeting when 10 people pay cash in one sitting.
+- [ ] **Renewal email drafts** — generate a mailto link or copy-to-clipboard draft for members with an email on file who haven't renewed. Not a full email system, just a "draft renewal notice" button per member or per year.
+- [ ] **Print-friendly member directory** — a `/print` route or button that renders a clean, printable roster (name, callsign, class, phone) with no nav/chrome. Useful for paper handouts at meetings.
+- [ ] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
+
+### Longer-Term (Aligns with Roadmap)
+- [ ] **Phase 3 — Member portal** — members log in with their own account, view their membership history, update contact info, and opt in/out of the directory. Needs a new `member` role flow in the UI (different nav, limited scope).
+- [ ] **Phase 4 — Public directory** — opt-in public page at `/directory` showing callsign, license class, and interests. No login required. Members control visibility from their portal.
+- [ ] **Phase 5 — Online dues payment** — PayPal or Stripe checkout link per member. Could be a simple hosted payment link rather than a full integration. Payment webhook marks the record as paid automatically.
+- [ ] **Phase 6 — Email reminders** — automated renewal notices via Cloudflare Email Workers or a transactional email provider (Mailgun, Resend). Triggered by a scheduled Worker cron.
+
+### Operational / Nice-to-Have
+- [ ] **Session list UI** — the `GET /api/admin/sessions` endpoint exists and returns active sessions, but there's no page for it in the UI yet. Useful for auditing who's logged in.
+- [ ] **Repeater access export** — if the club has a repeater with an access list, a filtered export (active members + callsign) could feed into that system directly.
+- [ ] **ARRL affiliation tracking** — a boolean field on the member record noting ARRL membership. Some clubs track this for reporting purposes.
+- [ ] **Dark/light mode toggle** — the UI is dark-only right now. Not urgent, but some operators may prefer light mode.
