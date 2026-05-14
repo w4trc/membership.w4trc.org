@@ -36,6 +36,7 @@ Things I'd suggest based on how the system is built and what a club like this ty
 - [ ] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
 
 ### Longer-Term (Aligns with Roadmap)
+- [ ] **Google Groups sync** — when a member is marked as paid for a given year, automatically add them to the corresponding Google Group (e.g. `members-2026@w4trc.org`). Requires a Google Workspace service account with domain-wide delegation and the Admin SDK Directory API. On payment: `POST /admin/directory/v1/groups/{groupKey}/members`. Should also handle removals if a membership is voided. Could be triggered from the same server-side code that records the payment.
 - [ ] **Phase 3 — Member portal** — members log in with their own account, view their membership history, update contact info, and opt in/out of the directory. Needs a new `member` role flow in the UI (different nav, limited scope).
 - [ ] **Phase 4 — Public directory** — opt-in public page at `/directory` showing callsign, license class, and interests. No login required. Members control visibility from their portal.
 - [ ] **Phase 5 — Online dues payment** — PayPal or Stripe checkout link per member. Could be a simple hosted payment link rather than a full integration. Payment webhook marks the record as paid automatically.
