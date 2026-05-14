@@ -112,7 +112,11 @@ async function getMember(request, env, user, memberId) {
                'membership_type', ms.membership_type, 'amount_due', ms.amount_due,
                'amount_paid', ms.amount_paid, 'paid_date', ms.paid_date,
                'payment_method', ms.payment_method, 'check_number', ms.check_number,
-               'notes', ms.notes
+               'notes', ms.notes,
+               'covered_by_member_id', ms.covered_by_member_id,
+               'covered_by_callsign',    (SELECT cb.callsign    FROM members cb WHERE cb.id = ms.covered_by_member_id),
+               'covered_by_first_name',  (SELECT cb.first_name  FROM members cb WHERE cb.id = ms.covered_by_member_id),
+               'covered_by_last_name',   (SELECT cb.last_name   FROM members cb WHERE cb.id = ms.covered_by_member_id)
              )) FROM memberships ms WHERE ms.member_id = m.id ORDER BY ms.year DESC
             ) AS memberships_json,
             (SELECT json_group_array(json_object(

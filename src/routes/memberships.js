@@ -39,9 +39,11 @@ async function listMemberships(request, env, user, url) {
   if (status !== 'all') { where.push('ms.status = ?'); params.push(status); }
 
   const { results } = await env.DB.prepare(`
-    SELECT ms.*, m.callsign, m.first_name, m.last_name, m.email, m.membership_type as member_type
+    SELECT ms.*, m.callsign, m.first_name, m.last_name, m.email, m.membership_type as member_type,
+      cb.callsign as covered_by_callsign, cb.first_name as covered_by_first_name, cb.last_name as covered_by_last_name
     FROM memberships ms
     JOIN members m ON m.id = ms.member_id
+    LEFT JOIN members cb ON cb.id = ms.covered_by_member_id
     WHERE ${where.join(' AND ')}
     ORDER BY m.last_name ASC, m.first_name ASC
   `).bind(...params).all();
@@ -51,8 +53,12 @@ async function listMemberships(request, env, user, url) {
 
 async function getMembership(request, env, user, id) {
   const ms = await env.DB.prepare(
-    `SELECT ms.*, m.callsign, m.first_name, m.last_name FROM memberships ms
-     JOIN members m ON m.id = ms.member_id WHERE ms.id = ?`
+    `SELECT ms.*, m.callsign, m.first_name, m.last_name,
+       cb.callsign as covered_by_callsign, cb.first_name as covered_by_first_name, cb.last_name as covered_by_last_name
+     FROM memberships ms
+     JOIN members m ON m.id = ms.member_id
+     LEFT JOIN members cb ON cb.id = ms.covered_by_member_id
+     WHERE ms.id = ?`
   ).bind(id).first();
   if (!ms) return jsonError('Not found', 404);
   return jsonResponse(ms);
@@ -73,10 +79,12 @@ async function createMembership(request, env, user) {
   const membershipType = body.membership_type || member.membership_type || 'individual';
   const amtDue = membershipType === 'family' ? 30.00 : 20.00;
 
+  const coveredByMemberId = body.covered_by_member_id || null;
+
   try {
     const result = await env.DB.prepare(`
-      INSERT INTO memberships (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, notes, recorded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO memberships (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, notes, covered_by_member_id, recorded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       member_id,
       year,
@@ -88,6 +96,7 @@ async function createMembership(request, env, user) {
       body.payment_method  ?? null,
       body.check_number    ?? null,
       body.notes           ?? null,
+      coveredByMemberId,
       user.id,
     ).run();
 
@@ -116,26 +125,28 @@ async function updateMembership(request, env, user, id) {
 
   await env.DB.prepare(`
     UPDATE memberships SET
-      status         = ?,
-      membership_type = ?,
-      amount_due     = ?,
-      amount_paid    = ?,
-      paid_date      = ?,
-      payment_method = ?,
-      check_number   = ?,
-      notes          = ?,
-      recorded_by    = ?,
-      updated_at     = datetime('now')
+      status               = ?,
+      membership_type      = ?,
+      amount_due           = ?,
+      amount_paid          = ?,
+      paid_date            = ?,
+      payment_method       = ?,
+      check_number         = ?,
+      notes                = ?,
+      covered_by_member_id = ?,
+      recorded_by          = ?,
+      updated_at           = datetime('now')
     WHERE id = ?
   `).bind(
-    body.status          ?? existing.status,
-    body.membership_type ?? existing.membership_type,
-    body.amount_due      ?? existing.amount_due,
-    body.amount_paid     ?? existing.amount_paid,
-    body.paid_date       ?? existing.paid_date,
-    body.payment_method  ?? existing.payment_method,
-    body.check_number    ?? existing.check_number,
-    body.notes           ?? existing.notes,
+    body.status               ?? existing.status,
+    body.membership_type      ?? existing.membership_type,
+    body.amount_due           ?? existing.amount_due,
+    body.amount_paid          ?? existing.amount_paid,
+    body.paid_date            ?? existing.paid_date,
+    body.payment_method       ?? existing.payment_method,
+    body.check_number         ?? existing.check_number,
+    body.notes                ?? existing.notes,
+    'covered_by_member_id' in body ? (body.covered_by_member_id || null) : existing.covered_by_member_id,
     user.id,
     id,
   ).run();

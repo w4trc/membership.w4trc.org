@@ -749,7 +749,8 @@ async function viewMember(id) {
                 \${ms.paid_date ? \`<span style="font-size:12px;color:var(--text-muted)">\${ms.paid_date}</span>\` : ''}
                 <button class="btn btn-sm btn-secondary" onclick="openEditDues(\${ms.id}, \${m.id})">Edit</button>
               </div>
-              \${ms.notes ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:6px">\${escHtml(ms.notes)}</div>\` : ''}
+              \${ms.covered_by_first_name ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">Covered under: \${ms.covered_by_callsign ? '<span class="callsign" style="font-size:12px">' + escHtml(ms.covered_by_callsign) + '</span> ' : ''}\${escHtml(ms.covered_by_first_name)} \${escHtml(ms.covered_by_last_name)}</div>\` : ''}
+              \${ms.notes ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(ms.notes)}</div>\` : ''}
             </div>
           \`).join('')
         }
@@ -1072,7 +1073,10 @@ async function loadDuesTable() {
         <tbody>
           \${list.map(ms => \`<tr>
             <td><span class="callsign">\${escHtml(ms.callsign||'—')}</span></td>
-            <td>\${escHtml(ms.first_name)} \${escHtml(ms.last_name)}</td>
+            <td>
+              \${escHtml(ms.first_name)} \${escHtml(ms.last_name)}
+              \${ms.covered_by_first_name ? \`<div style="font-size:11px;color:var(--text-muted)">Covered under: \${ms.covered_by_callsign ? escHtml(ms.covered_by_callsign) + ' ' : ''}\${escHtml(ms.covered_by_first_name)} \${escHtml(ms.covered_by_last_name)}</div>\` : ''}
+            </td>
             <td>\${ms.membership_type==='family'?'<span class="badge badge-blue">Family</span>':'<span class="badge badge-gray">Individual</span>'}</td>
             <td>\${duesBadge(ms.status, ms.amount_paid)}</td>
             <td>$\${Number(ms.amount_due||0).toFixed(2)}</td>
@@ -1088,6 +1092,14 @@ async function loadDuesTable() {
 
 async function openAddDues(memberId, memberName) {
   const yr = new Date().getFullYear();
+  let memberOpts = '<option value="">— None (primary payer) —</option>';
+  try {
+    const data = await api('GET', '/members?status=active');
+    memberOpts += (data.members || [])
+      .filter(x => x.id !== memberId)
+      .map(x => \`<option value="\${x.id}">\${x.callsign ? escHtml(x.callsign) + ' — ' : ''}\${escHtml(x.first_name)} \${escHtml(x.last_name)}</option>\`)
+      .join('');
+  } catch {}
   showModal(\`
     <div class="form-grid">
       <div class="form-group"><label>Member</label><input type="text" value="\${escHtml(memberName)}" disabled></div>
@@ -1098,6 +1110,10 @@ async function openAddDues(memberId, memberName) {
           <option value="individual">Individual ($20.00)</option>
           <option value="family">Family ($30.00)</option>
         </select>
+      </div>
+      <div class="form-group" id="d-covered-by-wrap" style="display:none">
+        <label>Covered under (optional)</label>
+        <select id="d-covered_by_member_id" onchange="onCoveredByChange()">\${memberOpts}</select>
       </div>
       <div class="form-group">
         <label>Status</label>
@@ -1132,22 +1148,35 @@ async function openAddDues(memberId, memberName) {
 
 function updateDueAmt() {
   const type = document.getElementById('d-membership_type')?.value;
+  const coverWrap = document.getElementById('d-covered-by-wrap');
+  if (coverWrap) coverWrap.style.display = type === 'family' ? '' : 'none';
+  if (type !== 'family') {
+    const el = document.getElementById('d-covered_by_member_id');
+    if (el) el.value = '';
+  }
+  onCoveredByChange();
+}
+
+function onCoveredByChange() {
+  const coveredBy = document.getElementById('d-covered_by_member_id')?.value;
+  const type = document.getElementById('d-membership_type')?.value;
   const amtEl = document.getElementById('d-amount_due');
-  if (amtEl) amtEl.value = type === 'family' ? '30.00' : '20.00';
+  if (amtEl) amtEl.value = coveredBy ? '0.00' : (type === 'family' ? '30.00' : '20.00');
 }
 
 async function saveDues(memberId) {
   const body = {
-    member_id:       memberId,
-    year:            parseInt(gv('d-year'), 10),
-    status:          gv('d-status'),
-    membership_type: gv('d-membership_type'),
-    amount_due:      parseFloat(gv('d-amount_due')) || null,
-    amount_paid:     gv('d-amount_paid') ? parseFloat(gv('d-amount_paid')) : null,
-    paid_date:       gv('d-paid_date') || null,
-    payment_method:  gv('d-payment_method') || null,
-    check_number:    gv('d-check_number') || null,
-    notes:           gv('d-notes') || null,
+    member_id:            memberId,
+    year:                 parseInt(gv('d-year'), 10),
+    status:               gv('d-status'),
+    membership_type:      gv('d-membership_type'),
+    amount_due:           parseFloat(gv('d-amount_due')) || null,
+    amount_paid:          gv('d-amount_paid') ? parseFloat(gv('d-amount_paid')) : null,
+    paid_date:            gv('d-paid_date') || null,
+    payment_method:       gv('d-payment_method') || null,
+    check_number:         gv('d-check_number') || null,
+    notes:                gv('d-notes') || null,
+    covered_by_member_id: parseInt(gv('d-covered_by_member_id')) || null,
   };
   try {
     await api('POST', '/memberships', body);
@@ -1160,6 +1189,14 @@ async function saveDues(memberId) {
 async function openEditDues(id, memberId) {
   const ms = await api('GET', '/memberships/' + id).catch(() => null);
   if (!ms) return;
+  let memberOpts = '<option value="">— None (primary payer) —</option>';
+  try {
+    const data = await api('GET', '/members?status=active');
+    memberOpts += (data.members || [])
+      .filter(x => x.id !== ms.member_id)
+      .map(x => \`<option value="\${x.id}" \${ms.covered_by_member_id===x.id?'selected':''}>\${x.callsign ? escHtml(x.callsign) + ' — ' : ''}\${escHtml(x.first_name)} \${escHtml(x.last_name)}</option>\`)
+      .join('');
+  } catch {}
   showModal(\`
     <div class="form-grid">
       <div class="form-group">
@@ -1170,10 +1207,14 @@ async function openEditDues(id, memberId) {
       </div>
       <div class="form-group">
         <label>Membership Type</label>
-        <select id="ed-membership_type">
+        <select id="ed-membership_type" onchange="updateEditDueAmt()">
           <option value="individual" \${ms.membership_type==='individual'?'selected':''}>Individual ($20.00)</option>
           <option value="family"     \${ms.membership_type==='family'?'selected':''}>Family ($30.00)</option>
         </select>
+      </div>
+      <div class="form-group" id="ed-covered-by-wrap" style="\${ms.membership_type==='family'?'':'display:none'}">
+        <label>Covered under (optional)</label>
+        <select id="ed-covered_by_member_id" onchange="onEditCoveredByChange()">\${memberOpts}</select>
       </div>
       \${fi('Amount Due','ed-amount_due',ms.amount_due||'','number')}
       \${fi('Amount Paid','ed-amount_paid',ms.amount_paid||'','number')}
@@ -1194,16 +1235,34 @@ async function openEditDues(id, memberId) {
   ]);
 }
 
+function updateEditDueAmt() {
+  const type = document.getElementById('ed-membership_type')?.value;
+  const coverWrap = document.getElementById('ed-covered-by-wrap');
+  if (coverWrap) coverWrap.style.display = type === 'family' ? '' : 'none';
+  if (type !== 'family') {
+    const el = document.getElementById('ed-covered_by_member_id');
+    if (el) el.value = '';
+  }
+  onEditCoveredByChange();
+}
+
+function onEditCoveredByChange() {
+  const coveredBy = document.getElementById('ed-covered_by_member_id')?.value;
+  const amtEl = document.getElementById('ed-amount_due');
+  if (amtEl && coveredBy) amtEl.value = '0.00';
+}
+
 async function updateDues(id, memberId) {
   const body = {
-    status:          gv('ed-status'),
-    membership_type: gv('ed-membership_type'),
-    amount_due:      parseFloat(gv('ed-amount_due')) || null,
-    amount_paid:     gv('ed-amount_paid') ? parseFloat(gv('ed-amount_paid')) : null,
-    paid_date:       gv('ed-paid_date') || null,
-    payment_method:  gv('ed-payment_method') || null,
-    check_number:    gv('ed-check_number') || null,
-    notes:           gv('ed-notes') || null,
+    status:               gv('ed-status'),
+    membership_type:      gv('ed-membership_type'),
+    amount_due:           parseFloat(gv('ed-amount_due')) || null,
+    amount_paid:          gv('ed-amount_paid') ? parseFloat(gv('ed-amount_paid')) : null,
+    paid_date:            gv('ed-paid_date') || null,
+    payment_method:       gv('ed-payment_method') || null,
+    check_number:         gv('ed-check_number') || null,
+    notes:                gv('ed-notes') || null,
+    covered_by_member_id: parseInt(gv('ed-covered_by_member_id')) || null,
   };
   try {
     await api('PUT', '/memberships/' + id, body);
