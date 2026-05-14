@@ -846,13 +846,13 @@ function openAddMember() {
       </div>
       \${fi('Joined Date','f-joined_date',new Date().toISOString().slice(0,10),'date')}
     </div>
-    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
-      <input type="checkbox" id="f-is_arrl_member">
+    <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
+      <input type="checkbox" id="f-is_arrl_member" style="width:auto">
       <span>ARRL Member</span>
     </label>
     <div class="card" style="margin-top:16px">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
-        <input type="checkbox" id="f-create_ms" checked onchange="toggleMsFields()">
+        <input type="checkbox" id="f-create_ms" checked onchange="toggleMsFields()" style="width:auto">
         <span>Create \${new Date().getFullYear()} membership record and mark paid</span>
       </label>
       <div id="f-ms-fields" style="margin-top:12px">
@@ -994,8 +994,8 @@ async function openEditMember(id) {
       \${fi('Emergency Contact Name','e-emergency_name',m.emergency_name||'')}
       \${fi('Emergency Phone','e-emergency_phone',m.emergency_phone||'')}
     </div>
-    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
-      <input type="checkbox" id="e-is_arrl_member" \${m.is_arrl_member ? 'checked' : ''}>
+    <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
+      <input type="checkbox" id="e-is_arrl_member" style="width:auto" \${m.is_arrl_member ? 'checked' : ''}>
       <span>ARRL Member</span>
     </label>
     <div class="form-group mt-16">
