@@ -87,7 +87,10 @@ async function listMembers(request, env, user, url) {
             LIMIT 1) AS current_year_status,
            (SELECT ms2.amount_paid FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
-            LIMIT 1) AS current_year_paid
+            LIMIT 1) AS current_year_paid,
+           (SELECT ms2.covered_by_member_id FROM memberships ms2
+            WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
+            LIMIT 1) AS current_year_covered_by
     FROM members m ${joinSQL}
     ${whereSQL}
     ORDER BY m.last_name ASC, m.first_name ASC

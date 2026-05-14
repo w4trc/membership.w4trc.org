@@ -653,7 +653,7 @@ async function loadMembersTable() {
               <td>\${licenseBadge(m.license_class)}</td>
               <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'}</td>
               <td>\${m.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}</td>
-              <td>\${duesBadge(m.current_year_status, m.current_year_paid)}</td>
+              <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by)}</td>
               <td>
                 <button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button>
               </td>
@@ -1079,7 +1079,7 @@ async function loadDuesTable() {
             </td>
             <td>\${ms.membership_type==='family'?'<span class="badge badge-blue">Family</span>':'<span class="badge badge-gray">Individual</span>'}</td>
             <td>\${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id)}</td>
-            <td>$\${Number(ms.amount_due||0).toFixed(2)}</td>
+            <td>$\${ms.covered_by_member_id ? '0.00' : Number(ms.amount_due||0).toFixed(2)}</td>
             <td>\${ms.amount_paid != null ? '$' + Number(ms.amount_paid).toFixed(2) : '<span class="text-muted">—</span>'}</td>
             <td>\${escHtml(ms.payment_method||'—')}</td>
             <td>\${escHtml(ms.check_number||'—')}</td>
