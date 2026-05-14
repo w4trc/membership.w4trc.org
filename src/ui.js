@@ -309,6 +309,41 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .year-pill:hover { border-color: var(--accent); color: var(--accent); }
 .year-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* ── Mobile ──────────────────────────────────────────────────────────── */
+#menu-toggle { display: none; }
+
+@media (max-width: 768px) {
+  #menu-toggle {
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: none; color: var(--text); cursor: pointer;
+    font-size: 20px; padding: 4px 8px; margin-right: 8px; flex-shrink: 0;
+  }
+  #sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 200;
+    width: 260px; transform: translateX(-100%);
+    transition: transform .25s ease;
+  }
+  #sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 40px rgba(0,0,0,.7);
+  }
+  #nav-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 199;
+    background: rgba(0,0,0,.5);
+  }
+  #nav-backdrop.open { display: block; }
+  #page { padding: 16px; }
+  #topbar { padding: 0 12px; }
+  .modal { width: 96%; max-height: 94vh; margin: 0 auto; }
+  .modal-body { padding: 16px; }
+  .modal-footer { padding: 12px 16px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr; }
+  .search-bar input { max-width: 100%; }
+  #toast-container { bottom: 16px; right: 12px; left: 12px; }
+  .toast { max-width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -344,20 +379,20 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <nav>
         <div class="nav-section">Main</div>
-        <a class="nav-item active" onclick="nav('dashboard')" data-page="dashboard">
+        <a class="nav-item active" onclick="nav('dashboard');closeNav()" data-page="dashboard">
           <span class="icon">📊</span> Dashboard
         </a>
-        <a class="nav-item" onclick="nav('members')" data-page="members">
+        <a class="nav-item" onclick="nav('members');closeNav()" data-page="members">
           <span class="icon">👥</span> Members
         </a>
-        <a class="nav-item" onclick="nav('memberships')" data-page="memberships">
+        <a class="nav-item" onclick="nav('memberships');closeNav()" data-page="memberships">
           <span class="icon">💳</span> Dues & Memberships
         </a>
         <div class="nav-section">Admin</div>
-        <a class="nav-item" onclick="nav('users')" data-page="users">
+        <a class="nav-item" onclick="nav('users');closeNav()" data-page="users">
           <span class="icon">🔐</span> User Accounts
         </a>
-        <a class="nav-item" onclick="nav('audit')" data-page="audit">
+        <a class="nav-item" onclick="nav('audit');closeNav()" data-page="audit">
           <span class="icon">📋</span> Audit Log
         </a>
       </nav>
@@ -374,8 +409,10 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
     </aside>
 
+    <div id="nav-backdrop" onclick="closeNav()"></div>
     <div id="content">
       <div id="topbar">
+        <button id="menu-toggle" onclick="toggleNav()" aria-label="Menu">&#9776;</button>
         <h2 id="page-title">Dashboard</h2>
         <div class="spacer"></div>
         <div id="topbar-actions"></div>
@@ -408,6 +445,15 @@ const state = {
 };
 
 // ── API ───────────────────────────────────────────────────────────────
+function toggleNav() {
+  const open = document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('nav-backdrop').classList.toggle('open', open);
+}
+function closeNav() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('nav-backdrop').classList.remove('open');
+}
+
 async function api(method, path, body) {
   const opts = {
     method,
