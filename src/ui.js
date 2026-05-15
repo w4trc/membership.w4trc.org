@@ -408,8 +408,8 @@ textarea { resize: vertical; min-height: 80px; }
             <div id="user-role"  style="font-size:10px;color:var(--text-muted);text-transform:uppercase"></div>
           </div>
           <div class="spacer"></div>
-          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" title="Change password">🔑</button>
-          <button class="btn btn-sm btn-secondary" onclick="doLogout()" title="Sign out">⏏</button>
+          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" title="Change password" style="padding:4px 7px;flex-shrink:0">🔑</button>
+          <button class="btn btn-sm btn-secondary" onclick="doLogout()" title="Sign out" style="padding:4px 7px;flex-shrink:0">⏏</button>
         </div>
       </div>
     </aside>
