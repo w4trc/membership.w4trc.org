@@ -46,9 +46,16 @@ function generateId() {
   return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function createSession(userId, request, env) {
+const SESSION_TTL_SECS = {
+  admin: 30 * 24 * 60 * 60, // 30 days
+  board: 30 * 24 * 60 * 60, // 30 days
+  default: 8 * 60 * 60,     // 8 hours
+};
+
+export async function createSession(userId, request, env, role = 'member') {
   const sessionId = generateId();
-  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 hours
+  const ttlSecs   = SESSION_TTL_SECS[role] ?? SESSION_TTL_SECS.default;
+  const expiresAt = new Date(Date.now() + ttlSecs * 1000).toISOString();
 
   await env.DB.prepare(
     `INSERT INTO sessions (id, user_id, ip_address, user_agent, expires_at)
@@ -65,7 +72,7 @@ export async function createSession(userId, request, env) {
   await env.DB.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`)
     .bind(userId).run();
 
-  return sessionId;
+  return { sessionId, maxAge: ttlSecs };
 }
 
 export async function requireAuth(request, env) {

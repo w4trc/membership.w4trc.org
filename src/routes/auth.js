@@ -38,7 +38,7 @@ export async function handleAuth(request, env, path) {
       return jsonError('Invalid email or password', 401);
     }
 
-    const sessionId = await createSession(user.id, request, env);
+    const { sessionId, maxAge } = await createSession(user.id, request, env, user.role);
     await audit(env, { userId: user.id, action: 'login.success', request });
 
     const response = jsonResponse({
@@ -46,7 +46,7 @@ export async function handleAuth(request, env, path) {
       user: { id: user.id, email: user.email, role: user.role, memberId: user.member_id },
     });
 
-    response.headers.set('Set-Cookie', setCookieHeader('karc_session', sessionId));
+    response.headers.set('Set-Cookie', setCookieHeader('karc_session', sessionId, { maxAge }));
     return response;
   }
 
