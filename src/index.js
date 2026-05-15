@@ -4,6 +4,7 @@
  * members.w4trc.org
  */
 
+import * as Sentry from '@sentry/cloudflare';
 import { handleAuth }        from './routes/auth.js';
 import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
@@ -16,7 +17,14 @@ import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 
-export default {
+export default Sentry.withSentry(
+  (env) => ({
+    dsn: 'https://63f0e4b4c18a33b74a050a76b04b9678@o4509799469547520.ingest.us.sentry.io/4511391391809536',
+    tracesSampleRate: 1.0,
+    enableLogs: true,
+    sendDefaultPii: true,
+  }),
+  {
   async fetch(request, env, ctx) {
     const url    = new URL(request.url);
     const path   = url.pathname;
@@ -90,4 +98,5 @@ export default {
       return jsonError('Internal server error', 500);
     }
   },
-};
+});
+
