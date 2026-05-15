@@ -1,0 +1,16 @@
+meta {
+  name: HamDB Lookup
+  type: http
+  seq: 1
+}
+
+get {
+  url: http://api.hamdb.org/N4JHC/json/JCTEST
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

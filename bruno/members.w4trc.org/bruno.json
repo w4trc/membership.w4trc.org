@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "members.w4trc.org",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
