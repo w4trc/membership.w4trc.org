@@ -57,8 +57,13 @@ export async function handleLookup(request, env, path, user) {
       return jsonResponse({ found: false, callsign });
     }
 
-    // Parse expiry date (HamDB format: YYYY-MM-DD)
-    const expiryDate = ham.expires || null;
+    // HamDB returns MM/DD/YYYY; HTML date inputs require YYYY-MM-DD
+    const raw = ham.expires || null;
+    let expiryDate = null;
+    if (raw) {
+      const [m, d, y] = raw.split('/');
+      if (m && d && y) expiryDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
 
     // Normalize the class field
     const rawClass = (ham.class || '').toUpperCase();
