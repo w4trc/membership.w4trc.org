@@ -50,12 +50,10 @@ export default Sentry.withSentry(
         return handleSetup(request, env);
       }
 
-      // Global rate limiting on API
-      const rl = await rateLimit(request, env);
-      if (rl) return rl;
-
-      // Auth routes (login/logout) — no auth required
+      // Auth routes (login/logout) — rate-limited, no auth required
       if (path.startsWith('/api/auth/')) {
+        const rl = await rateLimit(request, env);
+        if (rl) return rl;
         return handleAuth(request, env, path);
       }
 
