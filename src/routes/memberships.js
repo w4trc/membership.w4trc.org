@@ -76,8 +76,11 @@ async function createMembership(request, env, user) {
   const member = await env.DB.prepare('SELECT * FROM members WHERE id = ?').bind(member_id).first();
   if (!member) return jsonError('Member not found', 404);
 
-  const membershipType = body.membership_type || member.membership_type || 'individual';
-  const amtDue = membershipType === 'family' ? 30.00 : 20.00;
+  const isLifetimeHonorary = member.membership_type === 'lifetime_honorary';
+  const membershipType = isLifetimeHonorary
+    ? 'individual'
+    : (body.membership_type || member.membership_type || 'individual');
+  const amtDue = isLifetimeHonorary ? 0.00 : (membershipType === 'family' ? 30.00 : 20.00);
 
   const coveredByMemberId = body.covered_by_member_id || null;
 
@@ -88,7 +91,7 @@ async function createMembership(request, env, user) {
     `).bind(
       member_id,
       year,
-      body.status          || 'active',
+      body.status          || (isLifetimeHonorary ? 'honorary' : 'active'),
       membershipType,
       body.amount_due      ?? amtDue,
       body.amount_paid     ?? null,

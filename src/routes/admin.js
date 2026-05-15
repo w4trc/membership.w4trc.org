@@ -231,7 +231,8 @@ async function getDashboardStats(env) {
       SELECT COUNT(*) as total,
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
              SUM(CASE WHEN is_arrl_member = 1 THEN 1 ELSE 0 END) as arrl_count,
-             SUM(CASE WHEN is_silent_key = 1 THEN 1 ELSE 0 END) as silent_key_count
+             SUM(CASE WHEN is_silent_key = 1 THEN 1 ELSE 0 END) as silent_key_count,
+             SUM(CASE WHEN membership_type = 'lifetime_honorary' THEN 1 ELSE 0 END) as lifetime_honorary_count
       FROM members
     `).first(),
 
@@ -294,6 +295,7 @@ async function runCutoff(request, env, user) {
     FROM members m
     WHERE m.is_active = 1
       AND m.is_silent_key = 0
+      AND m.membership_type != 'lifetime_honorary'
       AND m.id NOT IN (${exemptSubquery})
     ORDER BY m.last_name ASC, m.first_name ASC
   `).bind(year).all();
@@ -306,6 +308,7 @@ async function runCutoff(request, env, user) {
     UPDATE members SET is_active = 0, updated_at = datetime('now')
     WHERE is_active = 1
       AND is_silent_key = 0
+      AND membership_type != 'lifetime_honorary'
       AND id NOT IN (${exemptSubquery})
   `).bind(year).run();
 

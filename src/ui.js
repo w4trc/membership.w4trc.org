@@ -708,7 +708,7 @@ async function loadMembersTable() {
               <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
-              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''}</td>
+              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Life Honorary</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''}</td>
               <td>\${memberStatusBadge(m.is_active, m.is_silent_key)}</td>
               <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by)}</td>
               <td>
@@ -783,7 +783,7 @@ async function viewMember(id) {
         <div class="detail-section">
           <h4>Membership</h4>
           <div class="detail-grid">
-            \${dfield('Type', m.membership_type)}
+            \${dfield('Type', m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Lifetime Honorary</span>' : m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>')}
             \${dfield('Joined', m.joined_date)}
             \${dfield('ARRL Member', m.is_arrl_member ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>')}
             \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id) : '<span class="badge badge-yellow">No Record</span>')}
@@ -795,7 +795,7 @@ async function viewMember(id) {
 
       <!-- Dues tab (hidden) -->
       <div id="tab-dues" class="hidden">
-        <button class="btn btn-sm btn-primary" style="margin-bottom:12px" onclick="openAddDues(\${m.id}, '\${escHtml(m.first_name)} \${escHtml(m.last_name)}')">+ Record Payment</button>
+        <button class="btn btn-sm btn-primary" style="margin-bottom:12px" onclick="openAddDues(\${m.id}, '\${escHtml(m.first_name)} \${escHtml(m.last_name)}', '\${m.membership_type}')">+ Record Payment</button>
         \${(m.memberships || []).length === 0 ? '<p class="text-muted">No membership records yet.</p>' :
           m.memberships.map(ms => \`
             <div class="card" style="margin-bottom:8px;padding:12px">
@@ -890,6 +890,7 @@ function openAddMember() {
         <select id="f-membership_type" onchange="updateAmtDue()">
           <option value="individual">Individual ($20/yr)</option>
           <option value="family">Family ($30/yr)</option>
+          <option value="lifetime_honorary">Lifetime Honorary (no dues)</option>
         </select>
       </div>
       \${fi('Joined Date','f-joined_date',new Date().toISOString().slice(0,10),'date')}
@@ -939,7 +940,15 @@ function openAddMember() {
 function updateAmtDue() {
   const type = document.getElementById('f-membership_type')?.value;
   const amtEl = document.getElementById('f-amount_paid');
-  if (amtEl) amtEl.value = type === 'family' ? '30.00' : '20.00';
+  const msFields = document.getElementById('f-ms-fields');
+  const msCheck = document.getElementById('f-create_ms');
+  if (type === 'lifetime_honorary') {
+    if (msCheck) { msCheck.checked = false; msCheck.disabled = true; }
+    if (msFields) msFields.hidden = true;
+  } else {
+    if (msCheck) { msCheck.disabled = false; }
+    if (amtEl) amtEl.value = type === 'family' ? '30.00' : '20.00';
+  }
 }
 
 function toggleMsFields() {
@@ -1027,8 +1036,9 @@ async function openEditMember(id) {
       <div class="form-group">
         <label>Membership Type</label>
         <select id="e-membership_type">
-          <option value="individual" \${m.membership_type==='individual'?'selected':''}>Individual ($20/yr)</option>
-          <option value="family"     \${m.membership_type==='family'?'selected':''}>Family ($30/yr)</option>
+          <option value="individual"        \${m.membership_type==='individual'?'selected':''}>Individual ($20/yr)</option>
+          <option value="family"            \${m.membership_type==='family'?'selected':''}>Family ($30/yr)</option>
+          <option value="lifetime_honorary" \${m.membership_type==='lifetime_honorary'?'selected':''}>Lifetime Honorary (no dues)</option>
         </select>
       </div>
       \${fi('Joined Date','e-joined_date',m.joined_date||'','date')}
@@ -1189,8 +1199,9 @@ async function loadDuesTable() {
       </table></div>\`;
 }
 
-async function openAddDues(memberId, memberName) {
+async function openAddDues(memberId, memberName, memberType) {
   const yr = new Date().getFullYear();
+  const isLifetimeHonorary = memberType === 'lifetime_honorary';
   let memberOpts = '<option value="">— None (primary payer) —</option>';
   try {
     const data = await api('GET', '/members?status=active');
@@ -1217,13 +1228,13 @@ async function openAddDues(memberId, memberName) {
       <div class="form-group">
         <label>Status</label>
         <select id="d-status">
-          <option value="active">Active</option>
-          <option value="honorary">Honorary</option>
+          <option value="active" \${!isLifetimeHonorary?'selected':''}>Active</option>
+          <option value="honorary" \${isLifetimeHonorary?'selected':''}>Honorary</option>
           <option value="waived">Waived</option>
           <option value="pending">Pending</option>
         </select>
       </div>
-      \${fi('Amount Due','d-amount_due','20.00','number')}
+      \${fi('Amount Due','d-amount_due',isLifetimeHonorary?'0.00':'20.00','number')}
       \${fi('Amount Paid','d-amount_paid','','number')}
       \${fi('Payment Date','d-paid_date','','date')}
       <div class="form-group">

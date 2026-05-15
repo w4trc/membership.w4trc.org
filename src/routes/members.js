@@ -213,18 +213,21 @@ async function createMember(request, env, user) {
 
   // Auto-create current-year membership record if requested
   if (body.create_membership) {
-    const year   = new Date().getFullYear();
-    const amtDue = body.membership_type === 'family' ? 30.00 : 20.00;
+    const year = new Date().getFullYear();
+    const isLifetimeHonorary = body.membership_type === 'lifetime_honorary';
+    const duesType = isLifetimeHonorary ? 'individual' : (body.membership_type || 'individual');
+    const amtDue  = isLifetimeHonorary ? 0.00 : (body.membership_type === 'family' ? 30.00 : 20.00);
+    const status  = isLifetimeHonorary ? 'honorary' : 'active';
     await env.DB.prepare(`
       INSERT OR IGNORE INTO memberships
         (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, recorded_by)
-      VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      newId, year, body.membership_type || 'individual', amtDue,
-      body.ms_amount_paid    || null,
-      body.ms_paid_date      || null,
-      body.ms_payment_method || null,
-      body.ms_check_number   || null,
+      newId, year, status, duesType, amtDue,
+      isLifetimeHonorary ? null : (body.ms_amount_paid    || null),
+      isLifetimeHonorary ? null : (body.ms_paid_date      || null),
+      isLifetimeHonorary ? null : (body.ms_payment_method || null),
+      isLifetimeHonorary ? null : (body.ms_check_number   || null),
       user.id
     ).run();
   }
