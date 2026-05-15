@@ -7,7 +7,7 @@
 These are things you've mentioned, noted, or that came up while building the system.
 
 ### In Progress
-- [ ] **Board role UI** — backend is fully implemented (`board` role enforced on all routes), but the frontend nav shows all items regardless of role. Board users can currently navigate to User Accounts and Audit Log pages (which then fail with 403). Nav needs to hide admin-only sections based on `state.user.role`.
+- [x] **Board role UI** — nav hides Admin section (User Accounts, Audit Log, Cutoff) for non-admin users. Board users get a full dashboard, Members, and Dues pages. Password change accessible via sidebar key button for all roles.
 
 ### Completed ✓
 - [x] Family membership linking (`covered_by_member_id` on memberships, migration 003)

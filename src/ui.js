@@ -389,7 +389,7 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('memberships');closeNav()" data-page="memberships">
           <span class="icon">💳</span> Dues & Memberships
         </a>
-        <div class="nav-section">Admin</div>
+        <div class="nav-section" id="nav-section-admin">Admin</div>
         <a class="nav-item" onclick="nav('users');closeNav()" data-page="users">
           <span class="icon">🔐</span> User Accounts
         </a>
@@ -408,6 +408,7 @@ textarea { resize: vertical; min-height: 80px; }
             <div id="user-role"  style="font-size:10px;color:var(--text-muted);text-transform:uppercase"></div>
           </div>
           <div class="spacer"></div>
+          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" title="Change password">🔑</button>
           <button class="btn btn-sm btn-secondary" onclick="doLogout()" title="Sign out">⏏</button>
         </div>
       </div>
@@ -526,6 +527,10 @@ function showApp() {
   document.getElementById('user-role').textContent  = u.role;
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
+  if (u.role !== 'admin') {
+    document.getElementById('nav-section-admin')?.classList.add('hidden');
+    document.querySelectorAll('[data-page="users"],[data-page="audit"]').forEach(el => el.classList.add('hidden'));
+  }
   nav('dashboard');
 }
 
@@ -538,6 +543,12 @@ function nav(page) {
   const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
+
+  const adminOnly = new Set(['users', 'audit', 'cutoff']);
+  if (adminOnly.has(page) && state.user?.role !== 'admin') {
+    setPage('<p class="text-muted" style="padding:24px">Access restricted to administrators.</p>');
+    return;
+  }
 
   const pages = { dashboard, members, memberships, users, audit, cutoff };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
@@ -1564,6 +1575,19 @@ async function deleteUser(id) {
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
+function openChangePassword() {
+  showModal(\`
+    <div class="form-grid">
+      \${fi('Current Password','cp-current','','password')}
+      \${fi('New Password (10+ chars)','cp-new','','password')}
+      \${fi('Confirm New Password','cp-confirm','','password')}
+    </div>
+  \`, 'Change My Password', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Update Password', cls: 'btn-primary', fn: 'changeMyPassword()' },
+  ]);
+}
+
 async function changeMyPassword() {
   const cur  = gv('cp-current');
   const nw   = gv('cp-new');
@@ -1574,9 +1598,7 @@ async function changeMyPassword() {
   try {
     await api('POST', '/admin/password', { current_password: cur, new_password: nw });
     toast('Password changed ✓');
-    document.getElementById('cp-current').value = '';
-    document.getElementById('cp-new').value = '';
-    document.getElementById('cp-confirm').value = '';
+    closeModal();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 

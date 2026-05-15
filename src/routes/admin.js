@@ -10,14 +10,12 @@
  * POST   /api/admin/password       - change own password
  */
 
-import { isAdmin }                    from '../lib/auth.js';
+import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
 import { hashPassword }               from '../lib/auth.js';
 import { jsonResponse, jsonError }    from '../lib/response.js';
 import { audit }                      from '../lib/audit.js';
 
 export async function handleAdmin(request, env, path, user) {
-  if (!isAdmin(user)) return jsonError('Forbidden - admin only', 403);
-
   const method   = request.method;
   const url      = new URL(request.url);
   const segments = path.split('/');
@@ -25,6 +23,19 @@ export async function handleAdmin(request, env, path, user) {
   // /api/admin/users/42  → segments[3] = 'users', segments[4] = '42'
   const resource = segments[3];
   const resId    = segments[4] ? parseInt(segments[4], 10) : null;
+
+  // Stats — board and admin can view the dashboard
+  if (resource === 'stats' && method === 'GET') {
+    if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+    return getDashboardStats(env);
+  }
+
+  // Password change — any authenticated user can change their own password
+  if (resource === 'password' && method === 'POST') {
+    return changePassword(request, env, user);
+  }
+
+  if (!isAdmin(user)) return jsonError('Forbidden - admin only', 403);
 
   // ── Users ──────────────────────────────────────────────────────────────
   if (resource === 'users') {
@@ -46,16 +57,6 @@ export async function handleAdmin(request, env, path, user) {
   if (resource === 'sessions') {
     if (method === 'GET' && !resId) return listSessions(env);
     if (method === 'DELETE' && resId) return revokeSession(env, user, resId);
-  }
-
-  // ── Change own password ────────────────────────────────────────────────
-  if (resource === 'password' && method === 'POST') {
-    return changePassword(request, env, user);
-  }
-
-  // ── Stats summary ──────────────────────────────────────────────────────
-  if (resource === 'stats' && method === 'GET') {
-    return getDashboardStats(env);
   }
 
   // ── Membership cutoff ───────────────────────────────────────────────────
