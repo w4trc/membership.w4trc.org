@@ -1,0 +1,26 @@
+meta {
+  name: Login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{email}}",
+    "password": "{{password}}"
+  }
+}
+
+script:post-response {
+  const cookie = res.headers['set-cookie'] || '';
+  const match = cookie.match(/karc_session=([a-f0-9]{64})/);
+  if (match) {
+    bru.setEnvVar('session', match[1]);
+  }
+}
