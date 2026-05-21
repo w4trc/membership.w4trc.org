@@ -24,6 +24,50 @@ const CLASS_MAP = {
   'P':  'Technician Plus',
 };
 
+// Fetch and normalize a callsign from HamDB. Returns null on API failure,
+// { found: false } if the callsign doesn't exist, or a normalized data object.
+export async function fetchHamDB(callsign) {
+  const resp = await fetch(`${HAMDB_URL}/${callsign}/json`, {
+    headers: { 'User-Agent': 'KARC-Membership/1.0 (W4TRC)' },
+    cf: { cacheTtl: 3600 },
+  });
+
+  if (!resp.ok) return null;
+
+  const data = await resp.json();
+  const ham  = data?.hamdb?.callsign;
+
+  if (!ham || ham.call === 'NOT_FOUND') return { found: false, callsign };
+
+  // HamDB returns MM/DD/YYYY; HTML date inputs require YYYY-MM-DD
+  const raw = ham.expires || null;
+  let expiryDate = null;
+  if (raw) {
+    const [m, d, y] = raw.split('/');
+    if (m && d && y) expiryDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  const rawClass = (ham.class || '').toUpperCase();
+  const licenseClass = CLASS_MAP[rawClass] || rawClass || null;
+
+  return {
+    found:          true,
+    callsign:       ham.call,
+    first_name:     normalizeName(ham.fname || ''),
+    last_name:      normalizeName(ham.name  || ''),
+    address:        ham.addr1 || '',
+    city:           ham.addr2 || '',
+    state:          ham.state || '',
+    zip:            ham.zip   || '',
+    country:        ham.country || 'US',
+    license_class:  licenseClass,
+    license_expiry: expiryDate,
+    license_status: ham.status || null,
+    grid_square:    ham.grid  || null,
+    trustee:        ham.trustee || null,
+  };
+}
+
 export async function handleLookup(request, env, path, user) {
   if (request.method !== 'GET') return jsonError('Method not allowed', 405);
 
@@ -35,57 +79,15 @@ export async function handleLookup(request, env, path, user) {
 
   if (!callsign) return jsonError('Callsign required', 400);
 
-  // Basic callsign format validation
   if (!/^[A-Z0-9]{3,8}$/.test(callsign)) {
     return jsonError('Invalid callsign format', 400);
   }
 
   try {
-    const resp = await fetch(`${HAMDB_URL}/${callsign}/json`, {
-      headers: { 'User-Agent': 'KARC-Membership/1.0 (W4TRC)' },
-      cf: { cacheTtl: 3600 }, // Cache in Cloudflare edge for 1 hour
-    });
+    const normalized = await fetchHamDB(callsign);
 
-    if (!resp.ok) {
-      return jsonError('Lookup service unavailable', 502);
-    }
-
-    const data = await resp.json();
-    const ham  = data?.hamdb?.callsign;
-
-    if (!ham || ham.call === 'NOT_FOUND') {
-      return jsonResponse({ found: false, callsign });
-    }
-
-    // HamDB returns MM/DD/YYYY; HTML date inputs require YYYY-MM-DD
-    const raw = ham.expires || null;
-    let expiryDate = null;
-    if (raw) {
-      const [m, d, y] = raw.split('/');
-      if (m && d && y) expiryDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    }
-
-    // Normalize the class field
-    const rawClass = (ham.class || '').toUpperCase();
-    const licenseClass = CLASS_MAP[rawClass] || rawClass || null;
-
-    // Map address fields
-    const normalized = {
-      found:          true,
-      callsign:       ham.call,
-      first_name:     normalizeName(ham.fname || ''),
-      last_name:      normalizeName(ham.name  || ''),
-      address:        ham.addr1 || '',
-      city:           ham.addr2 || '',
-      state:          ham.state || '',
-      zip:            ham.zip   || '',
-      country:        ham.country || 'US',
-      license_class:  licenseClass,
-      license_expiry: expiryDate,
-      license_status: ham.status || null,   // 'A' = active, 'E' = expired
-      grid_square:    ham.grid  || null,
-      trustee:        ham.trustee || null,  // For club callsigns
-    };
+    if (!normalized) return jsonError('Lookup service unavailable', 502);
+    if (!normalized.found) return jsonResponse({ found: false, callsign });
 
     await updateMemberFromHamDB(env, callsign, normalized, force, user);
 
@@ -97,7 +99,7 @@ export async function handleLookup(request, env, path, user) {
   }
 }
 
-async function updateMemberFromHamDB(env, callsign, data, force = false, user = null) {
+export async function updateMemberFromHamDB(env, callsign, data, force = false, user = null) {
   try {
     const member = await env.DB.prepare(
       'SELECT id, last_name, callsign_mismatch FROM members WHERE callsign = ?'

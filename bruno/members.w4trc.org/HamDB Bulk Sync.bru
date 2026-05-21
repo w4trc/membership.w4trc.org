@@ -1,0 +1,38 @@
+meta {
+  name: HamDB Bulk Sync
+  type: http
+  seq: 2
+}
+
+post {
+  url: https://members.w4trc.org/api/admin/sync-hamdb
+  body: none
+  auth: none
+}
+
+params:query {
+  ~force: 1
+  ~limit: 50
+}
+
+headers {
+  Cookie: session=your-session-token-here
+}
+
+settings {
+  encodeUrl: true
+  timeout: 60000
+}
+
+docs {
+  Syncs HamDB license data for all members whose sync is stale (>7 days) or missing.
+
+  Call repeatedly until `remaining` in the response reaches 0.
+
+  Query params (remove the ~ prefix to enable):
+    force=1   — also re-sync members synced within the last 7 days
+    limit=N   — batch size (default 50, max 100)
+
+  To get your session token: log in at members.w4trc.org, open DevTools →
+  Application → Cookies → session, and paste the value into the Cookie header above.
+}

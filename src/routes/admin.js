@@ -8,12 +8,14 @@
  * GET    /api/admin/sessions       - active sessions
  * DELETE /api/admin/sessions/:id   - revoke a session
  * POST   /api/admin/password       - change own password
+ * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
  */
 
 import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
 import { hashPassword }               from '../lib/auth.js';
 import { jsonResponse, jsonError }    from '../lib/response.js';
 import { audit }                      from '../lib/audit.js';
+import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -62,6 +64,11 @@ export async function handleAdmin(request, env, path, user) {
   // ── Membership cutoff ───────────────────────────────────────────────────
   if (resource === 'cutoff' && method === 'POST') {
     return runCutoff(request, env, user);
+  }
+
+  // ── HamDB bulk sync ──────────────────────────────────────────────────────
+  if (resource === 'sync-hamdb' && method === 'POST') {
+    return syncHamDB(request, env, user);
   }
 
   return jsonError('Not found', 404);
@@ -322,4 +329,80 @@ async function runCutoff(request, env, user) {
   });
 
   return jsonResponse({ dry_run: false, year, deactivated_count: affected.length, members: affected });
+}
+
+// POST /api/admin/sync-hamdb
+// Syncs license data from HamDB for all members with a stale or missing sync.
+// ?force=1  — include members synced within the last 7 days
+// ?limit=N  — max members to process per call (default 50, max 100)
+async function syncHamDB(request, env, user) {
+  const url   = new URL(request.url);
+  const force = url.searchParams.get('force') === '1';
+  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
+
+  const staleClause = `(hamdb_synced_at IS NULL OR hamdb_synced_at < datetime('now', '-7 days'))`;
+  const where = force ? '' : `AND ${staleClause}`;
+
+  const { results: members } = await env.DB.prepare(`
+    SELECT id, callsign FROM members
+    WHERE callsign IS NOT NULL AND callsign != '' ${where}
+    ORDER BY hamdb_synced_at ASC
+    LIMIT ?
+  `).bind(limit).all();
+
+  // Count how many are still pending after this batch
+  const { total: remaining } = await env.DB.prepare(`
+    SELECT COUNT(*) as total FROM members
+    WHERE callsign IS NOT NULL AND callsign != '' ${where}
+  `).first() ?? { total: 0 };
+
+  const summary = {
+    processed: members.length,
+    remaining: Math.max(0, remaining - members.length),
+    synced:    0,
+    not_found: 0,
+    errors:    0,
+    details:   [],
+  };
+
+  for (const member of members) {
+    try {
+      const data = await fetchHamDB(member.callsign);
+
+      if (!data) {
+        summary.errors++;
+        summary.details.push({ callsign: member.callsign, status: 'error', reason: 'api_unavailable' });
+        continue;
+      }
+
+      if (!data.found) {
+        summary.not_found++;
+        summary.details.push({ callsign: member.callsign, status: 'not_found' });
+        // Stamp synced_at so we don't keep hammering HamDB for a cancelled/missing callsign
+        await env.DB.prepare(
+          `UPDATE members SET hamdb_synced_at = datetime('now') WHERE callsign = ?`
+        ).bind(member.callsign).run();
+        continue;
+      }
+
+      await updateMemberFromHamDB(env, member.callsign, data, true, user);
+      summary.synced++;
+      summary.details.push({ callsign: member.callsign, status: 'synced' });
+
+    } catch (err) {
+      summary.errors++;
+      summary.details.push({ callsign: member.callsign, status: 'error', reason: err.message });
+    }
+  }
+
+  await audit(env, {
+    userId:     user.id,
+    action:     'admin.hamdb_sync',
+    targetType: null,
+    targetId:   null,
+    detail:     { processed: summary.processed, synced: summary.synced, not_found: summary.not_found, errors: summary.errors, force },
+    request,
+  });
+
+  return jsonResponse(summary);
 }
