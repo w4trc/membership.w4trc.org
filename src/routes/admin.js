@@ -32,6 +32,12 @@ export async function handleAdmin(request, env, path, user) {
     return getDashboardStats(env);
   }
 
+  // Chart data — board and admin can view
+  if (resource === 'charts' && method === 'GET') {
+    if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+    return getChartData(env);
+  }
+
   // Password change — any authenticated user can change their own password
   if (resource === 'password' && method === 'POST') {
     return changePassword(request, env, user);
@@ -405,4 +411,29 @@ async function syncHamDB(request, env, user) {
   });
 
   return jsonResponse(summary);
+}
+
+async function getChartData(env) {
+  const [trend, classes] = await Promise.all([
+    env.DB.prepare(`
+      SELECT year,
+        COUNT(*) as total,
+        SUM(CASE WHEN amount_paid IS NOT NULL THEN 1 ELSE 0 END) as paid,
+        SUM(CASE WHEN status IN ('honorary','waived') THEN 1 ELSE 0 END) as exempt
+      FROM memberships
+      GROUP BY year
+      ORDER BY year ASC
+    `).all(),
+
+    env.DB.prepare(`
+      SELECT COALESCE(license_class, 'Unknown') as license_class,
+        COUNT(*) as count
+      FROM members
+      WHERE is_active = 1 AND is_silent_key = 0
+      GROUP BY license_class
+      ORDER BY count DESC
+    `).all(),
+  ]);
+
+  return jsonResponse({ trend: trend.results, classes: classes.results });
 }

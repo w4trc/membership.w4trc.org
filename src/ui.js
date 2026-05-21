@@ -345,7 +345,11 @@ textarea { resize: vertical; min-height: 80px; }
   #toast-container { bottom: 16px; right: 12px; left: 12px; }
   .toast { max-width: 100%; }
 }
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.chart-wrap { position: relative; height: 240px; }
+@media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -561,9 +565,10 @@ function setPage(html) { document.getElementById('page').innerHTML = html; }
 async function dashboard() {
   setPage('<div class="spinner"></div>');
   try {
-    const [stats, msStats] = await Promise.all([
+    const [stats, msStats, chartData] = await Promise.all([
       api('GET', '/admin/stats'),
       api('GET', '/memberships/stats?year=' + new Date().getFullYear()),
+      api('GET', '/admin/charts'),
     ]);
 
     const yr = new Date().getFullYear();
@@ -600,6 +605,16 @@ async function dashboard() {
         <div class="stat-card">
           <div class="stat-val">\${stats.members?.arrl_count ?? '—'}</div>
           <div class="stat-label">ARRL Members</div>
+        </div>
+      </div>
+      <div class="charts-grid">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title">Memberships Per Year</div>
+          <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title">License Class — Active Members</div>
+          <div class="chart-wrap"><canvas id="chart-classes"></canvas></div>
         </div>
       </div>
       \${notRenewed.length > 0 ? \`
@@ -643,7 +658,54 @@ async function dashboard() {
         </table>
       </div>
     \`);
+    renderDashboardCharts(chartData);
   } catch(e) { setPage('<p class="text-muted">Error loading dashboard: ' + escHtml(e.message) + '</p>'); }
+}
+
+function renderDashboardCharts(data) {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color = '#8892aa';
+  Chart.defaults.borderColor = '#2a3050';
+  Chart.defaults.font = { family: "'Segoe UI', system-ui, sans-serif", size: 11 };
+
+  const trendEl = document.getElementById('chart-trend');
+  if (trendEl && data.trend?.length) {
+    new Chart(trendEl, {
+      type: 'bar',
+      data: {
+        labels: data.trend.map(r => r.year),
+        datasets: [
+          { label: 'Paid', data: data.trend.map(r => r.paid), backgroundColor: '#3b7dd8', stack: 's' },
+          { label: 'Honorary / Waived', data: data.trend.map(r => r.exempt), backgroundColor: '#2ecc71', stack: 's' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } },
+        scales: {
+          x: { grid: { color: '#2a3050' } },
+          y: { beginAtZero: true, grid: { color: '#2a3050' }, ticks: { precision: 0 } },
+        },
+      },
+    });
+  }
+
+  const classEl = document.getElementById('chart-classes');
+  if (classEl && data.classes?.length) {
+    const palette = { 'Amateur Extra': '#3b7dd8', 'General': '#2ecc71', 'Technician': '#f39c12', 'Advanced': '#e67e22', 'Novice': '#9b59b6', 'Unknown': '#8892aa' };
+    const labels = data.classes.map(r => r.license_class);
+    new Chart(classEl, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: data.classes.map(r => r.count), backgroundColor: labels.map(l => palette[l] || '#8892aa'), borderColor: '#181c27', borderWidth: 2 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } },
+      },
+    });
+  }
 }
 
 // ── MEMBERS ───────────────────────────────────────────────────────────
