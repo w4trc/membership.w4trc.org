@@ -5,13 +5,13 @@ meta {
 }
 
 post {
-  url: {{base_url}}/api/admin/sync-hamdb
+  url: {{base_url}}/api/admin/sync-hamdb?limit=10
   body: none
   auth: none
 }
 
 params:query {
-  limit: 50
+  limit: 10
   ~force: 1
 }
 
@@ -26,10 +26,10 @@ settings {
 
 docs {
   Syncs HamDB license data for all members whose sync is stale (>7 days) or missing.
-
+  
   Run the Login request first to populate the session variable automatically.
   Then call this repeatedly until `remaining` in the response reaches 0.
-
+  
   Query params (remove the ~ prefix to enable):
     force=1   — also re-sync members synced within the last 7 days
     limit=N   — batch size (default 50, max 100)
