@@ -81,8 +81,9 @@ async function listProspects(request, env) {
 
   const rowSQL = `
     SELECT
-      p.id, p.callsign, p.first_name, p.last_name, p.city, p.state, p.zip,
+      p.id, p.callsign, p.first_name, p.last_name, p.address, p.city, p.state, p.zip,
       p.email, p.outreach_status, p.postcard_sent, p.postcard_sent_date, p.notes,
+      p.license_class, p.license_expiry, p.license_status, p.hamdb_synced_at,
       p.created_at, p.updated_at,
       m.id       AS member_id,
       m.is_active AS member_active
