@@ -35,11 +35,12 @@ export async function handleProspects(request, env, path, user) {
 // ── GET /api/prospects ───────────────────────────────────────────────────────
 async function listProspects(request, env) {
   const url      = new URL(request.url);
-  const search   = url.searchParams.get('q')       || '';
-  const city     = url.searchParams.get('city')    || 'all';
-  const status   = url.searchParams.get('status')  || 'all';
-  const postcard = url.searchParams.get('postcard')|| 'all';
-  const page     = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+  const search     = url.searchParams.get('q')          || '';
+  const city       = url.searchParams.get('city')       || 'all';
+  const status     = url.searchParams.get('status')     || 'all';
+  const postcard   = url.searchParams.get('postcard')   || 'all';
+  const licenseAge = url.searchParams.get('license_age')|| 'all';
+  const page       = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   const pageSize = 75;
   const offset   = (page - 1) * pageSize;
 
@@ -69,6 +70,20 @@ async function listProspects(request, env) {
 
   if (postcard === 'sent')     { where.push(`p.postcard_sent = 1`); }
   if (postcard === 'not_sent') { where.push(`p.postcard_sent = 0`); }
+
+  // license_expiry = issue_date + 10 yrs, so issue_date = expiry - 10 yrs
+  // new (0-3 yrs):    expiry > now+7yrs
+  // recent (3-5 yrs): expiry between now+5yrs and now+7yrs
+  // established (5+): expiry <= now+5yrs (and not null)
+  if (licenseAge === 'new') {
+    where.push(`p.license_expiry > date('now', '+7 years')`);
+  } else if (licenseAge === 'recent') {
+    where.push(`p.license_expiry >  date('now', '+5 years')`);
+    where.push(`p.license_expiry <= date('now', '+7 years')`);
+  } else if (licenseAge === 'established') {
+    where.push(`p.license_expiry IS NOT NULL`);
+    where.push(`p.license_expiry <= date('now', '+5 years')`);
+  }
 
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 

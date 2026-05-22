@@ -1871,13 +1871,13 @@ let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, d
 
 async function prospects() {
   setPage('<div class="spinner"></div>');
-  prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
+  prospectsState = { q:'', city:'all', status:'all', postcard:'all', license_age:'all', page:1, data:null, stats:null };
   await loadProspects();
 }
 
 async function loadProspects() {
   const s = prospectsState;
-  const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, page: s.page });
+  const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, license_age: s.license_age, page: s.page });
 
   try {
     const [data, stats] = await Promise.all([
@@ -1891,7 +1891,7 @@ async function loadProspects() {
 }
 
 function renderProspects() {
-  const { data, stats, q, city, status, postcard, page } = prospectsState;
+  const { data, stats, q, city, status, postcard, license_age, page } = prospectsState;
   const ps = data?.prospects || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / (data?.pageSize || 75));
@@ -1950,6 +1950,12 @@ function renderProspects() {
         <option value="all" \${postcard==='all'?'selected':''}>All Postcards</option>
         <option value="not_sent" \${postcard==='not_sent'?'selected':''}>Postcard Not Sent</option>
         <option value="sent" \${postcard==='sent'?'selected':''}>Postcard Sent</option>
+      </select>
+      <select onchange="prospectsState.license_age=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all" \${license_age==='all'?'selected':''}>All License Ages</option>
+        <option value="new" \${license_age==='new'?'selected':''}>New (0–3 yrs)</option>
+        <option value="recent" \${license_age==='recent'?'selected':''}>Recent (3–5 yrs)</option>
+        <option value="established" \${license_age==='established'?'selected':''}>Established (5+ yrs)</option>
       </select>
       <span style="margin-left:auto;color:var(--text-muted);font-size:12px">\${total} results</span>
     </div>
