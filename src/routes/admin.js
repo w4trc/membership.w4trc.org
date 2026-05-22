@@ -77,6 +77,10 @@ export async function handleAdmin(request, env, path, user) {
     return syncHamDB(request, env, user);
   }
 
+  if (resource === 'sync-prospects' && method === 'POST') {
+    return syncProspectsHamDB(request, env, user);
+  }
+
   return jsonError('Not found', 404);
 }
 
@@ -436,4 +440,100 @@ async function getChartData(env) {
   ]);
 
   return jsonResponse({ trend: trend.results, classes: classes.results });
+}
+
+// POST /api/admin/sync-prospects
+// Syncs street address + license data from HamDB for prospects.
+// ?limit=N  — records per call (default 10, max 50)
+// ?force=1  — re-sync even if already synced
+async function syncProspectsHamDB(request, env, user) {
+  const url   = new URL(request.url);
+  const force = url.searchParams.get('force') === '1';
+  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '10', 10)));
+
+  const staleClause = `hamdb_synced_at IS NULL`;
+  const where = force ? '' : `AND ${staleClause}`;
+
+  const { results: batch } = await env.DB.prepare(`
+    SELECT id, callsign FROM prospects
+    WHERE callsign IS NOT NULL AND callsign != '' ${where}
+    ORDER BY hamdb_synced_at ASC NULLS FIRST, id ASC
+    LIMIT ?
+  `).bind(limit).all();
+
+  const remaining = await env.DB.prepare(`
+    SELECT COUNT(*) as total FROM prospects
+    WHERE callsign IS NOT NULL AND callsign != '' ${where}
+  `).first();
+
+  const summary = {
+    processed: batch.length,
+    remaining: Math.max(0, (remaining?.total ?? 0) - batch.length),
+    synced:    0,
+    not_found: 0,
+    errors:    0,
+    details:   [],
+  };
+
+  for (const prospect of batch) {
+    try {
+      const data = await fetchHamDB(prospect.callsign);
+
+      if (!data) {
+        summary.errors++;
+        summary.details.push({ callsign: prospect.callsign, status: 'error', reason: 'api_unavailable' });
+        continue;
+      }
+
+      if (!data.found) {
+        summary.not_found++;
+        summary.details.push({ callsign: prospect.callsign, status: 'not_found' });
+        await env.DB.prepare(
+          `UPDATE prospects SET hamdb_synced_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`
+        ).bind(prospect.id).run();
+        continue;
+      }
+
+      await env.DB.prepare(`
+        UPDATE prospects SET
+          address         = ?,
+          city            = COALESCE(NULLIF(?, ''), city),
+          state           = COALESCE(NULLIF(?, ''), state),
+          zip             = COALESCE(NULLIF(?, ''), zip),
+          license_class   = ?,
+          license_expiry  = ?,
+          license_status  = ?,
+          hamdb_synced_at = datetime('now'),
+          updated_at      = datetime('now')
+        WHERE id = ?
+      `).bind(
+        data.address || null,
+        data.city    || '',
+        data.state   || '',
+        data.zip     || '',
+        data.license_class  || null,
+        data.license_expiry || null,
+        data.license_status || null,
+        prospect.id,
+      ).run();
+
+      summary.synced++;
+      summary.details.push({ callsign: prospect.callsign, status: 'synced', address: data.address });
+
+    } catch (err) {
+      summary.errors++;
+      summary.details.push({ callsign: prospect.callsign, status: 'error', reason: err.message });
+    }
+  }
+
+  await audit(env, {
+    userId:     user.id,
+    action:     'admin.prospects_hamdb_sync',
+    targetType: null,
+    targetId:   null,
+    detail:     { processed: summary.processed, synced: summary.synced, not_found: summary.not_found, errors: summary.errors, force },
+    request,
+  });
+
+  return jsonResponse(summary);
 }

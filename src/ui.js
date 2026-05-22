@@ -1870,46 +1870,9 @@ function roleBadge(role) {
 let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
 
 async function prospects() {
-  document.getElementById('topbar-actions').innerHTML =
-    '<button class="btn btn-secondary" onclick="runProspectsSync()" id="btn-sync-prospects">🔄 Sync HamDB Addresses</button>';
   setPage('<div class="spinner"></div>');
   prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
   await loadProspects();
-}
-
-async function runProspectsSync() {
-  const btn = document.getElementById('btn-sync-prospects');
-  if (!btn) return;
-
-  let totalProcessed = 0, totalSynced = 0, totalNotFound = 0, totalErrors = 0;
-
-  const run = async () => {
-    btn.disabled = true;
-    btn.textContent = '⏳ Syncing…';
-    try {
-      const res = await api('POST', '/prospects/sync?limit=20');
-      totalProcessed += res.processed;
-      totalSynced    += res.synced;
-      totalNotFound  += res.not_found;
-      totalErrors    += res.errors;
-
-      if (res.remaining > 0) {
-        btn.textContent = \`⏳ \${res.remaining} remaining…\`;
-        setTimeout(run, 400); // small pause between batches
-      } else {
-        btn.disabled = false;
-        btn.textContent = '🔄 Sync HamDB Addresses';
-        toast(\`Sync complete — \${totalSynced} updated, \${totalNotFound} not found, \${totalErrors} errors\`);
-        prospectsState.stats = null;
-        loadProspects();
-      }
-    } catch(e) {
-      btn.disabled = false;
-      btn.textContent = '🔄 Sync HamDB Addresses';
-      toast(e.data?.error || e.message, 'error');
-    }
-  };
-  run();
 }
 
 async function loadProspects() {
