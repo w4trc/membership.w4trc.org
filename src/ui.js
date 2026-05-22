@@ -1870,9 +1870,46 @@ function roleBadge(role) {
 let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
 
 async function prospects() {
+  document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary" onclick="runProspectsSync()" id="btn-sync-prospects">🔄 Sync HamDB Addresses</button>';
   setPage('<div class="spinner"></div>');
   prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
   await loadProspects();
+}
+
+async function runProspectsSync() {
+  const btn = document.getElementById('btn-sync-prospects');
+  if (!btn) return;
+
+  let totalProcessed = 0, totalSynced = 0, totalNotFound = 0, totalErrors = 0;
+
+  const run = async () => {
+    btn.disabled = true;
+    btn.textContent = '⏳ Syncing…';
+    try {
+      const res = await api('POST', '/prospects/sync?limit=20');
+      totalProcessed += res.processed;
+      totalSynced    += res.synced;
+      totalNotFound  += res.not_found;
+      totalErrors    += res.errors;
+
+      if (res.remaining > 0) {
+        btn.textContent = \`⏳ \${res.remaining} remaining…\`;
+        setTimeout(run, 400); // small pause between batches
+      } else {
+        btn.disabled = false;
+        btn.textContent = '🔄 Sync HamDB Addresses';
+        toast(\`Sync complete — \${totalSynced} updated, \${totalNotFound} not found, \${totalErrors} errors\`);
+        prospectsState.stats = null;
+        loadProspects();
+      }
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = '🔄 Sync HamDB Addresses';
+      toast(e.data?.error || e.message, 'error');
+    }
+  };
+  run();
 }
 
 async function loadProspects() {
@@ -1957,17 +1994,18 @@ function renderProspects() {
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>Callsign</th><th>Name</th><th>City</th><th>ZIP</th>
+          <th>Callsign</th><th>Name</th><th>City</th><th>ZIP</th><th>Address</th>
           <th>Member?</th><th>Outreach</th><th>Postcard</th><th></th>
         </tr></thead>
         <tbody>
-          \${ps.length === 0 ? '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>' :
+          \${ps.length === 0 ? '<tr><td colspan="9" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>' :
             ps.map(p => \`
               <tr>
                 <td><span class="callsign">\${escHtml(p.callsign)}</span></td>
                 <td>\${escHtml((p.first_name||'') + ' ' + (p.last_name||''))}</td>
                 <td>\${escHtml(p.city||'')}</td>
                 <td style="color:var(--text-muted);font-size:12px">\${escHtml(p.zip||'')}</td>
+                <td style="font-size:12px;color:var(--text-muted)">\${p.address ? escHtml(p.address) : '<span style="opacity:.3">—</span>'}</td>
                 <td>\${p.member_id
                   ? \`<span class="badge badge-green" title="Active Member">Member</span>\`
                   : ''}</td>
@@ -2014,10 +2052,13 @@ function openProspectModal(p) {
         </div>
         <div class="modal-body">
           <div class="detail-grid" style="margin-bottom:20px">
+            \${p.address ? \`<div class="detail-field" style="grid-column:1/-1"><label>Address</label><div class="val">\${escHtml(p.address)}</div></div>\` : \`<div class="detail-field" style="grid-column:1/-1"><label>Address</label><div class="val" style="color:var(--text-muted)">Not yet synced from HamDB</div></div>\`}
             <div class="detail-field"><label>City</label><div class="val">\${escHtml(p.city||'—')}</div></div>
             <div class="detail-field"><label>ZIP</label><div class="val">\${escHtml(p.zip||'—')}</div></div>
             <div class="detail-field"><label>State</label><div class="val">\${escHtml(p.state||'—')}</div></div>
             \${p.email ? \`<div class="detail-field"><label>Email</label><div class="val">\${escHtml(p.email)}</div></div>\` : ''}
+            \${p.license_class ? \`<div class="detail-field"><label>License Class</label><div class="val">\${escHtml(p.license_class)}</div></div>\` : ''}
+            \${p.license_expiry ? \`<div class="detail-field"><label>Expires</label><div class="val">\${escHtml(p.license_expiry)}</div></div>\` : ''}
           </div>
 
           \${p.member_id ? \`
