@@ -393,6 +393,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('memberships');closeNav()" data-page="memberships">
           <span class="icon">💳</span> Dues & Memberships
         </a>
+        <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
+          <span class="icon">📡</span> Local Hams
+        </a>
         <div class="nav-section" id="nav-section-admin">Admin</div>
         <a class="nav-item" onclick="nav('users');closeNav()" data-page="users">
           <span class="icon">🔐</span> User Accounts
@@ -532,6 +535,7 @@ function showApp() {
   document.getElementById('user-role').textContent  = u.role;
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
     document.querySelectorAll('[data-page="users"],[data-page="audit"]').forEach(el => el.classList.add('hidden'));
@@ -545,7 +549,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -555,7 +559,13 @@ function nav(page) {
     return;
   }
 
-  const pages = { dashboard, members, memberships, users, audit, cutoff };
+  const boardOnly = new Set(['prospects']);
+  if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
+    setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
+    return;
+  }
+
+  const pages = { dashboard, members, memberships, prospects, users, audit, cutoff };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -1854,6 +1864,224 @@ function duesBadge(status, paid, coveredBy) {
 function roleBadge(role) {
   const map = { admin: 'badge-red', board: 'badge-blue', member: 'badge-gray' };
   return \`<span class="badge \${map[role]||'badge-gray'}">\${escHtml(role)}</span>\`;
+}
+
+// ── LOCAL HAMS (PROSPECTS) ────────────────────────────────────────────
+let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
+
+async function prospects() {
+  setPage('<div class="spinner"></div>');
+  prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
+  await loadProspects();
+}
+
+async function loadProspects() {
+  const s = prospectsState;
+  const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, page: s.page });
+
+  try {
+    const [data, stats] = await Promise.all([
+      api('GET', \`/prospects?\${params}\`),
+      s.stats ? Promise.resolve({ stats: s.stats }) : api('GET', '/prospects/stats'),
+    ]);
+    s.data  = data;
+    s.stats = stats.stats;
+    renderProspects();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+function renderProspects() {
+  const { data, stats, q, city, status, postcard, page } = prospectsState;
+  const ps = data?.prospects || [];
+  const total = data?.total || 0;
+  const totalPages = Math.ceil(total / (data?.pageSize || 75));
+
+  setPage(\`
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.total ?? '—'}</div>
+        <div class="stat-label">Total Hams</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.member_count ?? '—'}</div>
+        <div class="stat-label">Already Members</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.non_member_count ?? '—'}</div>
+        <div class="stat-label">Not Yet Members</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.not_contacted ?? '—'}</div>
+        <div class="stat-label">Not Contacted</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.contacted ?? '—'}</div>
+        <div class="stat-label">Contacted</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.interested ?? '—'}</div>
+        <div class="stat-label">Interested</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">\${stats?.postcard_sent ?? '—'}</div>
+        <div class="stat-label">Postcards Sent</div>
+      </div>
+    </div>
+
+    <div class="search-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
+      <input type="text" placeholder="Search callsign or name…" value="\${escHtml(q)}"
+        oninput="prospectsState.q=this.value;prospectsState.page=1;loadProspects()" style="max-width:260px">
+      <select onchange="prospectsState.city=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all" \${city==='all'?'selected':''}>All Cities</option>
+        <option value="Church Hill" \${city==='Church Hill'?'selected':''}>Church Hill</option>
+        <option value="Kingsport" \${city==='Kingsport'?'selected':''}>Kingsport</option>
+        <option value="Mount Carmel" \${city==='Mount Carmel'?'selected':''}>Mount Carmel</option>
+      </select>
+      <select onchange="prospectsState.status=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all" \${status==='all'?'selected':''}>All Statuses</option>
+        <option value="non_members" \${status==='non_members'?'selected':''}>Non-Members Only</option>
+        <option value="not_contacted" \${status==='not_contacted'?'selected':''}>Not Contacted</option>
+        <option value="contacted" \${status==='contacted'?'selected':''}>Contacted</option>
+        <option value="interested" \${status==='interested'?'selected':''}>Interested</option>
+        <option value="not_interested" \${status==='not_interested'?'selected':''}>Not Interested</option>
+        <option value="members" \${status==='members'?'selected':''}>Already Members</option>
+      </select>
+      <select onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all" \${postcard==='all'?'selected':''}>All Postcards</option>
+        <option value="not_sent" \${postcard==='not_sent'?'selected':''}>Postcard Not Sent</option>
+        <option value="sent" \${postcard==='sent'?'selected':''}>Postcard Sent</option>
+      </select>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:12px">\${total} results</span>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Callsign</th><th>Name</th><th>City</th><th>ZIP</th>
+          <th>Member?</th><th>Outreach</th><th>Postcard</th><th></th>
+        </tr></thead>
+        <tbody>
+          \${ps.length === 0 ? '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>' :
+            ps.map(p => \`
+              <tr>
+                <td><span class="callsign">\${escHtml(p.callsign)}</span></td>
+                <td>\${escHtml((p.first_name||'') + ' ' + (p.last_name||''))}</td>
+                <td>\${escHtml(p.city||'')}</td>
+                <td style="color:var(--text-muted);font-size:12px">\${escHtml(p.zip||'')}</td>
+                <td>\${p.member_id
+                  ? \`<span class="badge badge-green" title="Active Member">Member</span>\`
+                  : ''}</td>
+                <td>\${p.member_id ? '' : prospectStatusBadge(p.outreach_status)}</td>
+                <td>\${p.postcard_sent ? '<span class="badge badge-blue">Sent</span>' : ''}</td>
+                <td><button class="btn btn-sm btn-secondary" onclick="openProspectModal(\${JSON.stringify(p).replace(/"/g,'&quot;')})">Edit</button></td>
+              </tr>
+            \`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    \${totalPages > 1 ? \`
+      <div style="display:flex;gap:8px;align-items:center;margin-top:16px;justify-content:center">
+        <button class="btn btn-sm btn-secondary" \${page<=1?'disabled':''} onclick="prospectsState.page=\${page-1};loadProspects()">← Prev</button>
+        <span style="color:var(--text-muted);font-size:13px">Page \${page} of \${totalPages}</span>
+        <button class="btn btn-sm btn-secondary" \${page>=totalPages?'disabled':''} onclick="prospectsState.page=\${page+1};loadProspects()">Next →</button>
+      </div>
+    \` : ''}
+
+    <div id="prospect-modal-wrap"></div>
+  \`);
+}
+
+function prospectStatusBadge(status) {
+  const map = {
+    not_contacted:  '<span class="badge badge-gray">Not Contacted</span>',
+    contacted:      '<span class="badge badge-yellow">Contacted</span>',
+    interested:     '<span class="badge badge-green">Interested</span>',
+    not_interested: '<span class="badge badge-red">Not Interested</span>',
+  };
+  return map[status] || '<span class="badge badge-gray">—</span>';
+}
+
+function openProspectModal(p) {
+  const wrap = document.getElementById('prospect-modal-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = \`
+    <div class="modal-backdrop" onclick="if(event.target===this)closeProspectModal()">
+      <div class="modal" style="max-width:520px" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3><span class="callsign">\${escHtml(p.callsign)}</span> — \${escHtml((p.first_name||'') + ' ' + (p.last_name||''))}</h3>
+          <button class="btn btn-sm btn-secondary" onclick="closeProspectModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-grid" style="margin-bottom:20px">
+            <div class="detail-field"><label>City</label><div class="val">\${escHtml(p.city||'—')}</div></div>
+            <div class="detail-field"><label>ZIP</label><div class="val">\${escHtml(p.zip||'—')}</div></div>
+            <div class="detail-field"><label>State</label><div class="val">\${escHtml(p.state||'—')}</div></div>
+            \${p.email ? \`<div class="detail-field"><label>Email</label><div class="val">\${escHtml(p.email)}</div></div>\` : ''}
+          </div>
+
+          \${p.member_id ? \`
+            <div class="card" style="background:rgba(46,204,113,.08);border-color:rgba(46,204,113,.3);margin-bottom:16px">
+              <p style="color:var(--success);margin:0">✓ Already a W4TRC member\${p.member_active ? '' : ' (inactive)'}.</p>
+            </div>
+          \` : \`
+            <div class="form-group" style="margin-bottom:16px">
+              <label>Outreach Status</label>
+              <select id="pm-status">
+                <option value="not_contacted" \${p.outreach_status==='not_contacted'?'selected':''}>Not Contacted</option>
+                <option value="contacted"     \${p.outreach_status==='contacted'?'selected':''}>Contacted</option>
+                <option value="interested"    \${p.outreach_status==='interested'?'selected':''}>Interested</option>
+                <option value="not_interested"\${p.outreach_status==='not_interested'?'selected':''}>Not Interested</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:16px">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="pm-postcard" \${p.postcard_sent?'checked':''} style="width:auto">
+                Postcard Sent
+              </label>
+              <input type="date" id="pm-postcard-date" value="\${p.postcard_sent_date||''}" style="margin-top:8px">
+            </div>
+          \`}
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="pm-notes" rows="3">\${escHtml(p.notes||'')}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeProspectModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveProspect(\${p.id}, \${!!p.member_id})">Save</button>
+        </div>
+      </div>
+    </div>
+  \`;
+}
+
+function closeProspectModal() {
+  const wrap = document.getElementById('prospect-modal-wrap');
+  if (wrap) wrap.innerHTML = '';
+}
+
+async function saveProspect(id, isMember) {
+  const body = {
+    notes: document.getElementById('pm-notes')?.value ?? '',
+  };
+  if (!isMember) {
+    body.outreach_status  = document.getElementById('pm-status')?.value;
+    body.postcard_sent    = document.getElementById('pm-postcard')?.checked ? 1 : 0;
+    body.postcard_sent_date = document.getElementById('pm-postcard-date')?.value || null;
+  }
+  try {
+    const res = await api('PUT', \`/prospects/\${id}\`, body);
+    const idx = prospectsState.data?.prospects?.findIndex(p => p.id === id);
+    if (idx !== undefined && idx >= 0) {
+      prospectsState.data.prospects[idx] = res.prospect;
+    }
+    prospectsState.stats = null; // force stats refresh next load
+    closeProspectModal();
+    toast('Saved ✓');
+    prospectsState.stats = null;
+    loadProspects();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────

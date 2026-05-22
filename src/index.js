@@ -12,6 +12,7 @@ import { handleNotes }       from './routes/notes.js';
 import { handleAdmin }       from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
+import { handleProspects }   from './routes/prospects.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
@@ -82,6 +83,11 @@ export default Sentry.withSentry(
       // Notes
       if (path.startsWith('/api/notes')) {
         return handleNotes(request, env, path, user);
+      }
+
+      // Local hams / prospects
+      if (path.startsWith('/api/prospects')) {
+        return handleProspects(request, env, path, user);
       }
 
       // Admin-only routes
