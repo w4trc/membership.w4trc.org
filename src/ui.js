@@ -1131,10 +1131,10 @@ function openAddMember() {
     </label>
     <div class="card" style="margin-top:16px">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
-        <input type="checkbox" id="f-create_ms" checked onchange="toggleMsFields()" style="width:auto">
+        <input type="checkbox" id="f-create_ms" onchange="toggleMsFields()" style="width:auto">
         <span>Create \${new Date().getFullYear()} membership record and mark paid</span>
       </label>
-      <div id="f-ms-fields" style="margin-top:12px">
+      <div id="f-ms-fields" style="margin-top:12px" hidden>
         <div class="form-grid">
           \${fi('Amount Paid','f-amount_paid','20.00','number')}
           \${fi('Payment Date','f-paid_date',new Date().toISOString().slice(0,10),'date')}
