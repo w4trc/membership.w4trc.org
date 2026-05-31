@@ -146,15 +146,15 @@ async function handleCheckoutCompleted(session, env) {
     await env.DB.prepare(`
       UPDATE memberships SET
         status = 'active', amount_paid = ?, paid_date = ?,
-        payment_method = 'stripe', stripe_session_id = ?, updated_at = datetime('now')
+        payment_method = 'stripe', check_number = ?, stripe_session_id = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).bind(amountPaid, paidDate, sessionId, existing.id).run();
+    `).bind(amountPaid, paidDate, sessionId, sessionId, existing.id).run();
   } else {
     await env.DB.prepare(`
       INSERT INTO memberships
-        (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, stripe_session_id)
-      VALUES (?, ?, 'active', 'individual', 20.00, ?, ?, 'stripe', ?)
-    `).bind(memberId, year, amountPaid, paidDate, sessionId).run();
+        (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, stripe_session_id)
+      VALUES (?, ?, 'active', 'individual', 20.00, ?, ?, 'stripe', ?, ?)
+    `).bind(memberId, year, amountPaid, paidDate, sessionId, sessionId).run();
   }
 
   await audit(env, {
