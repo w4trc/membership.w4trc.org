@@ -30,8 +30,6 @@ Things I'd suggest based on how the system is built and what a club like this ty
 - [x] **Keyboard shortcut to add member** — `/` focuses search, `N` opens the Add Member form (both members page only, no modal open). `Escape` closes any modal.
 
 ### Medium-Term
-- [ ] **Batch mark-as-paid** — checkbox selection on the Dues page to mark multiple members paid at once (same method/date). Useful at a club meeting when 10 people pay cash in one sitting.
-- [ ] **Renewal email drafts** — generate a mailto link or copy-to-clipboard draft for members with an email on file who haven't renewed. Not a full email system, just a "draft renewal notice" button per member or per year.
 - [x] **Print-friendly member directory** — `/print` route renders a standalone page (callsign, name, class, phone, email, city/state, current-year dues tick). "Print Directory" button opens it in a new tab from the Members page.
 - [ ] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
 
