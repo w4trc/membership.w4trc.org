@@ -75,6 +75,65 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
   });
 }
 
+export async function sendWeeklyRoundup(env, { boardEmails, newPayments, totalActiveMembers, weekOf }) {
+  const club   = env.CLUB_NAME   || 'KARC';
+  const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
+  const count  = newPayments.length;
+
+  const rows = newPayments.map(p => {
+    const name    = escHtml(`${p.first_name} ${p.last_name}`);
+    const call    = escHtml(p.callsign || '—');
+    const type    = escHtml(p.membership_type || '—');
+    const method  = escHtml(p.payment_method  || 'manual');
+    const amount  = p.amount_paid != null ? `$${Number(p.amount_paid).toFixed(2)}` : '—';
+    return `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-weight:600">${call}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${type}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${method}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${amount}</td>
+    </tr>`;
+  }).join('');
+
+  await sendEmail(env, {
+    to: boardEmails,
+    subject: `${club} Weekly Membership Update — ${weekOf}`,
+    html: `
+<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a1a2e">
+  <div style="text-align:center;margin-bottom:16px">
+    <img src="https://${domain}/logo.png" alt="${escHtml(club)}" style="height:64px">
+  </div>
+  <h2 style="margin:0 0 4px">Weekly Membership Update</h2>
+  <p style="color:#777;margin:0 0 24px;font-size:14px">Week of ${escHtml(weekOf)}</p>
+
+  <div style="background:#f0f4ff;border-radius:8px;padding:16px 20px;margin-bottom:24px;display:inline-block;width:100%;box-sizing:border-box">
+    <span style="font-size:28px;font-weight:bold;color:#1a1a2e">${totalActiveMembers}</span>
+    <span style="color:#555;margin-left:8px">total active members</span>
+  </div>
+
+  <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="background:#f5f5f5">
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Callsign</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Name</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Method</th>
+        <th style="padding:8px 12px;text-align:right;font-weight:600">Amount</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <hr style="border:none;border-top:1px solid #eee;margin:28px 0">
+  <p style="color:#aaa;font-size:12px">${escHtml(club)} &mdash; <a href="https://${domain}" style="color:#3b7dd8">${domain}</a></p>
+</body>
+</html>`,
+  });
+}
+
 function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

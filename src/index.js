@@ -10,7 +10,7 @@ import { handleAuth }        from './routes/auth.js';
 import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
 import { handleNotes }       from './routes/notes.js';
-import { handleAdmin }       from './routes/admin.js';
+import { handleAdmin, handleWeeklyRoundup } from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
@@ -95,6 +95,11 @@ export default Sentry.withSentry(
       // Stripe — webhook is public (signature-verified), checkout requires session auth (stripe.js handles internally)
       if (path.startsWith('/api/stripe/')) {
         return handleStripe(request, env, path);
+      }
+
+      // Weekly roundup — cron-triggered, secured by CRON_SECRET (no session required)
+      if (path === '/api/admin/weekly-roundup' && method === 'POST') {
+        return handleWeeklyRoundup(request, env);
       }
 
       // All other API routes require authentication

@@ -16,6 +16,7 @@ import { hashPassword }               from '../lib/auth.js';
 import { jsonResponse, jsonError }    from '../lib/response.js';
 import { audit }                      from '../lib/audit.js';
 import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
+import { sendWeeklyRoundup }          from '../lib/email.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -452,6 +453,49 @@ async function getChartData(env) {
   ]);
 
   return jsonResponse({ trend: trend.results, classes: classes.results });
+}
+
+// POST /api/admin/weekly-roundup (no session — secured by CRON_SECRET)
+export async function handleWeeklyRoundup(request, env) {
+  // Verify CRON_SECRET
+  const secret = env.CRON_SECRET;
+  if (!secret) return jsonError('CRON_SECRET not configured', 500);
+
+  const authHeader = request.headers.get('Authorization') || '';
+  const provided   = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!provided || provided !== secret) return jsonError('Unauthorized', 401);
+
+  const year = new Date().getFullYear();
+
+  // Memberships with amount_paid recorded in the last 7 days
+  const { results: newPayments } = await env.DB.prepare(`
+    SELECT ms.id, ms.membership_type, ms.amount_paid, ms.payment_method, ms.paid_date,
+           m.callsign, m.first_name, m.last_name
+    FROM memberships ms
+    JOIN members m ON m.id = ms.member_id
+    WHERE ms.amount_paid IS NOT NULL
+      AND ms.created_at >= datetime('now', '-7 days')
+      AND ms.year = ?
+    ORDER BY ms.created_at DESC
+  `).bind(year).all();
+
+  if (newPayments.length === 0) {
+    return jsonResponse({ sent: false, reason: 'no_new_payments' });
+  }
+
+  // Total active members
+  const totRow = await env.DB.prepare(
+    `SELECT COUNT(*) as count FROM members WHERE is_active = 1`
+  ).first();
+  const totalActiveMembers = totRow?.count ?? 0;
+
+  const boardEmails = ['n4jhc@w4trc.org'];
+
+  const weekOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
+  await sendWeeklyRoundup(env, { boardEmails, newPayments, totalActiveMembers, weekOf });
+
+  return jsonResponse({ sent: true, recipients: boardEmails.length, new_payments: newPayments.length });
 }
 
 // POST /api/admin/sync-prospects
