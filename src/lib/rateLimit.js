@@ -11,9 +11,14 @@ const LIMITS = {
 export async function rateLimit(request, env, type = 'api') {
   if (!env.RATE_LIMIT_KV) return null; // Skip if KV not configured
 
-  const ip    = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const url   = new URL(request.url);
-  const key   = url.pathname.includes('/auth/login') ? 'login' : 'api';
+  const ip  = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const url = new URL(request.url);
+
+  // Routes that carry credentials or trigger outbound emails get the strict login bucket
+  const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/portal/request-token', '/portal/claim'];
+  const detectedKey = LOGIN_PATHS.some(p => url.pathname.includes(p)) ? 'login' : 'api';
+  // Caller can override with an explicit type; fall back to path detection
+  const key   = LIMITS[type] ? type : detectedKey;
   const limit = LIMITS[key];
   const kvKey = `rl:${key}:${ip}`;
 
