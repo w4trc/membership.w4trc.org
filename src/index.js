@@ -14,6 +14,7 @@ import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
 import { handlePrint }       from './routes/print.js';
+import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
@@ -40,9 +41,17 @@ export default Sentry.withSentry(
       });
     }
 
-    // ── Print directory ─────────────────────────────────────────────────
+    // ── Print directory (auth required) ────────────────────────────────
     if (path === '/print') {
       return handlePrint(request, env);
+    }
+
+    // ── Public portal pages ─────────────────────────────────────────────
+    if (path === '/register') {
+      return handleRegisterPage();
+    }
+    if (path === '/directory') {
+      return handleDirectoryPage(request, env);
     }
 
     // ── Static UI (everything non-API) ──────────────────────────────────
@@ -62,6 +71,13 @@ export default Sentry.withSentry(
         const rl = await rateLimit(request, env);
         if (rl) return rl;
         return handleAuth(request, env, path);
+      }
+
+      // Portal routes — mix of public and authenticated (portal.js handles internally)
+      if (path.startsWith('/api/portal/')) {
+        const rl = await rateLimit(request, env);
+        if (rl) return rl;
+        return handlePortal(request, env, path);
       }
 
       // All other API routes require authentication

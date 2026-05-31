@@ -348,6 +348,56 @@ textarea { resize: vertical; min-height: 80px; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .chart-wrap { position: relative; height: 240px; }
 @media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
+
+/* ── Member portal shell ─────────────────────────────────────────────── */
+#portal-shell { display: flex; flex: 1; }
+#portal-sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 0;
+}
+#portal-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#portal-topbar {
+  height: 52px; background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 24px; gap: 12px; flex-shrink: 0;
+}
+#portal-topbar h2 { font-size: 16px; font-weight: 600; }
+#portal-page { flex: 1; overflow-y: auto; padding: 24px; }
+#portal-backdrop { display: none; position: fixed; inset: 0; z-index: 199; background: rgba(0,0,0,.5); }
+#portal-backdrop.open { display: block; }
+
+/* Toggle switch */
+.toggle-wrap { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+.toggle-label { font-size: 13px; }
+.toggle { position: relative; width: 44px; height: 24px; display: inline-block; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 12px; cursor: pointer; transition: background .2s; }
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle-slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: transform .2s; }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* Dues status cards */
+.dues-card { border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.dues-card.paid   { background: rgba(46,204,113,.08); border: 1px solid rgba(46,204,113,.3); }
+.dues-card.unpaid { background: rgba(243,156,18,.08);  border: 1px solid rgba(243,156,18,.3); }
+.dues-card.unknown { background: var(--surface2); border: 1px solid var(--border); }
+.dues-status-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; margin-bottom: 6px; }
+.dues-card.paid   .dues-status-label { color: var(--success); }
+.dues-card.unpaid .dues-status-label { color: var(--warn); }
+.dues-card.unknown .dues-status-label { color: var(--text-muted); }
+.payment-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 13px; line-height: 1.7; }
+.payment-box h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 10px; }
+
+@media (max-width: 640px) {
+  #portal-sidebar {
+    position: fixed; left: -240px; top: 0; bottom: 0; z-index: 200;
+    transition: left .25s; width: 220px;
+  }
+  #portal-sidebar.open { left: 0; box-shadow: 4px 0 40px rgba(0,0,0,.7); }
+  #portal-menu-toggle { display: block !important; }
+  #portal-page { padding: 16px; }
+  #portal-topbar { padding: 0 12px; }
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
@@ -372,6 +422,9 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doLogin()">Sign In</button>
       <div id="login-err" class="hidden mt-8" style="color:var(--danger);font-size:13px;text-align:center"></div>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+        New member? <a href="/register" style="color:var(--accent)">Register or claim your account →</a>
+      </p>
     </div>
   </div>
 
@@ -431,6 +484,53 @@ textarea { resize: vertical; min-height: 80px; }
         <div id="topbar-actions"></div>
       </div>
       <div id="page">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member portal shell (shown for 'member' role) -->
+  <div id="portal-shell" class="hidden">
+    <div id="portal-backdrop" onclick="closePortalNav()"></div>
+    <aside id="portal-sidebar">
+      <div class="sidebar-header">
+        <div class="call">W4TRC</div>
+        <div class="club-name">Member Portal</div>
+      </div>
+      <nav>
+        <a class="nav-item active" onclick="pNav('portal-home');closePortalNav()" data-ppage="portal-home">
+          <span class="icon">🏠</span> My Dashboard
+        </a>
+        <a class="nav-item" onclick="pNav('portal-profile');closePortalNav()" data-ppage="portal-profile">
+          <span class="icon">👤</span> My Profile
+        </a>
+        <a class="nav-item" onclick="pNav('portal-history');closePortalNav()" data-ppage="portal-history">
+          <span class="icon">📋</span> Membership History
+        </a>
+        <a class="nav-item" href="/directory" target="_blank">
+          <span class="icon">📡</span> Public Directory ↗
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="avatar" id="portal-avatar">?</div>
+          <div>
+            <div id="portal-callsign" style="font-family:var(--mono);color:var(--accent);font-weight:bold;font-size:13px"></div>
+            <div id="portal-name" style="font-size:11px;color:var(--text-muted)"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" style="flex:1;justify-content:center">🔑 Password</button>
+          <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="flex:1;justify-content:center">⏏ Sign Out</button>
+        </div>
+      </div>
+    </aside>
+    <div id="portal-content">
+      <div id="portal-topbar">
+        <button id="portal-menu-toggle" onclick="togglePortalNav()" aria-label="Menu" style="display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;padding:4px 8px">&#9776;</button>
+        <h2 id="portal-page-title">My Dashboard</h2>
+      </div>
+      <div id="portal-page">
         <div class="spinner"></div>
       </div>
     </div>
@@ -513,6 +613,7 @@ async function doLogout() {
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
   document.getElementById('main-shell').classList.add('hidden');
+  document.getElementById('portal-shell').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
 }
 
@@ -527,10 +628,17 @@ async function checkSession() {
 }
 
 function showApp() {
+  const u = state.user;
+
+  // Member role gets the portal shell, not the admin shell
+  if (u.role === 'member') {
+    showPortal();
+    return;
+  }
+
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('main-shell').classList.remove('hidden');
   // Set user info in sidebar
-  const u = state.user;
   document.getElementById('user-email').textContent = u.email;
   document.getElementById('user-role').textContent  = u.role;
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
@@ -2168,6 +2276,243 @@ function fmtDate(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
   catch { return iso; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MEMBER PORTAL
+// ═══════════════════════════════════════════════════════════════
+
+// ── Portal shell navigation ───────────────────────────────────────────
+function togglePortalNav() {
+  const open = document.getElementById('portal-sidebar').classList.toggle('open');
+  document.getElementById('portal-backdrop').classList.toggle('open', open);
+}
+function closePortalNav() {
+  document.getElementById('portal-sidebar').classList.remove('open');
+  document.getElementById('portal-backdrop').classList.remove('open');
+}
+
+function showPortal() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('portal-shell').classList.remove('hidden');
+  document.getElementById('portal-avatar').textContent = state.user.email[0].toUpperCase();
+  pNav('portal-home');
+}
+
+function setPortalPage(html) { document.getElementById('portal-page').innerHTML = html; }
+
+function pNav(page) {
+  document.querySelectorAll('[data-ppage]').forEach(el => {
+    el.classList.toggle('active', el.dataset.ppage === page);
+  });
+  const titles = {
+    'portal-home':    'My Dashboard',
+    'portal-profile': 'My Profile',
+    'portal-history': 'Membership History',
+  };
+  document.getElementById('portal-page-title').textContent = titles[page] || page;
+  if (page === 'portal-home')    portalHome();
+  if (page === 'portal-profile') portalProfile();
+  if (page === 'portal-history') portalHistory();
+}
+
+// ── Portal: My Dashboard ──────────────────────────────────────────────
+async function portalHome() {
+  setPortalPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/portal/me');
+    const m = data.member;
+    const year = data.year;
+
+    document.getElementById('portal-callsign').textContent = m.callsign || '';
+    document.getElementById('portal-name').textContent     = \`\${m.first_name} \${m.last_name}\`;
+
+    const isPaid = ['active', 'honorary', 'waived'].includes(m.dues_status);
+    const duesClass = isPaid ? 'paid' : (m.dues_status ? 'unpaid' : 'unknown');
+    const duesHeading = isPaid
+      ? \`✓ Dues paid for \${year}\`
+      : (m.dues_status === 'expired' ? \`Dues expired — \${year}\` : \`Dues not yet paid for \${year}\`);
+    const dueSub = isPaid
+      ? (m.dues_paid_date ? \`Paid \${fmtDate(m.dues_paid_date)}\${m.dues_amount_paid != null ? \` — $\${Number(m.dues_amount_paid).toFixed(2)}\` : ''}\` : '')
+      : (m.dues_amount_due != null ? \`Amount due: $\${Number(m.dues_amount_due).toFixed(2)}\` : '');
+
+    const licenseExpiry = m.license_expiry
+      ? \`<div class="stat-card"><div class="stat-val" style="font-size:18px">\${escHtml(m.license_expiry)}</div><div class="stat-label">License Expiry</div></div>\`
+      : '';
+
+    setPortalPage(\`
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-val" style="font-family:var(--mono)">\${escHtml(m.callsign || '—')}</div>
+          <div class="stat-label">Callsign</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" style="font-size:18px">\${escHtml(m.license_class || '—')}</div>
+          <div class="stat-label">License Class</div>
+        </div>
+        \${licenseExpiry}
+      </div>
+
+      <div class="dues-card \${duesClass}">
+        <div class="dues-status-label">\${year} Dues</div>
+        <div style="font-size:15px;font-weight:600">\${escHtml(duesHeading)}</div>
+        \${dueSub ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(dueSub)}</div>\` : ''}
+      </div>
+
+      \${!isPaid ? \`
+      <div class="payment-box">
+        <h4>How to Pay Dues</h4>
+        <p>Annual dues are <strong>$20</strong> (individual) or <strong>$30</strong> (family).</p>
+        <ul style="margin:10px 0 0 18px;line-height:2">
+          <li><strong>At a meeting:</strong> Cash or check made out to <em>W4TRC</em></li>
+          <li><strong>By mail:</strong> Send a check to the club treasurer</li>
+          <li><strong>PayPal:</strong> Contact the treasurer for details</li>
+        </ul>
+        <p style="margin-top:10px;color:var(--text-muted);font-size:12px">Payment is recorded by a club officer. Contact your treasurer with any questions.</p>
+      </div>
+      \` : ''}
+    \`);
+  } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+// ── Portal: My Profile ────────────────────────────────────────────────
+async function portalProfile() {
+  setPortalPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/portal/me');
+    const m = data.member;
+
+    setPortalPage(\`
+      <div class="card">
+        <div class="card-title">Personal Information</div>
+        <div class="form-grid">
+          \${fi('First Name','pf-first', m.first_name||'','text','',true)}
+          \${fi('Last Name', 'pf-last',  m.last_name ||'','text','',true)}
+          \${fi('Email Address','pf-email', m.email||'','email')}
+          \${fi('Phone','pf-phone', m.phone||'','tel')}
+          \${fi('Street Address','pf-address', m.address||'')}
+          \${fi('City','pf-city', m.city||'')}
+          \${fi('State','pf-state', m.state||'')}
+          \${fi('ZIP Code','pf-zip', m.zip||'')}
+        </div>
+        <div class="form-grid" style="margin-top:0">
+          \${fi('Callsign','pf-callsign', m.callsign||'—')}
+          \${fi('License Class','pf-license', m.license_class||'—')}
+        </div>
+        <p class="form-hint" style="margin-top:4px">Callsign and license data are managed by the club and updated from FCC records automatically.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">About Me</div>
+        <div class="form-grid">
+          \${fi('Bio','pf-bio', m.bio||'','textarea')}
+          \${fi('Interests / Modes','pf-interests', m.interests||'','text','e.g. HF, CW, SOTA, DMR')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Emergency Contact</div>
+        <div class="form-grid">
+          \${fi('Name','pf-emerg-name', m.emergency_name||'')}
+          \${fi('Phone','pf-emerg-phone', m.emergency_phone||'','tel')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Public Directory</div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">
+          Opt in to appear on the <a href="/directory" target="_blank" style="color:var(--accent)">public member directory</a>.
+          Only your callsign, name, license class, city/state, and interests will be shown.
+        </p>
+        <div class="toggle-wrap">
+          <label class="toggle">
+            <input type="checkbox" id="pf-directory" \${m.show_in_directory ? 'checked' : ''} onchange="saveDirectoryOptIn()">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label" id="directory-label">\${m.show_in_directory ? 'Listed in public directory' : 'Not listed in public directory'}</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveProfile()" style="margin-top:8px">Save Changes</button>
+    \`);
+
+    // Make FCC-managed fields read-only
+    ['pf-callsign','pf-license'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.readOnly = true; el.style.opacity = '.5'; }
+    });
+  } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+async function saveProfile() {
+  try {
+    await api('PUT', '/portal/me', {
+      first_name:      gv('pf-first'),
+      last_name:       gv('pf-last'),
+      email:           gv('pf-email'),
+      phone:           gv('pf-phone'),
+      address:         gv('pf-address'),
+      city:            gv('pf-city'),
+      state:           gv('pf-state'),
+      zip:             gv('pf-zip'),
+      bio:             gv('pf-bio'),
+      interests:       gv('pf-interests'),
+      emergency_name:  gv('pf-emerg-name'),
+      emergency_phone: gv('pf-emerg-phone'),
+    });
+    toast('Profile saved ✓');
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+async function saveDirectoryOptIn() {
+  const checkbox = document.getElementById('pf-directory');
+  const show = checkbox.checked;
+  try {
+    await api('PUT', '/portal/directory-opt-in', { show });
+    document.getElementById('directory-label').textContent = show
+      ? 'Listed in public directory'
+      : 'Not listed in public directory';
+    toast(show ? 'Added to public directory ✓' : 'Removed from public directory ✓');
+  } catch(e) {
+    checkbox.checked = !show; // revert
+    toast(e.data?.error || e.message, 'error');
+  }
+}
+
+// ── Portal: Membership History ────────────────────────────────────────
+async function portalHistory() {
+  setPortalPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/portal/history');
+    if (!data.history.length) {
+      setPortalPage(\`
+        <div class="card">
+          <p class="text-muted">No membership records found yet. Records are added by club officers when dues are paid.</p>
+        </div>
+      \`);
+      return;
+    }
+    const rows = data.history.map(h => \`
+      <tr>
+        <td><strong>\${escHtml(String(h.year))}</strong></td>
+        <td>\${duesBadge(h.status, h.amount_paid, null)}</td>
+        <td style="text-transform:capitalize">\${escHtml(h.membership_type||'individual')}</td>
+        <td>\${h.amount_paid != null ? '$' + Number(h.amount_paid).toFixed(2) : '—'}</td>
+        <td>\${h.paid_date ? fmtDate(h.paid_date) : '—'}</td>
+        <td style="text-transform:capitalize">\${escHtml(h.payment_method||'—')}</td>
+      </tr>
+    \`).join('');
+    setPortalPage(\`
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr>
+            <th>Year</th><th>Status</th><th>Type</th><th>Paid</th><th>Date</th><th>Method</th>
+          </tr></thead>
+          <tbody>\${rows}</tbody>
+        </table>
+      </div>
+    \`);
+  } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────
