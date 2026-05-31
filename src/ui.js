@@ -580,6 +580,8 @@ async function dashboard() {
       api('GET', '/memberships/stats?year=' + new Date().getFullYear()),
       api('GET', '/admin/charts'),
     ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const expiring = stats.expiring_licenses || [];
 
     const yr = new Date().getFullYear();
     const notRenewed = stats.not_renewed || [];
@@ -648,6 +650,34 @@ async function dashboard() {
                 <td><button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button></td>
               </tr>
             \`).join('')}
+          </tbody>
+        </table>
+      </div>
+      \` : ''}
+      \${expiring.length > 0 ? \`
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center;gap:10px">
+          Expiring FCC Licenses
+          <span style="background:var(--danger);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">\${expiring.length}</span>
+        </div>
+        <p style="color:var(--text-muted);margin:0 0 12px">Active members whose license expired in the last 90 days or expires within the next year. FCC licenses renew online at wireless.fcc.gov.</p>
+        <table>
+          <thead><tr><th>Callsign</th><th>Name</th><th>Class</th><th>Expires</th><th></th></tr></thead>
+          <tbody>
+            \${expiring.map(m => {
+              const expired = m.license_expiry < today;
+              const daysLeft = Math.ceil((new Date(m.license_expiry) - new Date(today)) / 86400000);
+              const color = expired ? 'var(--danger)' : daysLeft <= 30 ? 'var(--warn)' : 'var(--text-muted)';
+              const label = expired ? 'Expired' : \`\${daysLeft}d\`;
+              return \`
+              <tr>
+                <td><strong>\${escHtml(m.callsign || '—')}</strong></td>
+                <td>\${escHtml(m.first_name + ' ' + m.last_name)}</td>
+                <td>\${licenseBadge(m.license_class)}</td>
+                <td><span style="color:\${color};font-weight:600">\${escHtml(m.license_expiry)} (\${label})</span></td>
+                <td><button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button></td>
+              </tr>\`;
+            }).join('')}
           </tbody>
         </table>
       </div>

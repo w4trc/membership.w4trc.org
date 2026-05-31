@@ -243,7 +243,7 @@ async function changePassword(request, env, user) {
 async function getDashboardStats(env) {
   const year = new Date().getFullYear();
 
-  const [members, memberships, recentActivity, notRenewed] = await Promise.all([
+  const [members, memberships, recentActivity, notRenewed, expiringLicenses] = await Promise.all([
     env.DB.prepare(`
       SELECT COUNT(*) as total,
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
@@ -277,6 +277,17 @@ async function getDashboardStats(env) {
         AND m.id NOT IN (SELECT member_id FROM memberships WHERE year = ?)
       ORDER BY m.last_name, m.first_name
     `).bind(year - 1, year).all(),
+
+    env.DB.prepare(`
+      SELECT m.id, m.callsign, m.first_name, m.last_name, m.license_class, m.license_expiry
+      FROM members m
+      WHERE m.is_active = 1
+        AND m.is_silent_key = 0
+        AND m.license_expiry IS NOT NULL
+        AND m.license_expiry >= date('now', '-90 days')
+        AND m.license_expiry <= date('now', '+365 days')
+      ORDER BY m.license_expiry ASC
+    `).all(),
   ]);
 
   return jsonResponse({
@@ -285,6 +296,7 @@ async function getDashboardStats(env) {
     memberships,
     recent_activity: recentActivity.results,
     not_renewed: notRenewed.results,
+    expiring_licenses: expiringLicenses.results,
   });
 }
 
