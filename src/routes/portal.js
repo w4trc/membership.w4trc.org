@@ -2,11 +2,12 @@
  * Member portal
  *
  * Public API (no auth):
- *   POST /api/portal/lookup          — find member by callsign or email
- *   POST /api/portal/request-token   — send 6-digit code to email on file
- *   POST /api/portal/claim           — verify code + create account (existing member)
- *   POST /api/portal/register        — new member self-registration
- *   GET  /api/portal/directory       — opt-in member list
+ *   POST /api/portal/lookup               — find member by callsign or email
+ *   POST /api/portal/request-token        — send 6-digit code to email on file
+ *   POST /api/portal/claim                — verify code + create account (existing member)
+ *   POST /api/portal/register             — new member self-registration
+ *   GET  /api/portal/directory            — opt-in member list
+ *   GET  /api/portal/callsign-lookup/:cs  — HamDB lookup (used by registration page)
  *
  * Authenticated (member role, own data only):
  *   GET  /api/portal/me              — own profile + current dues status
@@ -64,11 +65,12 @@ export async function handlePortal(request, env, path) {
   const sub = path.replace('/api/portal', '').replace(/^\//, '');
 
   // Public routes (no auth required)
-  if (method === 'POST' && sub === 'lookup')         return portalLookup(request, env);
-  if (method === 'POST' && sub === 'request-token')  return portalRequestToken(request, env);
-  if (method === 'POST' && sub === 'claim')          return portalClaim(request, env);
-  if (method === 'POST' && sub === 'register')       return portalRegister(request, env);
-  if (method === 'GET'  && sub === 'directory')      return portalDirectory(env);
+  if (method === 'POST' && sub === 'lookup')                return portalLookup(request, env);
+  if (method === 'POST' && sub === 'request-token')         return portalRequestToken(request, env);
+  if (method === 'POST' && sub === 'claim')                 return portalClaim(request, env);
+  if (method === 'POST' && sub === 'register')              return portalRegister(request, env);
+  if (method === 'GET'  && sub === 'directory')             return portalDirectory(env);
+  if (method === 'GET'  && sub.startsWith('callsign-lookup/')) return portalCallsignLookup(sub, env);
 
   // Authenticated routes
   const authResult = await requireAuth(request, env);
@@ -426,6 +428,19 @@ async function portalDirectoryOptIn(request, env, user) {
   await audit(env, { userId: user.id, action: 'portal.directory_opt_in', targetType: 'member', targetId: user.memberId, detail: { show: !!show }, request });
 
   return jsonResponse({ ok: true, show: !!show });
+}
+
+// ── GET /api/portal/callsign-lookup/:cs ──────────────────────────────────────
+
+async function portalCallsignLookup(sub, env) {
+  const cs = sub.replace('callsign-lookup/', '').toUpperCase().replace(/[^A-Z0-9/]/g, '');
+  if (!cs) return jsonError('Callsign required', 400);
+  try {
+    const data = await fetchHamDB(cs);
+    return jsonResponse(data ?? { found: false });
+  } catch {
+    return jsonResponse({ found: false });
+  }
 }
 
 // ── GET /api/portal/directory ─────────────────────────────────────────────────
@@ -823,7 +838,7 @@ async function lookupCallsign(cs) {
     }
 
     // Try HamDB to auto-fill
-    const hamResp = await fetch('/api/lookup/' + cs, { credentials: 'include' }).catch(() => null);
+    const hamResp = await fetch('/api/portal/callsign-lookup/' + cs).catch(() => null);
     if (hamResp?.ok) {
       const ham = await hamResp.json();
       if (ham.found) {
