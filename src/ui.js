@@ -1841,6 +1841,21 @@ function showModal(bodyHtml, title, buttons) {
 
 function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
+// ── Keyboard shortcuts ────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  const modalOpen = !!document.querySelector('.modal-backdrop');
+
+  if (e.key === 'Escape' && modalOpen) { closeModal(); return; }
+
+  if (!modalOpen && state.currentPage === 'members') {
+    if (e.key === '/') { e.preventDefault(); document.getElementById('member-search')?.focus(); return; }
+    if (e.key === 'n' || e.key === 'N') { openAddMember(); return; }
+  }
+});
+
 // ── Form helpers ──────────────────────────────────────────────────────
 function fi(label, id, val='', type='text', placeholder='', required=false) {
   if (type === 'textarea') {

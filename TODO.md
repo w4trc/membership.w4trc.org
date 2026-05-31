@@ -27,7 +27,7 @@ Things I'd suggest based on how the system is built and what a club like this ty
 - [x] **CSV/roster export** — a "Download CSV" button on the Members page. Useful for the club secretary, ARRL reporting, or emergency contact lists. Could filter by year, status, or membership type.
 - [x] **License expiry warnings** — members whose FCC license expired in the last 90 days or expires within the next year get a dashboard widget. Color-coded by urgency.
 - [ ] **Upcoming renewals widget on Dashboard** — list of members who were active last year but haven't renewed yet this year. The data is already there (membership history + current year status).
-- [ ] **Keyboard shortcut to add member** — a `/` focus-search or `N` to open the new member form. Small quality-of-life for whoever enters renewals each year.
+- [x] **Keyboard shortcut to add member** — `/` focuses search, `N` opens the Add Member form (both members page only, no modal open). `Escape` closes any modal.
 
 ### Medium-Term
 - [ ] **Batch mark-as-paid** — checkbox selection on the Dues page to mark multiple members paid at once (same method/date). Useful at a club meeting when 10 people pay cash in one sitting.
