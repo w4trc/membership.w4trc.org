@@ -52,7 +52,7 @@ export async function handlePrint(request, env) {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>W4TRC Member Directory — ${year}</title>
+<title>KARC Member Directory — ${year}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Georgia', serif; font-size: 11pt; color: #111; background: #fff; padding: 0.5in; }
@@ -78,7 +78,7 @@ tbody tr:last-child td { border-bottom: none; }
 </head>
 <body>
 <header>
-  <h1>W4TRC — Kingsport Amateur Radio Club</h1>
+  <h1>Kingsport Amateur Radio Club (KARC)</h1>
   <div class="subtitle">Active Member Directory &nbsp;·&nbsp; ${esc(date)} &nbsp;·&nbsp; ${members.length} members &nbsp;·&nbsp; ${paid} paid ${year}</div>
 </header>
 <table>

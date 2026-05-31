@@ -2307,7 +2307,7 @@ function openProspectModal(p) {
 
           \${p.member_id ? \`
             <div class="card" style="background:rgba(46,204,113,.08);border-color:rgba(46,204,113,.3);margin-bottom:16px">
-              <p style="color:var(--success);margin:0">✓ Already a W4TRC member\${p.member_active ? '' : ' (inactive)'}.</p>
+              <p style="color:var(--success);margin:0">✓ Already a KARC member\${p.member_active ? '' : ' (inactive)'}.</p>
             </div>
           \` : \`
             <div class="form-group" style="margin-bottom:16px">
@@ -2466,7 +2466,7 @@ async function portalHome() {
         <h4>How to Pay Dues</h4>
         <p>Annual dues are <strong>$20</strong> (individual) or <strong>$30</strong> (family).</p>
         <ul style="margin:10px 0 0 18px;line-height:2">
-          <li><strong>At a meeting:</strong> Cash or check made out to <em>W4TRC</em></li>
+          <li><strong>At a meeting:</strong> Cash or check made out to <em>Kingsport Amateur Radio Club</em></li>
           <li><strong>By mail:</strong> Send a check to the club treasurer</li>
           <li><strong>PayPal:</strong> Contact the treasurer for details</li>
         </ul>

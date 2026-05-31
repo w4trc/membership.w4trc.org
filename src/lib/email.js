@@ -7,7 +7,8 @@ export async function sendEmail(env, { to, subject, html }) {
   if (!env.RESEND_API_KEY) {
     throw new Error('Email not configured: run `wrangler secret put RESEND_API_KEY`');
   }
-  const from = env.FROM_EMAIL || `membership@${env.CLUB_DOMAIN || 'w4trc.org'}`;
+  const fromAddr = env.FROM_EMAIL || `membership@${env.CLUB_DOMAIN || 'w4trc.org'}`;
+  const from = `KARC Membership <${fromAddr}>`;
   const resp = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -23,7 +24,7 @@ export async function sendEmail(env, { to, subject, html }) {
 }
 
 export async function sendVerificationCode(env, { to, code, name }) {
-  const club = env.CLUB_NAME || 'W4TRC';
+  const club = env.CLUB_NAME || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   await sendEmail(env, {
     to,
@@ -32,7 +33,7 @@ export async function sendVerificationCode(env, { to, code, name }) {
 <!DOCTYPE html>
 <html>
 <body style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a2e">
-  <h2 style="color:#3b7dd8;margin-bottom:8px">W4TRC Member Portal</h2>
+  <h2 style="color:#3b7dd8;margin-bottom:8px">KARC Member Portal</h2>
   <p style="color:#555">Hi ${escHtml(name)},</p>
   <p>Your verification code to claim your member account:</p>
   <div style="background:#f0f4ff;border:2px solid #3b7dd8;border-radius:8px;padding:20px;text-align:center;margin:20px 0">
@@ -47,7 +48,7 @@ export async function sendVerificationCode(env, { to, code, name }) {
 }
 
 export async function sendPasswordResetEmail(env, { to, resetUrl }) {
-  const club = env.CLUB_NAME || 'W4TRC';
+  const club = env.CLUB_NAME || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   await sendEmail(env, {
     to,
@@ -56,7 +57,7 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
 <!DOCTYPE html>
 <html>
 <body style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a2e">
-  <h2 style="color:#3b7dd8;margin-bottom:8px">W4TRC Member System</h2>
+  <h2 style="color:#3b7dd8;margin-bottom:8px">KARC Member System</h2>
   <p>A password reset was requested for your account.</p>
   <p>Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
   <div style="text-align:center;margin:28px 0">

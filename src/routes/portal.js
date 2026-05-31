@@ -872,7 +872,7 @@ async function doRegister() {
     const data = await resp.json();
     if (!resp.ok) { err.textContent = data.error || 'Registration failed.'; return; }
 
-    document.getElementById('success-msg').textContent = 'Welcome to the W4TRC member portal! Redirecting…';
+    document.getElementById('success-msg').textContent = 'Welcome to the KARC member portal! Redirecting…';
     showStep('step-success');
     setTimeout(() => { window.location.href = '/'; }, 1500);
   } catch (e) {
@@ -934,7 +934,7 @@ function directoryPageHtml(members) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>W4TRC Member Directory ${year}</title>
+<title>KARC Member Directory ${year}</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e8eaf0; min-height: 100vh; padding: 32px 24px; font-size: 14px; }
