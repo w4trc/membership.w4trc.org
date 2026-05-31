@@ -1857,7 +1857,7 @@ async function users() {
     const data = await api('GET', '/admin/users');
     setPage(\`
       <div class="card" style="padding:0">
-        <table>
+        <div class="tbl-wrap"><table>
           <thead><tr><th>Email</th><th>Callsign</th><th>Name</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
           <tbody>
             \${data.users.map(u => \`<tr>
@@ -1872,7 +1872,7 @@ async function users() {
               </td>
             </tr>\`).join('')}
           </tbody>
-        </table>
+        </table></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="card-title">Change My Password</div>
@@ -1998,7 +1998,7 @@ async function audit() {
     const data = await api('GET', '/admin/audit');
     setPage(\`
       <div class="card" style="padding:0">
-        <table>
+        <div class="tbl-wrap"><table>
           <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
           <tbody>
             \${data.log.map(r => {
@@ -2012,7 +2012,7 @@ async function audit() {
             </tr>\`;
             }).join('')}
           </tbody>
-        </table>
+        </table></div>
       </div>
     \`);
   } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
