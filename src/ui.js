@@ -2418,7 +2418,14 @@ function escHtml(s) {
 
 function fmtDate(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  try {
+    // SQLite datetime('now') returns UTC without a 'Z' suffix; append it so
+    // the browser interprets the value as UTC and converts to local time.
+    const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(iso) && !iso.endsWith('Z') && !iso.includes('+')
+      ? iso.replace(' ', 'T') + 'Z'
+      : iso;
+    return new Date(normalized).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
   catch { return iso; }
 }
 
