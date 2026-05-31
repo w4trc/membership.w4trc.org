@@ -13,6 +13,7 @@ import { handleAdmin }       from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
+import { handlePrint }       from './routes/print.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
@@ -37,6 +38,11 @@ export default Sentry.withSentry(
         status: 204,
         headers: corsHeaders(request, env),
       });
+    }
+
+    // ── Print directory ─────────────────────────────────────────────────
+    if (path === '/print') {
+      return handlePrint(request, env);
     }
 
     // ── Static UI (everything non-API) ──────────────────────────────────

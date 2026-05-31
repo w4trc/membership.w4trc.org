@@ -752,6 +752,7 @@ function renderDashboardCharts(data) {
 async function members() {
   document.getElementById('topbar-actions').innerHTML =
     '<button class="btn btn-secondary btn-sm" onclick="exportMembersCSV()" style="margin-right:8px">⬇ Export CSV</button>' +
+    '<a href="/print" target="_blank" class="btn btn-secondary btn-sm" style="margin-right:8px">⎙ Print Directory</a>' +
     '<button class="btn btn-primary" onclick="openAddMember()">+ Add Member</button>';
 
   setPage(\`
