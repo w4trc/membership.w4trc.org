@@ -16,6 +16,7 @@ import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
 import { handlePrint }       from './routes/print.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
+import { handleStripe }      from './routes/stripe.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
@@ -89,6 +90,11 @@ export default Sentry.withSentry(
         const rl = await rateLimit(request, env);
         if (rl) return rl;
         return handlePortal(request, env, path);
+      }
+
+      // Stripe — webhook is public (signature-verified), checkout requires session auth (stripe.js handles internally)
+      if (path.startsWith('/api/stripe/')) {
+        return handleStripe(request, env, path);
       }
 
       // All other API routes require authentication

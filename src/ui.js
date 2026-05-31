@@ -1289,6 +1289,7 @@ function openAddMember() {
               <option value="cash">Cash</option>
               <option value="check">Check</option>
               <option value="paypal">PayPal</option>
+              <option value="stripe">Stripe (Online)</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -1618,6 +1619,7 @@ async function openAddDues(memberId, memberName, memberType) {
           <option value="cash">Cash</option>
           <option value="check">Check</option>
           <option value="paypal">PayPal</option>
+          <option value="stripe">Stripe (Online)</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -1707,7 +1709,7 @@ async function openEditDues(id, memberId) {
         <label>Payment Method</label>
         <select id="ed-payment_method">
           <option value="">— Select —</option>
-          \${['cash','check','paypal','other'].map(m => \`<option value="\${m}" \${ms.payment_method===m?'selected':''}>\${m.charAt(0).toUpperCase()+m.slice(1)}</option>\`).join('')}
+          \${['cash','check','paypal','stripe','other'].map(m => \`<option value="\${m}" \${ms.payment_method===m?'selected':''}>\${m === 'stripe' ? 'Stripe (Online)' : m.charAt(0).toUpperCase()+m.slice(1)}</option>\`).join('')}
         </select>
       </div>
       \${fi('Check Number','ed-check_number',ms.check_number||'')}
@@ -2447,6 +2449,12 @@ function showPortal() {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('portal-shell').classList.remove('hidden');
   document.getElementById('portal-avatar').textContent = state.user.email[0].toUpperCase();
+
+  const payStatus = new URL(window.location.href).searchParams.get('payment');
+  if (payStatus) history.replaceState({}, '', '/');
+  if (payStatus === 'success') toast('Payment received! Your dues record has been updated.', 'success');
+  else if (payStatus === 'cancelled') toast('Payment cancelled — you can pay any time.', 'warn');
+
   pNav('portal-home');
 }
 
@@ -2512,18 +2520,32 @@ async function portalHome() {
 
       \${!isPaid ? \`
       <div class="payment-box">
-        <h4>How to Pay Dues</h4>
-        <p>Annual dues are <strong>$20</strong> (individual) or <strong>$30</strong> (family).</p>
-        <ul style="margin:10px 0 0 18px;line-height:2">
-          <li><strong>At a meeting:</strong> Cash or check made out to <em>Kingsport Amateur Radio Club</em></li>
+        <h4>Pay Dues Online</h4>
+        <button id="pay-online-btn" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="payOnline()">
+          Pay Online — \${m.membership_type === 'family' ? '$31' : '$21'}
+        </button>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Includes a $1 online processing fee. Or pay in person ($\${m.membership_type === 'family' ? '30' : '20'}):</p>
+        <ul style="margin:0 0 0 18px;line-height:2;font-size:13px">
+          <li><strong>At a meeting:</strong> Cash or check payable to <em>Kingsport Amateur Radio Club</em></li>
           <li><strong>By mail:</strong> Send a check to the club treasurer</li>
-          <li><strong>PayPal:</strong> Contact the treasurer for details</li>
         </ul>
-        <p style="margin-top:10px;color:var(--text-muted);font-size:12px">Payment is recorded by a club officer. Contact your treasurer with any questions.</p>
+        <p style="margin-top:10px;color:var(--text-muted);font-size:12px">In-person payments are recorded by a club officer.</p>
       </div>
       \` : ''}
     \`);
   } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+async function payOnline() {
+  const btn = document.getElementById('pay-online-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+  try {
+    const data = await api('POST', '/stripe/create-checkout', {});
+    window.location.href = data.url;
+  } catch(e) {
+    toast(e.data?.error || 'Failed to start checkout. Please try again.', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Pay Online'; }
+  }
 }
 
 // ── Portal: My Profile ────────────────────────────────────────────────

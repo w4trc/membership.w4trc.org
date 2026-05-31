@@ -29,8 +29,10 @@ CLUB_DOMAIN = "members.w4trc.org"
 FROM_EMAIL = "membership@w4trc.org"
 
 # Secrets (set via: wrangler secret put SECRET_NAME)
-# JWT_SECRET        - random 64-char string for signing sessions
-# ADMIN_SETUP_KEY   - one-time key for /api/setup endpoint
+# JWT_SECRET              - random 64-char string for signing sessions
+# ADMIN_SETUP_KEY         - one-time key for /api/setup endpoint
+# STRIPE_SECRET_KEY       - Stripe secret key (sk_live_... or sk_test_...)
+# STRIPE_WEBHOOK_SECRET   - Stripe webhook signing secret (whsec_...)
 
 # Bundle binary assets (logo, etc.) as Data modules
 [[rules]]
