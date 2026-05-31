@@ -92,8 +92,8 @@ export default Sentry.withSentry(
         return handlePortal(request, env, path);
       }
 
-      // Stripe — webhook is public (signature-verified), checkout requires session auth (stripe.js handles internally)
-      if (path.startsWith('/api/stripe/')) {
+      // Stripe webhook — public (signature-verified inside stripe.js)
+      if (path === '/api/stripe/webhook' && method === 'POST') {
         return handleStripe(request, env, path);
       }
 
@@ -108,6 +108,11 @@ export default Sentry.withSentry(
         return jsonError(authResult.error, 401);
       }
       const user = authResult.user;
+
+      // Stripe authenticated routes (e.g. create-checkout)
+      if (path.startsWith('/api/stripe/')) {
+        return handleStripe(request, env, path, user);
+      }
 
       // Callsign lookup proxy
       if (path.startsWith('/api/lookup/')) {

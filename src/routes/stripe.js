@@ -9,16 +9,19 @@ import { requireAuth } from '../lib/auth.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 
-export async function handleStripe(request, env, path) {
+export async function handleStripe(request, env, path, user = null) {
   const sub = path.replace('/api/stripe', '').replace(/^\//, '');
 
   if (request.method === 'POST' && sub === 'webhook') {
     return stripeWebhook(request, env);
   }
 
-  const authResult = await requireAuth(request, env);
-  if (!authResult.ok) return jsonError(authResult.error, 401);
-  const user = authResult.user;
+  // user is passed in from the global auth gate in index.js for non-webhook routes
+  if (!user) {
+    const authResult = await requireAuth(request, env);
+    if (!authResult.ok) return jsonError(authResult.error, 401);
+    user = authResult.user;
+  }
 
   if (request.method === 'POST' && sub === 'create-checkout') {
     return createCheckout(request, env, user);
