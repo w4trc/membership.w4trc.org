@@ -1164,6 +1164,7 @@ async function viewMember(id) {
           </div>
         </div>
         \${m.emergency_name ? \`<div class="detail-section"><h4>Emergency Contact</h4><div class="detail-grid">\${dfield('Name', m.emergency_name)}\${dfield('Phone', m.emergency_phone)}</div></div>\` : ''}
+        \${m.interests ? \`<div class="detail-section"><h4>Interests / Modes</h4><p style="font-size:13px">\${escHtml(m.interests)}</p></div>\` : ''}
         \${m.bio ? \`<div class="detail-section"><h4>Bio</h4><p style="font-size:13px">\${escHtml(m.bio)}</p></div>\` : ''}
       </div>
 
