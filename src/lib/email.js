@@ -46,6 +46,30 @@ export async function sendVerificationCode(env, { to, code, name }) {
   });
 }
 
+export async function sendPasswordResetEmail(env, { to, resetUrl }) {
+  const club = env.CLUB_NAME || 'W4TRC';
+  const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
+  await sendEmail(env, {
+    to,
+    subject: `${club} password reset`,
+    html: `
+<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a2e">
+  <h2 style="color:#3b7dd8;margin-bottom:8px">W4TRC Member System</h2>
+  <p>A password reset was requested for your account.</p>
+  <p>Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="${escHtml(resetUrl)}" style="background:#3b7dd8;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;display:inline-block">Reset Password</a>
+  </div>
+  <p style="color:#777;font-size:13px">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+  <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+  <p style="color:#aaa;font-size:12px">Kingsport Amateur Radio Club &mdash; <a href="https://${domain}" style="color:#3b7dd8">${domain}</a></p>
+</body>
+</html>`,
+  });
+}
+
 function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

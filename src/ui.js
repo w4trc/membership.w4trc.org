@@ -423,8 +423,52 @@ textarea { resize: vertical; min-height: 80px; }
       <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doLogin()">Sign In</button>
       <div id="login-err" class="hidden mt-8" style="color:var(--danger);font-size:13px;text-align:center"></div>
       <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+        <a href="#" onclick="showForgot();return false;" style="color:var(--text-muted)">Forgot password?</a>
+      </p>
+      <p style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-muted)">
         New member? <a href="/register" style="color:var(--accent)">Register or claim your account →</a>
       </p>
+    </div>
+  </div>
+
+  <!-- Forgot password screen -->
+  <div id="forgot-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
+    <div class="login-card">
+      <div class="logo">
+        <div class="call">W4TRC</div>
+        <h1>Reset Password</h1>
+        <p>Enter your email address to receive a reset link</p>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doForgotPassword()">Send Reset Link</button>
+      <div id="forgot-msg" class="hidden mt-8" style="font-size:13px;text-align:center"></div>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+        <a href="#" onclick="showLogin();return false;" style="color:var(--text-muted)">← Back to sign in</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Reset password screen -->
+  <div id="reset-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
+    <div class="login-card">
+      <div class="logo">
+        <div class="call">W4TRC</div>
+        <h1>Set New Password</h1>
+        <p>Choose a new password for your account</p>
+      </div>
+      <div class="form-group">
+        <label>New Password (10+ characters)</label>
+        <input type="password" id="reset-pass" placeholder="••••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group mt-8">
+        <label>Confirm New Password</label>
+        <input type="password" id="reset-confirm" placeholder="••••••••••" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doResetPassword()">Set Password</button>
+      <div id="reset-msg" class="hidden mt-8" style="font-size:13px;text-align:center"></div>
     </div>
   </div>
 
@@ -617,7 +661,65 @@ async function doLogout() {
   document.getElementById('login-screen').classList.remove('hidden');
 }
 
+function showLogin() {
+  document.getElementById('forgot-screen').classList.add('hidden');
+  document.getElementById('reset-screen').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+function showForgot() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('reset-screen').classList.add('hidden');
+  document.getElementById('forgot-screen').classList.remove('hidden');
+  document.getElementById('forgot-email').focus();
+}
+
+async function doForgotPassword() {
+  const email = document.getElementById('forgot-email').value.trim();
+  const msg = document.getElementById('forgot-msg');
+  msg.classList.add('hidden');
+  if (!email) { msg.textContent = 'Email required'; msg.style.color = 'var(--danger)'; msg.classList.remove('hidden'); return; }
+  try {
+    await api('POST', '/auth/forgot-password', { email });
+    msg.textContent = 'If that email is on file, a reset link has been sent. Check your inbox.';
+    msg.style.color = 'var(--success)';
+    msg.classList.remove('hidden');
+    document.getElementById('forgot-email').value = '';
+  } catch (e) {
+    msg.textContent = e.data?.error || 'Something went wrong';
+    msg.style.color = 'var(--danger)';
+    msg.classList.remove('hidden');
+  }
+}
+
+async function doResetPassword() {
+  const pass = document.getElementById('reset-pass').value;
+  const confirm = document.getElementById('reset-confirm').value;
+  const msg = document.getElementById('reset-msg');
+  msg.classList.add('hidden');
+  if (pass.length < 10) { msg.textContent = 'Password must be at least 10 characters'; msg.style.color = 'var(--danger)'; msg.classList.remove('hidden'); return; }
+  if (pass !== confirm) { msg.textContent = 'Passwords do not match'; msg.style.color = 'var(--danger)'; msg.classList.remove('hidden'); return; }
+  const token = new URLSearchParams(location.search).get('token');
+  try {
+    await api('POST', '/auth/reset-password', { token, password: pass });
+    msg.textContent = 'Password updated! Redirecting to sign in…';
+    msg.style.color = 'var(--success)';
+    msg.classList.remove('hidden');
+    setTimeout(() => { history.replaceState(null, '', '/'); showLogin(); }, 1800);
+  } catch (e) {
+    msg.textContent = e.data?.error || 'Something went wrong';
+    msg.style.color = 'var(--danger)';
+    msg.classList.remove('hidden');
+  }
+}
+
 async function checkSession() {
+  // Show reset screen if URL has a reset token
+  if (new URLSearchParams(location.search).has('token') && location.pathname === '/reset-password') {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('reset-screen').classList.remove('hidden');
+    return;
+  }
   try {
     const data = await api('GET', '/auth/me');
     state.user = data.user;
