@@ -65,6 +65,7 @@ async function createCheckout(request, env, user) {
     'metadata[member_id]': String(member.id),
     'metadata[year]': String(year),
     'metadata[callsign]': member.callsign || '',
+    'metadata[membership_type]': member.membership_type || 'individual',
     success_url: `https://${domain}/?payment=success`,
     cancel_url:  `https://${domain}/?payment=cancelled`,
   });
@@ -127,6 +128,13 @@ async function handleCheckoutCompleted(session, env) {
   ).bind(sessionId).first();
   if (bySession) return;
 
+  // Use membership_type from Stripe metadata (stored at checkout time), with DB as fallback
+  const metaType = session.metadata?.membership_type;
+  const membershipType = (metaType === 'family' || metaType === 'individual')
+    ? metaType
+    : ((await env.DB.prepare(`SELECT membership_type FROM members WHERE id = ?`).bind(memberId).first())?.membership_type || 'individual');
+  const amountDue = membershipType === 'family' ? 30.00 : 20.00;
+
   const existing = await env.DB.prepare(
     `SELECT id, status FROM memberships WHERE member_id = ? AND year = ? LIMIT 1`
   ).bind(memberId, year).first();
@@ -153,8 +161,8 @@ async function handleCheckoutCompleted(session, env) {
     await env.DB.prepare(`
       INSERT INTO memberships
         (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, stripe_session_id)
-      VALUES (?, ?, 'active', 'individual', 20.00, ?, ?, 'stripe', ?, ?)
-    `).bind(memberId, year, amountPaid, paidDate, sessionId, sessionId).run();
+      VALUES (?, ?, 'active', ?, ?, ?, ?, 'stripe', ?, ?)
+    `).bind(memberId, year, membershipType, amountDue, amountPaid, paidDate, sessionId, sessionId).run();
   }
 
   await audit(env, {
