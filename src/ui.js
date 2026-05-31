@@ -69,7 +69,7 @@ body {
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────── */
-#app { display: flex; flex-direction: column; min-height: 100vh; }
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* Login */
 #login-screen {
@@ -90,7 +90,7 @@ body {
 .login-card .logo p { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
 
 /* Main shell */
-#main-shell { display: flex; flex: 1; }
+#main-shell { display: flex; flex: 1; min-height: 0; }
 
 #sidebar {
   width: 220px; flex-shrink: 0;
@@ -366,7 +366,7 @@ textarea { resize: vertical; min-height: 80px; }
 @media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
 
 /* ── Member portal shell ─────────────────────────────────────────────── */
-#portal-shell { display: flex; flex: 1; }
+#portal-shell { display: flex; flex: 1; min-height: 0; }
 #portal-sidebar {
   width: 220px; flex-shrink: 0;
   background: var(--surface); border-right: 1px solid var(--border);
