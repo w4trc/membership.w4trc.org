@@ -26,6 +26,7 @@ ENVIRONMENT = "production"
 CLUB_NAME = "Kingsport Amateur Radio Club"
 CLUB_CALLSIGN = "W4TRC"
 CLUB_DOMAIN = "members.w4trc.org"
+FROM_EMAIL = "membership@w4trc.org"
 
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # JWT_SECRET        - random 64-char string for signing sessions
