@@ -721,6 +721,7 @@ function renderDashboardCharts(data) {
 // ── MEMBERS ───────────────────────────────────────────────────────────
 async function members() {
   document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary btn-sm" onclick="exportMembersCSV()" style="margin-right:8px">⬇ Export CSV</button>' +
     '<button class="btn btn-primary" onclick="openAddMember()">+ Add Member</button>';
 
   setPage(\`
@@ -805,6 +806,24 @@ async function loadMembersTable() {
       pagEl.innerHTML = \`<span style="font-size:12px;color:var(--text-muted)">\${pg?.total || 0} members</span>\`;
     }
   } catch(e) { tbl.innerHTML = '<p class="text-muted" style="padding:24px">Error: ' + escHtml(e.message) + '</p>'; }
+}
+
+async function exportMembersCSV() {
+  const search = document.getElementById('member-search')?.value || '';
+  const status = document.getElementById('status-filter')?.value || 'all';
+  const arrl   = document.getElementById('arrl-filter')?.value   || 'all';
+  try {
+    const params = new URLSearchParams({ q: search, status, arrl });
+    const resp = await fetch('/api/members/export?' + params, { credentials: 'include' });
+    if (!resp.ok) { toast('Export failed', 'error'); return; }
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = \`w4trc-members-\${new Date().toISOString().slice(0,10)}.csv\`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { toast('Export failed: ' + e.message, 'error'); }
 }
 
 async function viewMember(id) {

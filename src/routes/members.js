@@ -23,7 +23,15 @@ export async function handleMembers(request, env, path, user) {
   // /api/members/42        → ['', 'api', 'members', '42']
   // /api/members/42/history → ['', 'api', 'members', '42', 'history']
   const segments = path.split('/');
-  const memberId = segments[3] ? parseInt(segments[3], 10) : null;
+  const seg3     = segments[3] || null;
+
+  if (seg3 === 'export') {
+    if (method !== 'GET') return jsonError('Method not allowed', 405);
+    if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+    return exportMembers(request, env, url);
+  }
+
+  const memberId = seg3 ? parseInt(seg3, 10) : null;
   const sub      = segments[4] || null;
 
   if (!memberId) {
@@ -110,6 +118,92 @@ async function listMembers(request, env, user, url) {
   return jsonResponse({
     members: results,
     pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) },
+  });
+}
+
+// ── GET /api/members/export ───────────────────────────────────────────────────
+async function exportMembers(request, env, url) {
+  const search = url.searchParams.get('q')      || '';
+  const status = url.searchParams.get('status') || 'all';
+  const arrl   = url.searchParams.get('arrl')   || 'all';
+  const year   = url.searchParams.get('year')   || '';
+
+  let where  = [];
+  let params = [];
+
+  if (search) {
+    where.push(`(m.callsign LIKE ? OR m.first_name LIKE ? OR m.last_name LIKE ? OR m.email LIKE ?)`);
+    const s = `%${search}%`;
+    params.push(s, s, s, s);
+  }
+  if (status === 'active')     { where.push('m.is_active = 1'); }
+  if (status === 'inactive')   { where.push('m.is_active = 0'); where.push('m.is_silent_key = 0'); }
+  if (status === 'silent_key') { where.push('m.is_silent_key = 1'); }
+  if (arrl === 'arrl')    { where.push('m.is_arrl_member = 1'); }
+  if (arrl === 'nonarrl') { where.push('m.is_arrl_member = 0'); }
+
+  let joinSQL = '';
+  if (year) {
+    joinSQL = `JOIN memberships ms ON ms.member_id = m.id AND ms.year = ?`;
+    params = [parseInt(year, 10), ...params];
+  }
+
+  const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+  const sql = `
+    SELECT m.callsign, m.first_name, m.last_name, m.email, m.phone,
+           m.address, m.city, m.state, m.zip,
+           m.license_class, m.license_expiry, m.license_status,
+           m.membership_type, m.is_active, m.is_silent_key, m.is_arrl_member,
+           m.joined_date,
+           (SELECT ms2.status FROM memberships ms2
+            WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
+            LIMIT 1) AS current_year_status,
+           (SELECT ms2.amount_paid FROM memberships ms2
+            WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
+            LIMIT 1) AS current_year_paid
+    FROM members m ${joinSQL}
+    ${whereSQL}
+    ORDER BY m.last_name ASC, m.first_name ASC
+    LIMIT 10000
+  `;
+  const { results } = await env.DB.prepare(sql).bind(...params).all();
+
+  const headers = [
+    'Callsign','First Name','Last Name','Email','Phone',
+    'Address','City','State','ZIP',
+    'License Class','License Expiry','License Status',
+    'Membership Type','Active','Silent Key','ARRL Member',
+    'Joined Date','Current Year Status','Current Year Paid',
+  ];
+
+  function csvCell(v) {
+    if (v == null) return '';
+    const s = String(v);
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  }
+
+  const rows = results.map(m => [
+    m.callsign, m.first_name, m.last_name, m.email, m.phone,
+    m.address, m.city, m.state, m.zip,
+    m.license_class, m.license_expiry, m.license_status,
+    m.membership_type,
+    m.is_active ? 'Yes' : 'No',
+    m.is_silent_key ? 'Yes' : 'No',
+    m.is_arrl_member ? 'Yes' : 'No',
+    m.joined_date, m.current_year_status, m.current_year_paid,
+  ].map(csvCell).join(','));
+
+  const csv = [headers.join(','), ...rows].join('\r\n');
+  const date = new Date().toISOString().slice(0, 10);
+
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="w4trc-members-${date}.csv"`,
+    },
   });
 }
 
