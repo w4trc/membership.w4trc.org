@@ -20,7 +20,7 @@
   "devDependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv-cli": "^11.0.0",
-    "wrangler": "^4.90.1"
+    "wrangler": "^4.95.0"
   },
   "dependencies": {
     "@sentry/cloudflare": "^10.53.1"
