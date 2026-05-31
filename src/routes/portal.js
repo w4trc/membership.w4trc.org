@@ -515,7 +515,7 @@ a { color: var(--accent); }
 <body>
 <div class="card">
   <div class="logo">
-    <div class="call">W4TRC</div>
+    <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
     <h1>Member Portal</h1>
     <p>Kingsport Amateur Radio Club</p>
   </div>
@@ -958,6 +958,7 @@ tr:hover td { background: #1f2438; }
 </head>
 <body>
 <div class="header">
+  <img src="/logo.png" alt="KARC" style="height:56px;margin-bottom:8px;display:block">
   <div class="call">W4TRC</div>
   <h1>Member Directory — ${year}</h1>
   <p>Kingsport Amateur Radio Club &mdash; ${count} member${count !== 1 ? 's' : ''} listed</p>

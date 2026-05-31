@@ -31,3 +31,9 @@ FROM_EMAIL = "membership@w4trc.org"
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # JWT_SECRET        - random 64-char string for signing sessions
 # ADMIN_SETUP_KEY   - one-time key for /api/setup endpoint
+
+# Bundle binary assets (logo, etc.) as Data modules
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+fallthrough = true

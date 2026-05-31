@@ -408,7 +408,7 @@ textarea { resize: vertical; min-height: 80px; }
   <div id="login-screen">
     <div class="login-card">
       <div class="logo">
-        <div class="call">W4TRC</div>
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
         <h1>Member System</h1>
         <p>Kingsport Amateur Radio Club</p>
       </div>
@@ -435,7 +435,7 @@ textarea { resize: vertical; min-height: 80px; }
   <div id="forgot-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
     <div class="login-card">
       <div class="logo">
-        <div class="call">W4TRC</div>
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
         <h1>Reset Password</h1>
         <p>Enter your email address to receive a reset link</p>
       </div>
@@ -455,7 +455,7 @@ textarea { resize: vertical; min-height: 80px; }
   <div id="reset-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
     <div class="login-card">
       <div class="logo">
-        <div class="call">W4TRC</div>
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
         <h1>Set New Password</h1>
         <p>Choose a new password for your account</p>
       </div>
@@ -476,6 +476,7 @@ textarea { resize: vertical; min-height: 80px; }
   <div id="main-shell" class="hidden">
     <aside id="sidebar">
       <div class="sidebar-header">
+        <img src="/logo.png" alt="KARC" style="height:40px;margin-bottom:6px;display:block">
         <div class="call">W4TRC</div>
         <div class="club-name">Kingsport Amateur Radio Club</div>
       </div>
@@ -538,6 +539,7 @@ textarea { resize: vertical; min-height: 80px; }
     <div id="portal-backdrop" onclick="closePortalNav()"></div>
     <aside id="portal-sidebar">
       <div class="sidebar-header">
+        <img src="/logo.png" alt="KARC" style="height:40px;margin-bottom:6px;display:block">
         <div class="call">W4TRC</div>
         <div class="club-name">Member Portal</div>
       </div>

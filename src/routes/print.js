@@ -78,6 +78,7 @@ tbody tr:last-child td { border-bottom: none; }
 </head>
 <body>
 <header>
+  <img src="/logo.png" alt="KARC" style="height:52px;margin-bottom:8px;display:block">
   <h1>Kingsport Amateur Radio Club (KARC)</h1>
   <div class="subtitle">Active Member Directory &nbsp;·&nbsp; ${esc(date)} &nbsp;·&nbsp; ${members.length} members &nbsp;·&nbsp; ${paid} paid ${year}</div>
 </header>

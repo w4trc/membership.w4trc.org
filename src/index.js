@@ -5,6 +5,7 @@
  */
 
 import * as Sentry from '@sentry/cloudflare';
+import logoData              from './logo.png';
 import { handleAuth }        from './routes/auth.js';
 import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
@@ -38,6 +39,16 @@ export default Sentry.withSentry(
       return new Response(null, {
         status: 204,
         headers: corsHeaders(request, env),
+      });
+    }
+
+    // ── Logo asset ─────────────────────────────────────────────────────
+    if (path === '/logo.png') {
+      return new Response(logoData, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=86400',
+        },
       });
     }
 

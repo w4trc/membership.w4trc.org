@@ -33,7 +33,9 @@ export async function sendVerificationCode(env, { to, code, name }) {
 <!DOCTYPE html>
 <html>
 <body style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a2e">
-  <h2 style="color:#3b7dd8;margin-bottom:8px">KARC Member Portal</h2>
+  <div style="text-align:center;margin-bottom:16px">
+    <img src="https://${domain}/logo.png" alt="KARC" style="height:64px">
+  </div>
   <p style="color:#555">Hi ${escHtml(name)},</p>
   <p>Your verification code to claim your member account:</p>
   <div style="background:#f0f4ff;border:2px solid #3b7dd8;border-radius:8px;padding:20px;text-align:center;margin:20px 0">
@@ -57,7 +59,9 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
 <!DOCTYPE html>
 <html>
 <body style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a2e">
-  <h2 style="color:#3b7dd8;margin-bottom:8px">KARC Member System</h2>
+  <div style="text-align:center;margin-bottom:16px">
+    <img src="https://${domain}/logo.png" alt="KARC" style="height:64px">
+  </div>
   <p>A password reset was requested for your account.</p>
   <p>Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
   <div style="text-align:center;margin:28px 0">
