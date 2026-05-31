@@ -44,6 +44,21 @@ function getHTML() {
   --shadow:    0 4px 24px rgba(0,0,0,.4);
 }
 
+html.light {
+  --bg:        #f4f6fb;
+  --surface:   #ffffff;
+  --surface2:  #edf0f7;
+  --border:    #cdd3e8;
+  --accent:    #3b7dd8;
+  --accent-h:  #2563b8;
+  --success:   #1a9956;
+  --warn:      #c47d10;
+  --danger:    #cc3929;
+  --text:      #1c2235;
+  --text-muted:#5a6480;
+  --shadow:    0 4px 24px rgba(0,0,0,.10);
+}
+
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
@@ -162,6 +177,7 @@ th {
   border-bottom: 1px solid var(--border); white-space: nowrap;
 }
 td { padding: 10px 12px; border-bottom: 1px solid rgba(42,48,80,.5); font-size: 13px; }
+html.light td { border-bottom-color: var(--border); }
 tr:hover td { background: var(--surface2); }
 tr:last-child td { border-bottom: none; }
 
@@ -517,6 +533,7 @@ textarea { resize: vertical; min-height: 80px; }
           <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" style="flex:1;justify-content:center">🔑 Password</button>
           <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="flex:1;justify-content:center">⏏ Sign Out</button>
         </div>
+        <button class="btn btn-sm btn-secondary theme-toggle-btn" onclick="toggleTheme()" style="width:100%;justify-content:center;margin-top:6px">☀ Light Mode</button>
       </div>
     </aside>
 
@@ -569,6 +586,7 @@ textarea { resize: vertical; min-height: 80px; }
           <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" style="flex:1;justify-content:center">🔑 Password</button>
           <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="flex:1;justify-content:center">⏏ Sign Out</button>
         </div>
+        <button class="btn btn-sm btn-secondary theme-toggle-btn" onclick="toggleTheme()" style="width:100%;justify-content:center;margin-top:6px">☀ Light Mode</button>
       </div>
     </aside>
     <div id="portal-content">
@@ -602,6 +620,26 @@ const state = {
   memberPage: 1,
   memberYear: new Date().getFullYear(),
 };
+
+// ── Theme ─────────────────────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.classList.toggle('light', saved === 'light');
+  updateThemeToggle();
+}
+
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  updateThemeToggle();
+}
+
+function updateThemeToggle() {
+  const isLight = document.documentElement.classList.contains('light');
+  document.querySelectorAll('.theme-toggle-btn').forEach(el => {
+    el.textContent = isLight ? '🌙 Dark Mode' : '☀ Light Mode';
+  });
+}
 
 // ── API ───────────────────────────────────────────────────────────────
 function toggleNav() {
@@ -916,8 +954,10 @@ async function dashboard() {
 
 function renderDashboardCharts(data) {
   if (typeof Chart === 'undefined') return;
-  Chart.defaults.color = '#8892aa';
-  Chart.defaults.borderColor = '#2a3050';
+  const isLight = document.documentElement.classList.contains('light');
+  const gridColor = isLight ? '#cdd3e8' : '#2a3050';
+  Chart.defaults.color = isLight ? '#5a6480' : '#8892aa';
+  Chart.defaults.borderColor = gridColor;
   Chart.defaults.font = { family: "'Segoe UI', system-ui, sans-serif", size: 11 };
 
   const trendEl = document.getElementById('chart-trend');
@@ -935,8 +975,8 @@ function renderDashboardCharts(data) {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } },
         scales: {
-          x: { grid: { color: '#2a3050' } },
-          y: { beginAtZero: true, grid: { color: '#2a3050' }, ticks: { precision: 0 } },
+          x: { grid: { color: gridColor } },
+          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } },
         },
       },
     });
@@ -950,7 +990,7 @@ function renderDashboardCharts(data) {
       type: 'doughnut',
       data: {
         labels,
-        datasets: [{ data: data.classes.map(r => r.count), backgroundColor: labels.map(l => palette[l] || '#8892aa'), borderColor: '#181c27', borderWidth: 2 }],
+        datasets: [{ data: data.classes.map(r => r.count), backgroundColor: labels.map(l => palette[l] || '#8892aa'), borderColor: isLight ? '#ffffff' : '#181c27', borderWidth: 2 }],
       },
       options: {
         responsive: true, maintainAspectRatio: false, cutout: '62%',
@@ -2620,6 +2660,7 @@ async function portalHistory() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────
+initTheme();
 checkSession();
 </script>
 </body>
