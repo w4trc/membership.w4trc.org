@@ -2,7 +2,7 @@
  * Auth routes: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
  */
 
-import { verifyPassword, hashPassword, createSession, destroySession, requireAuth } from '../lib/auth.js';
+import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, DUMMY_HASH } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader, clearCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
@@ -28,7 +28,7 @@ export async function handleAuth(request, env, path) {
 
     if (!user || !user.is_active) {
       // Still verify to prevent timing attacks
-      await verifyPassword(password, '$2b$12$dummyhashtopreventtimingattacks');
+      await verifyPassword(password, await DUMMY_HASH);
       await audit(env, { action: 'login.failed', detail: { email, reason: 'user_not_found' }, request });
       return jsonError('Invalid email or password', 401);
     }

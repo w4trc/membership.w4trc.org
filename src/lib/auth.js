@@ -6,6 +6,10 @@
 
 // ── Password hashing (PBKDF2 via Web Crypto) ─────────────────────────────────
 
+// Computed once at module load so verifyPassword always does real PBKDF2 work
+// even when the account doesn't exist, preventing timing-based account enumeration.
+export const DUMMY_HASH = hashPassword('__karc_timing_dummy__');
+
 export async function hashPassword(password) {
   const enc     = new TextEncoder();
   const keyMat  = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
