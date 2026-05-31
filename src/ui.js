@@ -911,7 +911,7 @@ async function dashboard() {
           <span style="background:var(--danger);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">\${expiring.length}</span>
         </div>
         <p style="color:var(--text-muted);margin:0 0 12px">Active members whose license expired in the last 90 days or expires within the next year. FCC licenses renew online at wireless.fcc.gov.</p>
-        <table>
+        <div class="tbl-wrap"><table>
           <thead><tr><th>Callsign</th><th>Name</th><th>Class</th><th>Expires</th><th></th></tr></thead>
           <tbody>
             \${expiring.map(m => {
@@ -929,7 +929,7 @@ async function dashboard() {
               </tr>\`;
             }).join('')}
           </tbody>
-        </table>
+        </table></div>
       </div>
       \` : ''}
       <div class="card">
