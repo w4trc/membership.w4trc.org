@@ -41,6 +41,7 @@ Things I'd suggest based on how the system is built and what a club like this ty
   - **Currently in sandbox (test mode).** Use Stripe test key (`sk_test_...`) and test card `4242 4242 4242 4242` to verify end-to-end before going live.
   - **To go live:** swap both secrets for live versions (`sk_live_...` + live webhook signing secret) — no code changes needed.
 - [ ] **Phase 6 — Email reminders** — automated renewal notices via Cloudflare Email Workers or a transactional email provider (Mailgun, Resend). Triggered by a scheduled Worker cron.
+- [ ] weekly email roundups sent to board members, new members, online dues paid, total members 
 
 ### Operational / Nice-to-Have
 - [ ] **Session list UI** — the `GET /api/admin/sessions` endpoint exists and returns active sessions, but there's no page for it in the UI yet. Useful for auditing who's logged in.
