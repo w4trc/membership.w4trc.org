@@ -24,7 +24,7 @@ These are things you've mentioned, noted, or that came up while building the sys
 Things I'd suggest based on how the system is built and what a club like this typically needs.
 
 ### Near-Term (Low Effort, High Value)
-- [ ] **CSV/roster export** — a "Download CSV" button on the Members page. Useful for the club secretary, ARRL reporting, or emergency contact lists. Could filter by year, status, or membership type.
+- [x] **CSV/roster export** — a "Download CSV" button on the Members page. Useful for the club secretary, ARRL reporting, or emergency contact lists. Could filter by year, status, or membership type.
 - [ ] **License expiry warnings** — members whose FCC license expires within 90 days should get a flag on their record and/or a dashboard widget. Licenses expire every 10 years and club members often forget.
 - [ ] **Upcoming renewals widget on Dashboard** — list of members who were active last year but haven't renewed yet this year. The data is already there (membership history + current year status).
 - [ ] **Keyboard shortcut to add member** — a `/` focus-search or `N` to open the new member form. Small quality-of-life for whoever enters renewals each year.
