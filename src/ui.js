@@ -414,7 +414,7 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <div class="form-group">
         <label>Email Address</label>
-        <input type="email" id="login-email" placeholder="admin@w4trc.org" autocomplete="email">
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
       </div>
       <div class="form-group mt-8">
         <label>Password</label>
