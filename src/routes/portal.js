@@ -350,12 +350,13 @@ async function portalUpdateMe(request, env, user) {
   if (!first_name || !last_name) return jsonError('First and last name are required', 400);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return jsonError('Invalid email address', 400);
 
-  // If changing email, make sure it's not used by another user account
+  // If changing email, make sure it's not used by another user account or another member record
   if (email) {
-    const clash = await env.DB.prepare(
-      `SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?`
-    ).bind(email.trim(), user.id).first();
-    if (clash) return jsonError('That email address is already in use by another account', 409);
+    const [userClash, memberClash] = await Promise.all([
+      env.DB.prepare(`SELECT id FROM users   WHERE email = ? COLLATE NOCASE AND id != ?`).bind(email.trim(), user.id).first(),
+      env.DB.prepare(`SELECT id FROM members WHERE email = ? COLLATE NOCASE AND id != ?`).bind(email.trim(), user.memberId).first(),
+    ]);
+    if (userClash || memberClash) return jsonError('That email address is already in use by another account', 409);
   }
 
   await env.DB.prepare(`
