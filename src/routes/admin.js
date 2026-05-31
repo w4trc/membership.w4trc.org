@@ -64,8 +64,9 @@ export async function handleAdmin(request, env, path, user) {
 
   // ── Sessions ───────────────────────────────────────────────────────────
   if (resource === 'sessions') {
-    if (method === 'GET' && !resId) return listSessions(env);
-    if (method === 'DELETE' && resId) return revokeSession(env, user, resId);
+    const sessionId = segments[4] || null;  // hex string, not an integer
+    if (method === 'GET' && !sessionId) return listSessions(env);
+    if (method === 'DELETE' && sessionId) return revokeSession(env, user, sessionId);
   }
 
   // ── Membership cutoff ───────────────────────────────────────────────────
