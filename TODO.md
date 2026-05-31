@@ -31,7 +31,7 @@ Things I'd suggest based on how the system is built and what a club like this ty
 
 ### Medium-Term
 - [x] **Print-friendly member directory** — `/print` route renders a standalone page (callsign, name, class, phone, email, city/state, current-year dues tick). "Print Directory" button opens it in a new tab from the Members page.
-- [ ] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
+- [x] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
 
 ### Longer-Term (Aligns with Roadmap)
 - [ ] **Google Groups sync** — when a member is marked as paid for a given year, automatically add them to the corresponding Google Group (e.g. `members-2026@w4trc.org`). Requires a Google Workspace service account with domain-wide delegation and the Admin SDK Directory API. On payment: `POST /admin/directory/v1/groups/{groupKey}/members`. Should also handle removals if a membership is voided. Could be triggered from the same server-side code that records the payment.
