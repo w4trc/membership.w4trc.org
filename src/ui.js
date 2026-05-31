@@ -2419,12 +2419,12 @@ function escHtml(s) {
 function fmtDate(iso) {
   if (!iso) return '—';
   try {
-    // SQLite datetime('now') returns UTC without a 'Z' suffix; append it so
-    // the browser interprets the value as UTC and converts to local time.
-    const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(iso) && !iso.endsWith('Z') && !iso.includes('+')
-      ? iso.replace(' ', 'T') + 'Z'
-      : iso;
-    return new Date(normalized).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    // D1 returns UTC datetimes as "YYYY-MM-DD HH:MM:SS" (no Z). Without a
+    // timezone indicator, browsers parse it as local time instead of UTC.
+    // Normalize to ISO 8601 UTC so the browser converts to the user's local zone.
+    const s = String(iso).replace(' ', 'T');
+    const d = new Date(/Z|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
   catch { return iso; }
 }
