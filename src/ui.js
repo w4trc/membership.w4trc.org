@@ -1251,6 +1251,7 @@ async function addNote(memberId) {
     await api('POST', '/notes', { member_id: memberId, note_text: text });
     toast('Note added');
     viewMember(memberId);
+    loadMembersTable();
   } catch(e) { toast(e.message, 'error'); }
 }
 
@@ -1535,6 +1536,7 @@ async function updateMember(id) {
     toast('Member updated ✓');
     closeModal();
     viewMember(id);
+    loadMembersTable();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
@@ -1722,6 +1724,7 @@ async function saveDues(memberId) {
     toast('Payment recorded ✓');
     closeModal();
     viewMember(memberId);
+    loadMembersTable();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
