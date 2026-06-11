@@ -77,10 +77,11 @@ async function createMembership(request, env, user) {
   if (!member) return jsonError('Member not found', 404);
 
   const isLifetimeHonorary = member.membership_type === 'lifetime_honorary';
+  const isEastman = member.is_eastman_member === 1;
   const membershipType = isLifetimeHonorary
     ? 'individual'
     : (body.membership_type || member.membership_type || 'individual');
-  const amtDue = isLifetimeHonorary ? 0.00 : (membershipType === 'family' ? 30.00 : 20.00);
+  const amtDue = (isLifetimeHonorary || isEastman) ? 0.00 : (membershipType === 'family' ? 30.00 : 20.00);
 
   const coveredByMemberId = body.covered_by_member_id || null;
 
@@ -96,7 +97,7 @@ async function createMembership(request, env, user) {
       body.amount_due      ?? amtDue,
       body.amount_paid     ?? null,
       body.paid_date       ?? null,
-      body.payment_method  ?? null,
+      isEastman ? 'eastman' : (body.payment_method ?? null),
       body.check_number    ?? null,
       body.notes           ?? null,
       coveredByMemberId,
@@ -171,7 +172,8 @@ async function getStats(request, env, user, url) {
       SUM(CASE WHEN amount_paid IS NOT NULL THEN 1 ELSE 0 END) AS paid_count,
       SUM(amount_paid)                                AS total_collected,
       SUM(CASE WHEN membership_type = 'individual' THEN 1 ELSE 0 END) AS individual_count,
-      SUM(CASE WHEN membership_type = 'family'     THEN 1 ELSE 0 END) AS family_count
+      SUM(CASE WHEN membership_type = 'family'     THEN 1 ELSE 0 END) AS family_count,
+      SUM(CASE WHEN payment_method = 'eastman'     THEN 1 ELSE 0 END) AS eastman_count
     FROM memberships WHERE year = ?
   `).bind(year).first();
 
@@ -179,5 +181,10 @@ async function getStats(request, env, user, url) {
     `SELECT COUNT(*) as count FROM members WHERE is_active = 1`
   ).first();
 
-  return jsonResponse({ year, stats: stats ?? {}, total_active_members: totalMembers?.count ?? 0 });
+  const eastmanCount = stats?.eastman_count ?? 0;
+  return jsonResponse({
+    year,
+    stats: stats ? { ...stats, eastman_revenue: eastmanCount * 3 } : {},
+    total_active_members: totalMembers?.count ?? 0,
+  });
 }

@@ -75,6 +75,10 @@ async function listMembers(request, env, user, url) {
   if (arrl === 'arrl')    { where.push('m.is_arrl_member = 1'); }
   if (arrl === 'nonarrl') { where.push('m.is_arrl_member = 0'); }
 
+  const eastman = url.searchParams.get('eastman') || 'all';
+  if (eastman === 'eastman')    { where.push('m.is_eastman_member = 1'); }
+  if (eastman === 'noneastman') { where.push('m.is_eastman_member = 0'); }
+
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // If filtering by membership year, join memberships
@@ -96,7 +100,7 @@ async function listMembers(request, env, user, url) {
   const dataSQL = `
     SELECT m.id, m.callsign, m.first_name, m.last_name, m.email,
            m.phone, m.city, m.state, m.license_class, m.membership_type,
-           m.is_active, m.is_silent_key, m.is_arrl_member, m.callsign_mismatch, m.joined_date,
+           m.is_active, m.is_silent_key, m.is_arrl_member, m.is_eastman_member, m.callsign_mismatch, m.joined_date,
            (SELECT ms2.status FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
             LIMIT 1) AS current_year_status,
@@ -105,7 +109,10 @@ async function listMembers(request, env, user, url) {
             LIMIT 1) AS current_year_paid,
            (SELECT ms2.covered_by_member_id FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
-            LIMIT 1) AS current_year_covered_by
+            LIMIT 1) AS current_year_covered_by,
+           (SELECT ms2.payment_method FROM memberships ms2
+            WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
+            LIMIT 1) AS current_year_payment_method
     FROM members m ${joinSQL}
     ${whereSQL}
     ORDER BY m.last_name ASC, m.first_name ASC
@@ -123,10 +130,11 @@ async function listMembers(request, env, user, url) {
 
 // ── GET /api/members/export ───────────────────────────────────────────────────
 async function exportMembers(request, env, url) {
-  const search = url.searchParams.get('q')      || '';
-  const status = url.searchParams.get('status') || 'all';
-  const arrl   = url.searchParams.get('arrl')   || 'all';
-  const year   = url.searchParams.get('year')   || '';
+  const search  = url.searchParams.get('q')       || '';
+  const status  = url.searchParams.get('status')  || 'all';
+  const arrl    = url.searchParams.get('arrl')    || 'all';
+  const eastman = url.searchParams.get('eastman') || 'all';
+  const year    = url.searchParams.get('year')    || '';
 
   let where  = [];
   let params = [];
@@ -141,6 +149,8 @@ async function exportMembers(request, env, url) {
   if (status === 'silent_key') { where.push('m.is_silent_key = 1'); }
   if (arrl === 'arrl')    { where.push('m.is_arrl_member = 1'); }
   if (arrl === 'nonarrl') { where.push('m.is_arrl_member = 0'); }
+  if (eastman === 'eastman')    { where.push('m.is_eastman_member = 1'); }
+  if (eastman === 'noneastman') { where.push('m.is_eastman_member = 0'); }
 
   let joinSQL = '';
   if (year) {
@@ -154,7 +164,7 @@ async function exportMembers(request, env, url) {
     SELECT m.callsign, m.first_name, m.last_name, m.email, m.phone,
            m.address, m.city, m.state, m.zip,
            m.license_class, m.license_expiry, m.license_status,
-           m.membership_type, m.is_active, m.is_silent_key, m.is_arrl_member,
+           m.membership_type, m.is_active, m.is_silent_key, m.is_arrl_member, m.is_eastman_member,
            m.joined_date,
            (SELECT ms2.status FROM memberships ms2
             WHERE ms2.member_id = m.id AND ms2.year = strftime('%Y', 'now')
@@ -173,7 +183,7 @@ async function exportMembers(request, env, url) {
     'Callsign','First Name','Last Name','Email','Phone',
     'Address','City','State','ZIP',
     'License Class','License Expiry','License Status',
-    'Membership Type','Active','Silent Key','ARRL Member',
+    'Membership Type','Active','Silent Key','ARRL Member','Eastman Member',
     'Joined Date','Current Year Status','Current Year Paid',
   ];
 
@@ -193,6 +203,7 @@ async function exportMembers(request, env, url) {
     m.is_active ? 'Yes' : 'No',
     m.is_silent_key ? 'Yes' : 'No',
     m.is_arrl_member ? 'Yes' : 'No',
+    m.is_eastman_member ? 'Yes' : 'No',
     m.joined_date, m.current_year_status, m.current_year_paid,
   ].map(csvCell).join(','));
 
@@ -276,9 +287,9 @@ async function createMember(request, env, user) {
       callsign, first_name, last_name, email, phone,
       address, city, state, zip,
       license_class, license_expiry, license_status,
-      membership_type, joined_date, is_active, is_arrl_member,
+      membership_type, joined_date, is_active, is_arrl_member, is_eastman_member,
       bio, interests, emergency_name, emergency_phone
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(
     body.callsign         || null,
     normalizeName(body.first_name),
@@ -296,6 +307,7 @@ async function createMember(request, env, user) {
     body.joined_date      || new Date().toISOString().slice(0,10),
     body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
     body.is_arrl_member ? 1 : 0,
+    body.is_eastman_member ? 1 : 0,
     body.bio              || null,
     body.interests        || null,
     body.emergency_name   || null,
@@ -305,12 +317,13 @@ async function createMember(request, env, user) {
   const newId = result.meta.last_row_id;
   await audit(env, { userId: user.id, action: 'member.create', targetType: 'member', targetId: newId, detail: { callsign: body.callsign }, request });
 
-  // Auto-create current-year membership record if requested
-  if (body.create_membership) {
+  // Auto-create current-year membership record if requested (or always for Eastman members)
+  const isEastman = body.is_eastman_member ? true : false;
+  if (body.create_membership || isEastman) {
     const year = new Date().getFullYear();
     const isLifetimeHonorary = body.membership_type === 'lifetime_honorary';
     const duesType = isLifetimeHonorary ? 'individual' : (body.membership_type || 'individual');
-    const amtDue  = isLifetimeHonorary ? 0.00 : (body.membership_type === 'family' ? 30.00 : 20.00);
+    const amtDue  = (isLifetimeHonorary || isEastman) ? 0.00 : (body.membership_type === 'family' ? 30.00 : 20.00);
     const status  = isLifetimeHonorary ? 'honorary' : 'active';
     await env.DB.prepare(`
       INSERT OR IGNORE INTO memberships
@@ -318,10 +331,10 @@ async function createMember(request, env, user) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newId, year, status, duesType, amtDue,
-      isLifetimeHonorary ? null : (body.ms_amount_paid    || null),
-      isLifetimeHonorary ? null : (body.ms_paid_date      || null),
-      isLifetimeHonorary ? null : (body.ms_payment_method || null),
-      isLifetimeHonorary ? null : (body.ms_check_number   || null),
+      isEastman        ? null         : isLifetimeHonorary ? null : (body.ms_amount_paid    || null),
+      isEastman        ? null         : isLifetimeHonorary ? null : (body.ms_paid_date      || null),
+      isEastman        ? 'eastman'    : isLifetimeHonorary ? null : (body.ms_payment_method || null),
+      isEastman        ? null         : isLifetimeHonorary ? null : (body.ms_check_number   || null),
       user.id
     ).run();
   }
@@ -366,9 +379,10 @@ async function updateMember(request, env, user, memberId) {
       license_status  = ?,
       membership_type = ?,
       joined_date     = ?,
-      is_active       = ?,
-      is_silent_key   = ?,
-      is_arrl_member  = ?,
+      is_active          = ?,
+      is_silent_key      = ?,
+      is_arrl_member     = ?,
+      is_eastman_member  = ?,
       bio             = ?,
       interests       = ?,
       emergency_name  = ?,
@@ -394,6 +408,7 @@ async function updateMember(request, env, user, memberId) {
     body.is_silent_key ? 0 : (body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active),
     body.is_silent_key !== undefined ? (body.is_silent_key ? 1 : 0) : existing.is_silent_key,
     body.is_arrl_member !== undefined ? (body.is_arrl_member ? 1 : 0) : existing.is_arrl_member,
+    body.is_eastman_member !== undefined ? (body.is_eastman_member ? 1 : 0) : existing.is_eastman_member,
     body.bio             ?? existing.bio,
     body.interests       ?? existing.interests,
     body.emergency_name  ?? existing.emergency_name,

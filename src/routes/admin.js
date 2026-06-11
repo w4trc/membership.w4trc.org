@@ -245,7 +245,7 @@ async function changePassword(request, env, user) {
 async function getDashboardStats(env) {
   const year = new Date().getFullYear();
 
-  const [members, memberships, recentActivity, notRenewed, expiringLicenses] = await Promise.all([
+  const [members, eastmanYear, memberships, recentActivity, notRenewed, expiringLicenses] = await Promise.all([
     env.DB.prepare(`
       SELECT COUNT(*) as total,
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
@@ -254,6 +254,12 @@ async function getDashboardStats(env) {
              SUM(CASE WHEN membership_type = 'lifetime_honorary' THEN 1 ELSE 0 END) as lifetime_honorary_count
       FROM members
     `).first(),
+
+    env.DB.prepare(`
+      SELECT COUNT(*) as eastman_count
+      FROM memberships
+      WHERE year = ? AND payment_method = 'eastman'
+    `).bind(year).first(),
 
     env.DB.prepare(`
       SELECT COUNT(*) as total,
@@ -294,7 +300,7 @@ async function getDashboardStats(env) {
 
   return jsonResponse({
     year,
-    members,
+    members: { ...members, eastman_count: eastmanYear?.eastman_count ?? 0 },
     memberships,
     recent_activity: recentActivity.results,
     not_renewed: notRenewed.results,

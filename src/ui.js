@@ -868,6 +868,14 @@ async function dashboard() {
           <div class="stat-val">\${stats.members?.arrl_count ?? '—'}</div>
           <div class="stat-label">ARRL Members</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-val">\${stats.members?.eastman_count ?? '—'}</div>
+          <div class="stat-label">Eastman Members</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val">\${stats.members?.eastman_count != null ? '$' + (stats.members.eastman_count * 3).toFixed(2) : '—'}</div>
+          <div class="stat-label">\${yr} Eastman Revenue</div>
+        </div>
       </div>
       <div class="charts-grid">
         <div class="card" style="margin-bottom:0">
@@ -1023,6 +1031,11 @@ async function members() {
         <option value="arrl">ARRL Only</option>
         <option value="nonarrl">Non-ARRL</option>
       </select>
+      <select id="eastman-filter" onchange="loadMembersTable()" style="width:150px">
+        <option value="all">All Sponsors</option>
+        <option value="eastman">Eastman Only</option>
+        <option value="noneastman">Non-Eastman</option>
+      </select>
     </div>
     <div class="card" style="padding:0">
       <div id="members-table"><div class="spinner"></div></div>
@@ -1033,14 +1046,15 @@ async function members() {
 }
 
 async function loadMembersTable() {
-  const search = document.getElementById('member-search')?.value || '';
-  const status = document.getElementById('status-filter')?.value || 'all';
-  const arrl   = document.getElementById('arrl-filter')?.value   || 'all';
+  const search  = document.getElementById('member-search')?.value  || '';
+  const status  = document.getElementById('status-filter')?.value  || 'all';
+  const arrl    = document.getElementById('arrl-filter')?.value    || 'all';
+  const eastman = document.getElementById('eastman-filter')?.value || 'all';
   const tbl = document.getElementById('members-table');
   if (!tbl) return;
   tbl.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&page=\${state.memberPage}\`);
+    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&eastman=\${eastman}&page=\${state.memberPage}\`);
     const { members: list, pagination: pg } = data;
 
     if (!list.length) {
@@ -1064,9 +1078,9 @@ async function loadMembersTable() {
               <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
-              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Life Honorary</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''}</td>
+              <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Life Honorary</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''} \${m.is_eastman_member ? '<span class="badge badge-blue">Eastman</span>' : ''}</td>
               <td>\${memberStatusBadge(m.is_active, m.is_silent_key)}</td>
-              <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by)}</td>
+              <td>\${duesBadge(m.current_year_status, m.current_year_paid, m.current_year_covered_by, m.current_year_payment_method)}</td>
               <td>
                 <button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button>
               </td>
@@ -1092,11 +1106,12 @@ async function loadMembersTable() {
 }
 
 async function exportMembersCSV() {
-  const search = document.getElementById('member-search')?.value || '';
-  const status = document.getElementById('status-filter')?.value || 'all';
-  const arrl   = document.getElementById('arrl-filter')?.value   || 'all';
+  const search  = document.getElementById('member-search')?.value  || '';
+  const status  = document.getElementById('status-filter')?.value  || 'all';
+  const arrl    = document.getElementById('arrl-filter')?.value    || 'all';
+  const eastman = document.getElementById('eastman-filter')?.value || 'all';
   try {
-    const params = new URLSearchParams({ q: search, status, arrl });
+    const params = new URLSearchParams({ q: search, status, arrl, eastman });
     const resp = await fetch('/api/members/export?' + params, { credentials: 'include' });
     if (!resp.ok) { toast('Export failed', 'error'); return; }
     const blob = await resp.blob();
@@ -1160,7 +1175,8 @@ async function viewMember(id) {
             \${dfield('Type', m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Lifetime Honorary</span>' : m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>')}
             \${dfield('Joined', m.joined_date)}
             \${dfield('ARRL Member', m.is_arrl_member ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>')}
-            \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id) : '<span class="badge badge-yellow">No Record</span>')}
+            \${dfield('Eastman Member', m.is_eastman_member ? '<span class="badge badge-blue">Yes</span>' : '<span class="badge badge-gray">No</span>')}
+            \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id, curMs.payment_method) : '<span class="badge badge-yellow">No Record</span>')}
           </div>
         </div>
         \${m.emergency_name ? \`<div class="detail-section"><h4>Emergency Contact</h4><div class="detail-grid">\${dfield('Name', m.emergency_name)}\${dfield('Phone', m.emergency_phone)}</div></div>\` : ''}
@@ -1176,7 +1192,7 @@ async function viewMember(id) {
             <div class="card" style="margin-bottom:8px;padding:12px">
               <div class="flex align-center gap-8">
                 <strong>\${ms.year}</strong>
-                \${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id)}
+                \${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id, ms.payment_method)}
                 \${ms.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : ''}
                 <div class="spacer"></div>
                 <span style="font-size:12px;color:var(--text-muted)">\${ms.payment_method || ''} \${ms.check_number ? '#'+ms.check_number : ''}</span>
@@ -1270,10 +1286,19 @@ function openAddMember() {
       </div>
       \${fi('Joined Date','f-joined_date',new Date().toISOString().slice(0,10),'date')}
     </div>
-    <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
-      <input type="checkbox" id="f-is_arrl_member" style="width:auto">
-      <span>ARRL Member</span>
-    </label>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px">
+      <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="f-is_arrl_member" style="width:auto">
+        <span>ARRL Member</span>
+      </label>
+      <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="f-is_eastman_member" style="width:auto" onchange="onEastmanToggle()">
+        <span>Eastman Member</span>
+      </label>
+    </div>
+    <div id="f-eastman-note" style="display:none;margin-top:8px;font-size:12px;color:var(--accent)">
+      Eastman members have $0 dues — a membership record will be created automatically.
+    </div>
     <div class="card" style="margin-top:16px">
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
         <input type="checkbox" id="f-create_ms" onchange="toggleMsFields()" style="width:auto">
@@ -1291,6 +1316,7 @@ function openAddMember() {
               <option value="check">Check</option>
               <option value="paypal">PayPal</option>
               <option value="stripe">Stripe (Online)</option>
+              <option value="eastman">Eastman</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -1314,6 +1340,8 @@ function openAddMember() {
 }
 
 function updateAmtDue() {
+  const isEastman = document.getElementById('f-is_eastman_member')?.checked;
+  if (isEastman) return; // Eastman always $0 — don't override
   const type = document.getElementById('f-membership_type')?.value;
   const amtEl = document.getElementById('f-amount_paid');
   const msFields = document.getElementById('f-ms-fields');
@@ -1331,6 +1359,20 @@ function toggleMsFields() {
   const checked = document.getElementById('f-create_ms')?.checked;
   const fields = document.getElementById('f-ms-fields');
   if (fields) fields.hidden = !checked;
+}
+
+function onEastmanToggle() {
+  const isEastman = document.getElementById('f-is_eastman_member')?.checked;
+  const note    = document.getElementById('f-eastman-note');
+  const createMs = document.getElementById('f-create_ms');
+  const msCard  = createMs?.closest('.card');
+  if (note) note.style.display = isEastman ? 'block' : 'none';
+  if (msCard) msCard.style.display = isEastman ? 'none' : 'block';
+  if (isEastman) {
+    if (createMs) { createMs.checked = false; }
+    const fields = document.getElementById('f-ms-fields');
+    if (fields) fields.hidden = true;
+  }
 }
 
 async function lookupAndFill() {
@@ -1375,8 +1417,9 @@ async function saveMember() {
     membership_type: gv('f-membership_type') || 'individual',
     joined_date:     gv('f-joined_date'),
     bio:             gv('f-bio'),
-    is_active:       true,
-    is_arrl_member:  document.getElementById('f-is_arrl_member')?.checked || false,
+    is_active:          true,
+    is_arrl_member:     document.getElementById('f-is_arrl_member')?.checked || false,
+    is_eastman_member:  document.getElementById('f-is_eastman_member')?.checked || false,
     create_membership:  document.getElementById('f-create_ms')?.checked,
     ms_amount_paid:     gv('f-amount_paid') ? parseFloat(gv('f-amount_paid')) : null,
     ms_paid_date:       gv('f-paid_date') || null,
@@ -1429,10 +1472,16 @@ async function openEditMember(id) {
       \${fi('Emergency Contact Name','e-emergency_name',m.emergency_name||'')}
       \${fi('Emergency Phone','e-emergency_phone',m.emergency_phone||'')}
     </div>
-    <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer;margin-top:12px">
-      <input type="checkbox" id="e-is_arrl_member" style="width:auto" \${m.is_arrl_member ? 'checked' : ''}>
-      <span>ARRL Member</span>
-    </label>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px">
+      <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="e-is_arrl_member" style="width:auto" \${m.is_arrl_member ? 'checked' : ''}>
+        <span>ARRL Member</span>
+      </label>
+      <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="e-is_eastman_member" style="width:auto" \${m.is_eastman_member ? 'checked' : ''}>
+        <span>Eastman Member</span>
+      </label>
+    </div>
     <div class="form-group mt-16">
       <label>Bio / Notes</label>
       <textarea id="e-bio">\${escHtml(m.bio||'')}</textarea>
@@ -1471,9 +1520,10 @@ async function updateMember(id) {
     license_expiry:  gv('e-license_expiry'),
     membership_type: gv('e-membership_type'),
     joined_date:     gv('e-joined_date'),
-    is_active:       gv('e-member_status') === 'active',
-    is_silent_key:   gv('e-member_status') === 'silent_key',
-    is_arrl_member:  document.getElementById('e-is_arrl_member')?.checked || false,
+    is_active:          gv('e-member_status') === 'active',
+    is_silent_key:      gv('e-member_status') === 'silent_key',
+    is_arrl_member:     document.getElementById('e-is_arrl_member')?.checked || false,
+    is_eastman_member:  document.getElementById('e-is_eastman_member')?.checked || false,
     bio:             gv('e-bio'),
     interests:       gv('e-interests'),
     emergency_name:  gv('e-emergency_name'),
@@ -1563,7 +1613,7 @@ async function loadDuesTable() {
               \${ms.covered_by_first_name ? \`<div style="font-size:11px;color:var(--text-muted)">Covered under: \${ms.covered_by_callsign ? escHtml(ms.covered_by_callsign) + ' ' : ''}\${escHtml(ms.covered_by_first_name)} \${escHtml(ms.covered_by_last_name)}</div>\` : ''}
             </td>
             <td>\${ms.membership_type==='family'?'<span class="badge badge-blue">Family</span>':'<span class="badge badge-gray">Individual</span>'}</td>
-            <td>\${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id)}</td>
+            <td>\${duesBadge(ms.status, ms.amount_paid, ms.covered_by_member_id, ms.payment_method)}</td>
             <td>$\${ms.covered_by_member_id ? '0.00' : Number(ms.amount_due||0).toFixed(2)}</td>
             <td>\${ms.amount_paid != null ? '$' + Number(ms.amount_paid).toFixed(2) : '<span class="text-muted">—</span>'}</td>
             <td>\${escHtml(ms.payment_method||'—')}</td>
@@ -1621,6 +1671,7 @@ async function openAddDues(memberId, memberName, memberType) {
           <option value="check">Check</option>
           <option value="paypal">PayPal</option>
           <option value="stripe">Stripe (Online)</option>
+          <option value="eastman">Eastman</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -1710,7 +1761,7 @@ async function openEditDues(id, memberId) {
         <label>Payment Method</label>
         <select id="ed-payment_method">
           <option value="">— Select —</option>
-          \${['cash','check','paypal','stripe','other'].map(m => \`<option value="\${m}" \${ms.payment_method===m?'selected':''}>\${m === 'stripe' ? 'Stripe (Online)' : m.charAt(0).toUpperCase()+m.slice(1)}</option>\`).join('')}
+          \${['cash','check','paypal','stripe','eastman','other'].map(m => \`<option value="\${m}" \${ms.payment_method===m?'selected':''}>\${m === 'stripe' ? 'Stripe (Online)' : m.charAt(0).toUpperCase()+m.slice(1)}</option>\`).join('')}
         </select>
       </div>
       \${fi('Check Number','ed-check_number',ms.check_number||'')}
@@ -2171,7 +2222,8 @@ function memberStatusBadge(isActive, isSilentKey) {
   return '<span class="badge badge-red">Inactive</span>';
 }
 
-function duesBadge(status, paid, coveredBy) {
+function duesBadge(status, paid, coveredBy, paymentMethod) {
+  if (paymentMethod === 'eastman') return '<span class="badge badge-blue">Eastman</span>';
   if (status === 'honorary') return '<span class="badge badge-blue">Honorary</span>';
   if (status === 'waived')   return '<span class="badge badge-gray">Waived</span>';
   if (coveredBy)             return '<span class="badge badge-green">Covered</span>';
