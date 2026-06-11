@@ -443,7 +443,8 @@ async function getChartData(env) {
       SELECT year,
         COUNT(*) as total,
         SUM(CASE WHEN amount_paid IS NOT NULL THEN 1 ELSE 0 END) as paid,
-        SUM(CASE WHEN status IN ('honorary','waived') THEN 1 ELSE 0 END) as exempt
+        SUM(CASE WHEN status IN ('honorary','waived') THEN 1 ELSE 0 END) as exempt,
+        SUM(CASE WHEN payment_method = 'eastman' THEN 1 ELSE 0 END) as eastman
       FROM memberships
       GROUP BY year
       ORDER BY year ASC

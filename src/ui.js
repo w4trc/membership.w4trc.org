@@ -977,6 +977,7 @@ function renderDashboardCharts(data) {
         datasets: [
           { label: 'Paid', data: data.trend.map(r => r.paid), backgroundColor: '#3b7dd8', stack: 's' },
           { label: 'Honorary / Waived', data: data.trend.map(r => r.exempt), backgroundColor: '#2ecc71', stack: 's' },
+          { label: 'Eastman', data: data.trend.map(r => r.eastman || 0), backgroundColor: '#9b59b6', stack: 's' },
         ],
       },
       options: {
