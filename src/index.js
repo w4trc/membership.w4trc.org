@@ -9,6 +9,7 @@ import logoData              from './logo.png';
 import { handleAuth }        from './routes/auth.js';
 import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
+import { handleDonations }   from './routes/donations.js';
 import { handleNotes }       from './routes/notes.js';
 import { handleAdmin, handleWeeklyRoundup } from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
@@ -122,6 +123,11 @@ export default Sentry.withSentry(
       // Memberships — must be checked before /api/members (prefix overlap)
       if (path.startsWith('/api/memberships')) {
         return handleMemberships(request, env, path, user);
+      }
+
+      // Donations
+      if (path.startsWith('/api/donations')) {
+        return handleDonations(request, env, path, user);
       }
 
       // Members CRUD

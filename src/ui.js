@@ -507,6 +507,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('memberships');closeNav()" data-page="memberships">
           <span class="icon">💳</span> Dues & Memberships
         </a>
+        <a class="nav-item" onclick="nav('donations');closeNav()" data-page="donations">
+          <span class="icon">🎁</span> Donations
+        </a>
         <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
@@ -799,7 +802,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -815,7 +818,7 @@ function nav(page) {
     return;
   }
 
-  const pages = { dashboard, members, memberships, prospects, users, audit, cutoff };
+  const pages = { dashboard, members, memberships, donations, prospects, users, audit, cutoff };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -1149,6 +1152,7 @@ async function viewMember(id) {
       <div class="tabs">
         <div class="tab active" onclick="switchTab(this,'tab-info')">Info</div>
         <div class="tab" onclick="switchTab(this,'tab-dues')">Dues History</div>
+        <div class="tab" onclick="switchTab(this,'tab-donations')">Donations</div>
         <div class="tab" onclick="switchTab(this,'tab-notes')">Notes</div>
       </div>
 
@@ -1202,6 +1206,28 @@ async function viewMember(id) {
               </div>
               \${ms.covered_by_first_name ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">Covered under: \${ms.covered_by_callsign ? '<span class="callsign" style="font-size:12px">' + escHtml(ms.covered_by_callsign) + '</span> ' : ''}\${escHtml(ms.covered_by_first_name)} \${escHtml(ms.covered_by_last_name)}</div>\` : ''}
               \${ms.notes ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(ms.notes)}</div>\` : ''}
+            </div>
+          \`).join('')
+        }
+      </div>
+
+      <!-- Donations tab (hidden) -->
+      <div id="tab-donations" class="hidden">
+        <button class="btn btn-sm btn-primary" style="margin-bottom:12px" onclick="openAddDonation(\${m.id}, '\${escHtml(m.first_name)} \${escHtml(m.last_name)}')">+ Record Donation</button>
+        \${(m.donations || []).length === 0 ? '<p class="text-muted">No donations recorded yet.</p>' :
+          (m.donations || []).map(d => \`
+            <div class="card" style="margin-bottom:8px;padding:12px">
+              <div class="flex align-center gap-8">
+                \${d.donation_kind === 'monetary'
+                  ? \`<strong>$\${Number(d.amount||0).toFixed(2)}</strong><span class="badge badge-green">Monetary</span>\`
+                  : \`<strong>\${escHtml(d.item_description||'Item')}</strong><span class="badge badge-blue">Item</span>\${d.estimated_value != null ? \`<span style="font-size:12px;color:var(--text-muted)">~$\${Number(d.estimated_value).toFixed(2)}</span>\` : ''}\`
+                }
+                <div class="spacer"></div>
+                \${d.payment_method ? \`<span style="font-size:12px;color:var(--text-muted)">\${escHtml(d.payment_method)}\${d.check_number ? ' #'+escHtml(d.check_number) : ''}</span>\` : ''}
+                \${d.donation_date ? \`<span style="font-size:12px;color:var(--text-muted)">\${escHtml(d.donation_date)}</span>\` : ''}
+                <button class="btn btn-sm btn-secondary" onclick="openEditDonation(\${d.id}, \${m.id})">Edit</button>
+              </div>
+              \${d.notes ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(d.notes)}</div>\` : ''}
             </div>
           \`).join('')
         }
@@ -1812,6 +1838,357 @@ async function updateDues(id, memberId) {
     closeModal();
     if (memberId) viewMember(memberId);
     else loadDuesTable();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+// ── DONATIONS page ────────────────────────────────────────────────────
+async function donations() {
+  setPage('<div class="spinner"></div>');
+  const yr = new Date().getFullYear();
+
+  setPage(\`
+    <div class="flex gap-8 align-center" style="margin-bottom:16px">
+      <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="openAddDonation(null, null)">+ Record Donation</button>
+    </div>
+    <div id="don-stats" class="stat-grid" style="margin-bottom:16px"></div>
+    <div class="flex gap-8 align-center" style="margin-bottom:12px">
+      <select id="don-filter-year" style="width:120px" onchange="loadDonationsTable()">
+        <option value="">All Time</option>
+        \${[yr, yr-1, yr-2, yr-3].map(y => \`<option value="\${y}" \${y===yr?'selected':''}>\${y}</option>\`).join('')}
+      </select>
+      <select id="don-filter-kind" style="width:140px" onchange="loadDonationsTable()">
+        <option value="">All Types</option>
+        <option value="monetary">Monetary</option>
+        <option value="item">Item</option>
+      </select>
+      <span style="font-size:13px;color:var(--text-muted)" id="don-count"></span>
+    </div>
+    <div class="card" style="padding:0">
+      <div id="don-table"><div class="spinner"></div></div>
+    </div>
+  \`);
+  loadDonationsTable();
+}
+
+async function loadDonationsTable() {
+  const year = document.getElementById('don-filter-year')?.value || '';
+  const kind = document.getElementById('don-filter-kind')?.value || '';
+
+  let qs = [];
+  if (year) qs.push('year=' + year);
+  if (kind) qs.push('kind=' + kind);
+  const q = qs.length ? '?' + qs.join('&') : '';
+
+  let donData, statsData;
+  try {
+    [donData, statsData] = await Promise.all([
+      api('GET', '/donations' + q),
+      api('GET', '/donations/stats' + (year ? '?year=' + year : '')),
+    ]);
+  } catch(e) {
+    const el = document.getElementById('don-table');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:24px;text-align:center">Failed to load donations.</p>';
+    toast(e.data?.error || e.message || 'Failed to load donations', 'error');
+    return;
+  }
+
+  const st = statsData?.stats || {};
+  const statsEl = document.getElementById('don-stats');
+  if (statsEl) statsEl.innerHTML = \`
+    <div class="stat-card"><div class="stat-val">\${st.total_count||0}</div><div class="stat-label">Total Donations</div></div>
+    <div class="stat-card"><div class="stat-val">$\${Number(st.total_monetary||0).toFixed(2)}</div><div class="stat-label">Cash Collected</div></div>
+    <div class="stat-card"><div class="stat-val">\${st.item_count||0}</div><div class="stat-label">Item Donations</div></div>
+    <div class="stat-card"><div class="stat-val">\${st.member_donor_count||0}</div><div class="stat-label">Member Donors</div></div>
+    <div class="stat-card"><div class="stat-val">\${st.org_donor_count||0}</div><div class="stat-label">Org Donors</div></div>
+  \`;
+
+  const list = donData.donations || [];
+  const countEl = document.getElementById('don-count');
+  if (countEl) countEl.textContent = list.length + ' record' + (list.length !== 1 ? 's' : '');
+
+  document.getElementById('don-table').innerHTML = list.length === 0
+    ? '<p class="text-muted" style="padding:24px;text-align:center">No donations recorded yet.</p>'
+    : \`<div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Donor</th><th>Type</th><th>Kind</th><th>Amount / Item</th><th>Method</th><th>Check #</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+          \${list.map(d => \`<tr>
+            <td style="color:var(--text-muted)">\${escHtml(d.donation_date||'—')}</td>
+            <td>\${donorLabel(d)}</td>
+            <td>\${donorTypeBadge(d.donor_type)}</td>
+            <td>\${donationKindBadge(d.donation_kind)}</td>
+            <td>
+              \${d.donation_kind === 'monetary'
+                ? \`<strong>$\${Number(d.amount||0).toFixed(2)}</strong>\`
+                : \`\${escHtml(d.item_description||'—')}\${d.estimated_value != null ? \` <span style="font-size:11px;color:var(--text-muted)">(~$\${Number(d.estimated_value).toFixed(2)})</span>\` : ''}\`
+              }
+            </td>
+            <td>\${escHtml(d.payment_method||'—')}</td>
+            <td>\${escHtml(d.check_number||'—')}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">\${escHtml(d.notes||'')}</td>
+            <td><button class="btn btn-sm btn-secondary" onclick="openEditDonation(\${d.id}, null)">Edit</button></td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+}
+
+function donorLabel(d) {
+  if (d.donor_type === 'member') {
+    const name = [d.first_name, d.last_name].filter(Boolean).join(' ') || '—';
+    return d.callsign
+      ? \`<span class="callsign">\${escHtml(d.callsign)}</span> \${escHtml(name)}\`
+      : escHtml(name);
+  }
+  if (d.donor_type === 'organization') return escHtml(d.organization_name || '—');
+  return '<span class="text-muted">Anonymous</span>';
+}
+
+function donorTypeBadge(type) {
+  if (type === 'member')       return '<span class="badge badge-green">Member</span>';
+  if (type === 'organization') return '<span class="badge badge-blue">Organization</span>';
+  return '<span class="badge badge-gray">Anonymous</span>';
+}
+
+function donationKindBadge(kind) {
+  if (kind === 'monetary') return '<span class="badge badge-yellow">Monetary</span>';
+  if (kind === 'item')     return '<span class="badge badge-purple">Item</span>';
+  return '<span class="badge badge-gray">' + escHtml(kind||'—') + '</span>';
+}
+
+async function openAddDonation(memberId, memberName) {
+  const today = new Date().toISOString().slice(0, 10);
+  let memberOpts = '<option value="">— Select Member —</option>';
+  try {
+    const data = await api('GET', '/members?status=active');
+    memberOpts += (data.members || [])
+      .map(x => \`<option value="\${x.id}" \${x.id===memberId?'selected':''}>\${x.callsign ? escHtml(x.callsign) + ' — ' : ''}\${escHtml(x.first_name)} \${escHtml(x.last_name)}</option>\`)
+      .join('');
+  } catch {}
+
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Donor Type</label>
+        <select id="dn-donor_type" onchange="onDonorTypeChange()">
+          <option value="member" \${memberId?'selected':''}>Member</option>
+          <option value="organization" \${!memberId?'selected':''}>Organization</option>
+          <option value="anonymous">Anonymous</option>
+        </select>
+      </div>
+      <div class="form-group" id="dn-member-wrap" \${memberId?'':'hidden'}>
+        <label>Member</label>
+        <select id="dn-member_id">\${memberOpts}</select>
+      </div>
+      <div class="form-group" id="dn-org-wrap" hidden>
+        <label>Organization Name</label>
+        <input type="text" id="dn-organization_name" placeholder="e.g. ARRL Foundation">
+      </div>
+      <div class="form-group">
+        <label>Donation Kind</label>
+        <select id="dn-donation_kind" onchange="onDonationKindChange()">
+          <option value="monetary">Monetary</option>
+          <option value="item">Item</option>
+        </select>
+      </div>
+      <div class="form-group" id="dn-amount-wrap">
+        <label>Amount ($)</label>
+        <input type="number" id="dn-amount" value="" step="0.01" min="0">
+      </div>
+      <div class="form-group" id="dn-item-wrap" hidden>
+        <label>Item Description</label>
+        <input type="text" id="dn-item_description" value="">
+      </div>
+      <div class="form-group" id="dn-estval-wrap" hidden>
+        <label>Estimated Value ($)</label>
+        <input type="number" id="dn-estimated_value" value="" step="0.01" min="0">
+      </div>
+      \${fi('Donation Date','dn-donation_date',today,'date')}
+      <div class="form-group" id="dn-method-wrap">
+        <label>Payment Method</label>
+        <select id="dn-payment_method">
+          <option value="">— Select —</option>
+          <option value="cash">Cash</option>
+          <option value="check">Check</option>
+          <option value="paypal">PayPal</option>
+          <option value="stripe">Stripe (Online)</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      \${fi('Check Number','dn-check_number','')}
+    </div>
+    \${fi('Notes','dn-notes','','textarea')}
+  \`, 'Record Donation', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save', cls: 'btn-primary', fn: 'saveDonation(' + (memberId || 'null') + ')' },
+  ]);
+  onDonorTypeChange();
+}
+
+function onDonorTypeChange() {
+  const type = document.getElementById('dn-donor_type')?.value;
+  const memberWrap = document.getElementById('dn-member-wrap');
+  const orgWrap    = document.getElementById('dn-org-wrap');
+  const methodWrap = document.getElementById('dn-method-wrap');
+  if (memberWrap) memberWrap.hidden = type !== 'member';
+  if (orgWrap)    orgWrap.hidden    = type !== 'organization';
+  if (methodWrap) methodWrap.hidden = document.getElementById('dn-donation_kind')?.value !== 'monetary';
+}
+
+function onDonationKindChange() {
+  const kind = document.getElementById('dn-donation_kind')?.value;
+  const amtWrap  = document.getElementById('dn-amount-wrap');
+  const itemWrap = document.getElementById('dn-item-wrap');
+  const estWrap  = document.getElementById('dn-estval-wrap');
+  const methodWrap = document.getElementById('dn-method-wrap');
+  if (amtWrap)   amtWrap.hidden   = kind !== 'monetary';
+  if (itemWrap)  itemWrap.hidden  = kind !== 'item';
+  if (estWrap)   estWrap.hidden   = kind !== 'item';
+  if (methodWrap) methodWrap.hidden = kind !== 'monetary';
+}
+
+async function saveDonation(memberId) {
+  const donorType    = gv('dn-donor_type');
+  const donationKind = gv('dn-donation_kind');
+  const body = {
+    donor_type:        donorType,
+    member_id:         donorType === 'member'       ? (parseInt(gv('dn-member_id')) || null) : null,
+    organization_name: donorType === 'organization' ? (gv('dn-organization_name') || null) : null,
+    donation_kind:     donationKind,
+    amount:            donationKind === 'monetary'  ? (parseFloat(gv('dn-amount')) || null) : null,
+    item_description:  donationKind === 'item'      ? (gv('dn-item_description') || null) : null,
+    estimated_value:   donationKind === 'item' && gv('dn-estimated_value') ? (parseFloat(gv('dn-estimated_value')) || null) : null,
+    donation_date:     gv('dn-donation_date') || null,
+    payment_method:    donationKind === 'monetary'  ? (gv('dn-payment_method') || null) : null,
+    check_number:      gv('dn-check_number') || null,
+    notes:             gv('dn-notes') || null,
+  };
+  try {
+    await api('POST', '/donations', body);
+    toast('Donation recorded ✓');
+    closeModal();
+    if (memberId) viewMember(memberId);
+    else loadDonationsTable();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+async function openEditDonation(id, memberId) {
+  const d = await api('GET', '/donations/' + id).catch(() => null);
+  if (!d) return;
+
+  let memberOpts = '<option value="">— Select Member —</option>';
+  try {
+    const data = await api('GET', '/members?status=active');
+    memberOpts += (data.members || [])
+      .map(x => \`<option value="\${x.id}" \${d.member_id===x.id?'selected':''}>\${x.callsign ? escHtml(x.callsign) + ' — ' : ''}\${escHtml(x.first_name)} \${escHtml(x.last_name)}</option>\`)
+      .join('');
+  } catch {}
+
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Donor Type</label>
+        <select id="edn-donor_type" onchange="onEditDonorTypeChange()">
+          \${['member','organization','anonymous'].map(t => \`<option value="\${t}" \${d.donor_type===t?'selected':''}>\${t.charAt(0).toUpperCase()+t.slice(1)}</option>\`).join('')}
+        </select>
+      </div>
+      <div class="form-group" id="edn-member-wrap" \${d.donor_type==='member'?'':'hidden'}>
+        <label>Member</label>
+        <select id="edn-member_id">\${memberOpts}</select>
+      </div>
+      <div class="form-group" id="edn-org-wrap" \${d.donor_type==='organization'?'':'hidden'}>
+        <label>Organization Name</label>
+        <input type="text" id="edn-organization_name" value="\${escHtml(d.organization_name||'')}">
+      </div>
+      <div class="form-group">
+        <label>Donation Kind</label>
+        <select id="edn-donation_kind" onchange="onEditDonationKindChange()">
+          <option value="monetary" \${d.donation_kind==='monetary'?'selected':''}>Monetary</option>
+          <option value="item"     \${d.donation_kind==='item'?'selected':''}>Item</option>
+        </select>
+      </div>
+      <div class="form-group" id="edn-amount-wrap" \${d.donation_kind==='monetary'?'':'hidden'}>
+        <label>Amount ($)</label>
+        <input type="number" id="edn-amount" value="\${escHtml(String(d.amount??''))}" step="0.01" min="0">
+      </div>
+      <div class="form-group" id="edn-item-wrap" \${d.donation_kind==='item'?'':'hidden'}>
+        <label>Item Description</label>
+        <input type="text" id="edn-item_description" value="\${escHtml(d.item_description||'')}">
+      </div>
+      <div class="form-group" id="edn-estval-wrap" \${d.donation_kind==='item'?'':'hidden'}>
+        <label>Estimated Value ($)</label>
+        <input type="number" id="edn-estimated_value" value="\${escHtml(String(d.estimated_value??''))}" step="0.01" min="0">
+      </div>
+      \${fi('Donation Date','edn-donation_date',d.donation_date||'','date')}
+      <div class="form-group" id="edn-method-wrap" \${d.donation_kind==='monetary'?'':'hidden'}>
+        <label>Payment Method</label>
+        <select id="edn-payment_method">
+          <option value="">— Select —</option>
+          \${['cash','check','paypal','stripe','other'].map(m => \`<option value="\${m}" \${d.payment_method===m?'selected':''}>\${m==='stripe'?'Stripe (Online)':m.charAt(0).toUpperCase()+m.slice(1)}</option>\`).join('')}
+        </select>
+      </div>
+      \${fi('Check Number','edn-check_number',d.check_number||'')}
+    </div>
+    \${fi('Notes','edn-notes',d.notes||'','textarea')}
+  \`, 'Edit Donation', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Delete', cls: 'btn-danger',    fn: 'deleteDonation(' + id + ',' + (memberId||'null') + ')' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'updateDonation(' + id + ',' + (memberId||'null') + ')' },
+  ]);
+}
+
+function onEditDonorTypeChange() {
+  const type = document.getElementById('edn-donor_type')?.value;
+  const mw = document.getElementById('edn-member-wrap');
+  const ow = document.getElementById('edn-org-wrap');
+  if (mw) mw.hidden = type !== 'member';
+  if (ow) ow.hidden = type !== 'organization';
+}
+
+function onEditDonationKindChange() {
+  const kind = document.getElementById('edn-donation_kind')?.value;
+  const aw = document.getElementById('edn-amount-wrap');
+  const iw = document.getElementById('edn-item-wrap');
+  const ev = document.getElementById('edn-estval-wrap');
+  const mw = document.getElementById('edn-method-wrap');
+  if (aw) aw.hidden = kind !== 'monetary';
+  if (iw) iw.hidden = kind !== 'item';
+  if (ev) ev.hidden = kind !== 'item';
+  if (mw) mw.hidden = kind !== 'monetary';
+}
+
+async function updateDonation(id, memberId) {
+  const donorType    = gv('edn-donor_type');
+  const donationKind = gv('edn-donation_kind');
+  const body = {
+    donor_type:        donorType,
+    member_id:         donorType === 'member'       ? (parseInt(gv('edn-member_id')) || null) : null,
+    organization_name: donorType === 'organization' ? (gv('edn-organization_name') || null) : null,
+    donation_kind:     donationKind,
+    amount:            donationKind === 'monetary'  ? (parseFloat(gv('edn-amount')) || null) : null,
+    item_description:  donationKind === 'item'      ? (gv('edn-item_description') || null) : null,
+    estimated_value:   donationKind === 'item' && gv('edn-estimated_value') ? (parseFloat(gv('edn-estimated_value')) || null) : null,
+    donation_date:     gv('edn-donation_date') || null,
+    payment_method:    donationKind === 'monetary'  ? (gv('edn-payment_method') || null) : null,
+    check_number:      gv('edn-check_number') || null,
+    notes:             gv('edn-notes') || null,
+  };
+  try {
+    await api('PUT', '/donations/' + id, body);
+    toast('Updated ✓');
+    closeModal();
+    if (memberId) viewMember(memberId);
+    else loadDonationsTable();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+async function deleteDonation(id, memberId) {
+  if (!confirm('Delete this donation record? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/donations/' + id);
+    toast('Donation deleted');
+    closeModal();
+    if (memberId) viewMember(memberId);
+    else loadDonationsTable();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 

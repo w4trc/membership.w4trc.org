@@ -239,7 +239,14 @@ async function getMember(request, env, user, memberId) {
                'created_at', n.created_at,
                'author_email', (SELECT u2.email FROM users u2 WHERE u2.id = n.author_id)
              )) FROM notes n WHERE n.member_id = m.id ORDER BY n.created_at DESC
-            ) AS notes_json
+            ) AS notes_json,
+            (SELECT json_group_array(json_object(
+               'id', d.id, 'donation_kind', d.donation_kind, 'amount', d.amount,
+               'item_description', d.item_description, 'estimated_value', d.estimated_value,
+               'donation_date', d.donation_date, 'payment_method', d.payment_method,
+               'check_number', d.check_number, 'notes', d.notes, 'created_at', d.created_at
+             )) FROM donations d WHERE d.member_id = m.id ORDER BY d.donation_date DESC
+            ) AS donations_json
      FROM members m WHERE m.id = ?`
   ).bind(memberId).first();
 
@@ -248,8 +255,10 @@ async function getMember(request, env, user, memberId) {
   // Parse JSON subfields
   try { member.memberships = JSON.parse(member.memberships_json || '[]'); } catch { member.memberships = []; }
   try { member.notes       = JSON.parse(member.notes_json       || '[]'); } catch { member.notes = []; }
+  try { member.donations   = JSON.parse(member.donations_json   || '[]'); } catch { member.donations = []; }
   delete member.memberships_json;
   delete member.notes_json;
+  delete member.donations_json;
 
   // Filter private notes for non-board users (future member portal)
   if (!isBoardOrAbove(user)) {
