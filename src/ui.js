@@ -2633,14 +2633,52 @@ function roleBadge(role) {
 let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
 
 async function prospects() {
-  setPage('<div class="spinner"></div>');
   prospectsState = { q:'', city:'all', status:'all', postcard:'all', license_age:'all', page:1, data:null, stats:null };
+  setPage(\`
+    <div id="prospects-stats" class="stat-grid" style="margin-bottom:16px"></div>
+    <div class="search-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
+      <input type="text" id="prospect-search" placeholder="Search callsign or name…"
+        oninput="prospectsState.q=this.value;prospectsState.page=1;loadProspects()" style="max-width:260px">
+      <select id="prospect-city" onchange="prospectsState.city=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all">All Cities</option>
+        <option value="Church Hill">Church Hill</option>
+        <option value="Kingsport">Kingsport</option>
+        <option value="Mount Carmel">Mount Carmel</option>
+      </select>
+      <select id="prospect-status" onchange="prospectsState.status=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all">All Statuses</option>
+        <option value="non_members">Non-Members Only</option>
+        <option value="not_contacted">Not Contacted</option>
+        <option value="contacted">Contacted</option>
+        <option value="interested">Interested</option>
+        <option value="not_interested">Not Interested</option>
+        <option value="members">Already Members</option>
+      </select>
+      <select id="prospect-postcard" onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all">All Postcards</option>
+        <option value="not_sent">Postcard Not Sent</option>
+        <option value="sent">Postcard Sent</option>
+      </select>
+      <select id="prospect-license-age" onchange="prospectsState.license_age=this.value;prospectsState.page=1;loadProspects()">
+        <option value="all">All License Ages</option>
+        <option value="new">New (0–3 yrs)</option>
+        <option value="recent">Recent (3–5 yrs)</option>
+        <option value="established">Established (5+ yrs)</option>
+      </select>
+      <span id="prospect-count" style="margin-left:auto;color:var(--text-muted);font-size:12px"></span>
+    </div>
+    <div id="prospects-results"><div class="spinner"></div></div>
+    <div id="prospect-modal-wrap"></div>
+  \`);
   await loadProspects();
 }
 
 async function loadProspects() {
   const s = prospectsState;
   const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, license_age: s.license_age, page: s.page });
+  const resultsEl = document.getElementById('prospects-results');
+  if (!resultsEl) return;
+  resultsEl.innerHTML = '<div class="spinner"></div>';
 
   try {
     const [data, stats] = await Promise.all([
@@ -2654,75 +2692,28 @@ async function loadProspects() {
 }
 
 function renderProspects() {
-  const { data, stats, q, city, status, postcard, license_age, page } = prospectsState;
+  const { data, stats, page } = prospectsState;
   const ps = data?.prospects || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / (data?.pageSize || 75));
 
-  setPage(\`
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.total ?? '—'}</div>
-        <div class="stat-label">Total Hams</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.member_count ?? '—'}</div>
-        <div class="stat-label">Already Members</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.non_member_count ?? '—'}</div>
-        <div class="stat-label">Not Yet Members</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.not_contacted ?? '—'}</div>
-        <div class="stat-label">Not Contacted</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.contacted ?? '—'}</div>
-        <div class="stat-label">Contacted</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.interested ?? '—'}</div>
-        <div class="stat-label">Interested</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-val">\${stats?.postcard_sent ?? '—'}</div>
-        <div class="stat-label">Postcards Sent</div>
-      </div>
-    </div>
+  const statsEl = document.getElementById('prospects-stats');
+  if (statsEl) statsEl.innerHTML = \`
+    <div class="stat-card"><div class="stat-val">\${stats?.total ?? '—'}</div><div class="stat-label">Total Hams</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.member_count ?? '—'}</div><div class="stat-label">Already Members</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.non_member_count ?? '—'}</div><div class="stat-label">Not Yet Members</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.not_contacted ?? '—'}</div><div class="stat-label">Not Contacted</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.contacted ?? '—'}</div><div class="stat-label">Contacted</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.interested ?? '—'}</div><div class="stat-label">Interested</div></div>
+    <div class="stat-card"><div class="stat-val">\${stats?.postcard_sent ?? '—'}</div><div class="stat-label">Postcards Sent</div></div>
+  \`;
 
-    <div class="search-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
-      <input type="text" placeholder="Search callsign or name…" value="\${escHtml(q)}"
-        oninput="prospectsState.q=this.value;prospectsState.page=1;loadProspects()" style="max-width:260px">
-      <select onchange="prospectsState.city=this.value;prospectsState.page=1;loadProspects()">
-        <option value="all" \${city==='all'?'selected':''}>All Cities</option>
-        <option value="Church Hill" \${city==='Church Hill'?'selected':''}>Church Hill</option>
-        <option value="Kingsport" \${city==='Kingsport'?'selected':''}>Kingsport</option>
-        <option value="Mount Carmel" \${city==='Mount Carmel'?'selected':''}>Mount Carmel</option>
-      </select>
-      <select onchange="prospectsState.status=this.value;prospectsState.page=1;loadProspects()">
-        <option value="all" \${status==='all'?'selected':''}>All Statuses</option>
-        <option value="non_members" \${status==='non_members'?'selected':''}>Non-Members Only</option>
-        <option value="not_contacted" \${status==='not_contacted'?'selected':''}>Not Contacted</option>
-        <option value="contacted" \${status==='contacted'?'selected':''}>Contacted</option>
-        <option value="interested" \${status==='interested'?'selected':''}>Interested</option>
-        <option value="not_interested" \${status==='not_interested'?'selected':''}>Not Interested</option>
-        <option value="members" \${status==='members'?'selected':''}>Already Members</option>
-      </select>
-      <select onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()">
-        <option value="all" \${postcard==='all'?'selected':''}>All Postcards</option>
-        <option value="not_sent" \${postcard==='not_sent'?'selected':''}>Postcard Not Sent</option>
-        <option value="sent" \${postcard==='sent'?'selected':''}>Postcard Sent</option>
-      </select>
-      <select onchange="prospectsState.license_age=this.value;prospectsState.page=1;loadProspects()">
-        <option value="all" \${license_age==='all'?'selected':''}>All License Ages</option>
-        <option value="new" \${license_age==='new'?'selected':''}>New (0–3 yrs)</option>
-        <option value="recent" \${license_age==='recent'?'selected':''}>Recent (3–5 yrs)</option>
-        <option value="established" \${license_age==='established'?'selected':''}>Established (5+ yrs)</option>
-      </select>
-      <span style="margin-left:auto;color:var(--text-muted);font-size:12px">\${total} results</span>
-    </div>
+  const countEl = document.getElementById('prospect-count');
+  if (countEl) countEl.textContent = total + ' results';
 
+  const resultsEl = document.getElementById('prospects-results');
+  if (!resultsEl) return;
+  resultsEl.innerHTML = \`
     <div class="tbl-wrap">
       <table>
         <thead><tr>
@@ -2738,9 +2729,7 @@ function renderProspects() {
                 <td>\${escHtml(p.city||'')}</td>
                 <td style="color:var(--text-muted);font-size:12px">\${escHtml(p.zip||'')}</td>
                 <td style="font-size:12px;color:var(--text-muted)">\${p.address ? escHtml(p.address) : '<span style="opacity:.3">—</span>'}</td>
-                <td>\${p.member_id
-                  ? \`<span class="badge badge-green" title="Active Member">Member</span>\`
-                  : ''}</td>
+                <td>\${p.member_id ? \`<span class="badge badge-green" title="Active Member">Member</span>\` : ''}</td>
                 <td>\${p.member_id ? '' : prospectStatusBadge(p.outreach_status)}</td>
                 <td>\${p.postcard_sent ? '<span class="badge badge-blue">Sent</span>' : ''}</td>
                 <td><button class="btn btn-sm btn-secondary" onclick="openProspectModal(\${JSON.stringify(p).replace(/"/g,'&quot;')})">Edit</button></td>
@@ -2749,7 +2738,6 @@ function renderProspects() {
         </tbody>
       </table>
     </div>
-
     \${totalPages > 1 ? \`
       <div style="display:flex;gap:8px;align-items:center;margin-top:16px;justify-content:center">
         <button class="btn btn-sm btn-secondary" \${page<=1?'disabled':''} onclick="prospectsState.page=\${page-1};loadProspects()">← Prev</button>
@@ -2757,9 +2745,7 @@ function renderProspects() {
         <button class="btn btn-sm btn-secondary" \${page>=totalPages?'disabled':''} onclick="prospectsState.page=\${page+1};loadProspects()">Next →</button>
       </div>
     \` : ''}
-
-    <div id="prospect-modal-wrap"></div>
-  \`);
+  \`;
 }
 
 function prospectStatusBadge(status) {
