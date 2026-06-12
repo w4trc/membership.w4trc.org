@@ -2434,11 +2434,33 @@ async function changeMyPassword() {
 }
 
 // ── AUDIT LOG ─────────────────────────────────────────────────────────
-async function audit() {
+async function audit(opts = {}) {
   setPage('<div class="spinner"></div>');
   try {
-    const data = await api('GET', '/admin/audit');
+    const params = new URLSearchParams();
+    if (opts.action)   params.set('action', opts.action);
+    if (opts.callsign) params.set('callsign', opts.callsign);
+    const qs = params.toString() ? '?' + params.toString() : '';
+    const data = await api('GET', '/admin/audit' + qs);
     setPage(\`
+      <div class="card" style="margin-bottom:1rem">
+        <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Filter by callsign</label>
+            <input id="audit-callsign" class="form-control" style="width:140px" placeholder="e.g. W4TRC"
+              value="\${escHtml(opts.callsign||'')}"
+              onkeydown="if(event.key==='Enter')audit({action:document.getElementById('audit-action').value.trim(),callsign:this.value.trim().toUpperCase()})">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Filter by action</label>
+            <input id="audit-action" class="form-control" style="width:180px" placeholder="e.g. member.update"
+              value="\${escHtml(opts.action||'')}"
+              onkeydown="if(event.key==='Enter')audit({callsign:document.getElementById('audit-callsign').value.trim().toUpperCase(),action:this.value.trim()})">
+          </div>
+          <button class="btn btn-primary" onclick="audit({callsign:document.getElementById('audit-callsign').value.trim().toUpperCase(),action:document.getElementById('audit-action').value.trim()})">Search</button>
+          \${(opts.callsign||opts.action) ? '<button class="btn btn-secondary" onclick="audit()">Clear</button>' : ''}
+        </div>
+      </div>
       <div class="card" style="padding:0">
         <div class="tbl-wrap"><table>
           <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
@@ -2469,7 +2491,7 @@ function auditTarget(r) {
   const d = tryParseJson(r.detail);
   if (r.target_type === 'member') {
     const name = r.target_name || d?.name || '';
-    const call = r.target_callsign || d?.callsign || '';
+    const call = r.target_callsign || d?.before?.callsign || d?.callsign || '';
     if (name && call) return \`\${name} (\${call})\`;
     if (name) return name;
     if (call) return call;

@@ -165,13 +165,25 @@ async function deleteUser(request, env, user, targetId) {
 }
 
 async function getAuditLog(env, url) {
-  const page   = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const limit  = 100;
-  const offset = (page - 1) * limit;
-  const action = url.searchParams.get('action') || '';
+  const page     = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+  const limit    = 100;
+  const offset   = (page - 1) * limit;
+  const action   = url.searchParams.get('action') || '';
+  const callsign = (url.searchParams.get('callsign') || '').toUpperCase().trim();
 
-  const where  = action ? 'WHERE al.action LIKE ?' : '';
-  const params = action ? [`%${action}%`, limit, offset] : [limit, offset];
+  const conditions = [];
+  const params     = [];
+  if (action) { conditions.push('al.action LIKE ?'); params.push(`%${action}%`); }
+  if (callsign) {
+    conditions.push(`(
+      (al.target_type = 'member'     AND al.target_id IN (SELECT id FROM members WHERE callsign = ?))
+      OR
+      (al.target_type = 'membership' AND al.target_id IN (SELECT ms.id FROM memberships ms JOIN members m ON m.id = ms.member_id WHERE m.callsign = ?))
+    )`);
+    params.push(callsign, callsign);
+  }
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  params.push(limit, offset);
 
   const { results } = await env.DB.prepare(`
     SELECT al.*, u.email as user_email,
