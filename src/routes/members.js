@@ -79,6 +79,9 @@ async function listMembers(request, env, user, url) {
   if (eastman === 'eastman')    { where.push('m.is_eastman_member = 1'); }
   if (eastman === 'noneastman') { where.push('m.is_eastman_member = 0'); }
 
+  const licClass = url.searchParams.get('class') || 'all';
+  if (licClass !== 'all') { where.push('m.license_class = ?'); params.push(licClass); }
+
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   // If filtering by membership year, join memberships
@@ -151,6 +154,9 @@ async function exportMembers(request, env, url) {
   if (arrl === 'nonarrl') { where.push('m.is_arrl_member = 0'); }
   if (eastman === 'eastman')    { where.push('m.is_eastman_member = 1'); }
   if (eastman === 'noneastman') { where.push('m.is_eastman_member = 0'); }
+
+  const licClass = url.searchParams.get('class') || 'all';
+  if (licClass !== 'all') { where.push('m.license_class = ?'); params.push(licClass); }
 
   let joinSQL = '';
   if (year) {

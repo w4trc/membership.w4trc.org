@@ -1040,6 +1040,14 @@ async function members() {
         <option value="eastman">Eastman Only</option>
         <option value="noneastman">Non-Eastman</option>
       </select>
+      <select id="class-filter" onchange="loadMembersTable()" style="width:160px">
+        <option value="all">All Classes</option>
+        <option value="Amateur Extra">Amateur Extra</option>
+        <option value="General">General</option>
+        <option value="Technician">Technician</option>
+        <option value="Advanced">Advanced</option>
+        <option value="Novice">Novice</option>
+      </select>
     </div>
     <div class="card" style="padding:0">
       <div id="members-table"><div class="spinner"></div></div>
@@ -1054,11 +1062,12 @@ async function loadMembersTable() {
   const status  = document.getElementById('status-filter')?.value  || 'all';
   const arrl    = document.getElementById('arrl-filter')?.value    || 'all';
   const eastman = document.getElementById('eastman-filter')?.value || 'all';
+  const licClass = document.getElementById('class-filter')?.value  || 'all';
   const tbl = document.getElementById('members-table');
   if (!tbl) return;
   tbl.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&eastman=\${eastman}&page=\${state.memberPage}\`);
+    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&eastman=\${eastman}&class=\${encodeURIComponent(licClass)}&page=\${state.memberPage}\`);
     const { members: list, pagination: pg } = data;
 
     if (!list.length) {
@@ -1114,8 +1123,9 @@ async function exportMembersCSV() {
   const status  = document.getElementById('status-filter')?.value  || 'all';
   const arrl    = document.getElementById('arrl-filter')?.value    || 'all';
   const eastman = document.getElementById('eastman-filter')?.value || 'all';
+  const licClass = document.getElementById('class-filter')?.value  || 'all';
   try {
-    const params = new URLSearchParams({ q: search, status, arrl, eastman });
+    const params = new URLSearchParams({ q: search, status, arrl, eastman, class: licClass });
     const resp = await fetch('/api/members/export?' + params, { credentials: 'include' });
     if (!resp.ok) { toast('Export failed', 'error'); return; }
     const blob = await resp.blob();
