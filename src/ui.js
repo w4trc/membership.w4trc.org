@@ -523,6 +523,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item hidden" id="nav-cutoff" onclick="nav('cutoff');closeNav()" data-page="cutoff">
           <span class="icon">⚡</span> Membership Cutoff
         </a>
+        <a class="nav-item hidden" id="nav-callsigns" onclick="nav('callsigns');closeNav()" data-page="callsigns">
+          <span class="icon">📻</span> Callsign Report
+        </a>
       </nav>
       <div class="sidebar-footer">
         <div class="user-pill">
@@ -789,6 +792,7 @@ function showApp() {
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
     document.querySelectorAll('[data-page="users"],[data-page="audit"]').forEach(el => el.classList.add('hidden'));
@@ -802,7 +806,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -812,13 +816,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects']);
+  const boardOnly = new Set(['prospects', 'callsigns']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, prospects, users, audit, cutoff };
+  const pages = { dashboard, members, memberships, donations, prospects, users, audit, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -2287,6 +2291,41 @@ async function executeCutoff(year, count) {
       </div>
     \`;
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+// ── CALLSIGN REPORT ───────────────────────────────────────────────────
+async function callsigns() {
+  setPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/admin/callsigns');
+    const count = data.callsigns.length;
+    setPage(\`
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-weight:600;font-size:15px">Active Member Callsigns</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">\${count} callsign\${count !== 1 ? 's' : ''} · active, non-silent-key members</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="copyCallsigns()">Copy</button>
+        </div>
+        <textarea id="callsign-csv" readonly
+          style="width:100%;min-height:120px;font-family:var(--mono);font-size:13px;
+                 background:var(--bg);color:var(--text);border:1px solid var(--border);
+                 border-radius:6px;padding:10px;resize:vertical;line-height:1.6"
+        >\${escHtml(data.csv)}</textarea>
+      </div>
+    \`);
+  } catch(e) { setPage(\`<p class="text-muted" style="padding:24px">Error: \${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+function copyCallsigns() {
+  const el = document.getElementById('callsign-csv');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(() => toast('Callsigns copied to clipboard ✓')).catch(() => {
+    el.select();
+    document.execCommand('copy');
+    toast('Callsigns copied to clipboard ✓');
+  });
 }
 
 // ── USERS ─────────────────────────────────────────────────────────────

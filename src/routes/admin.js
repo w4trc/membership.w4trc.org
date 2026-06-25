@@ -39,6 +39,12 @@ export async function handleAdmin(request, env, path, user) {
     return getChartData(env);
   }
 
+  // Callsign report — board and admin can view
+  if (resource === 'callsigns' && method === 'GET') {
+    if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+    return getCallsignReport(env);
+  }
+
   // Password change — any authenticated user can change their own password
   if (resource === 'password' && method === 'POST') {
     return changePassword(request, env, user);
@@ -473,6 +479,17 @@ async function getChartData(env) {
   ]);
 
   return jsonResponse({ trend: trend.results, classes: classes.results });
+}
+
+async function getCallsignReport(env) {
+  const { results } = await env.DB.prepare(`
+    SELECT callsign FROM members
+    WHERE is_active = 1 AND is_silent_key = 0
+      AND callsign IS NOT NULL AND callsign != ''
+    ORDER BY callsign ASC
+  `).all();
+  const callsigns = results.map(r => r.callsign.toUpperCase());
+  return jsonResponse({ callsigns, csv: callsigns.join(', ') });
 }
 
 // POST /api/admin/weekly-roundup (no session — secured by CRON_SECRET)
