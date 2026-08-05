@@ -2420,10 +2420,20 @@ async function editUser(id) {
       </select>
     </div>
   \`, 'Edit User: ' + u.email, [
-    { label: 'Cancel',  cls: 'btn-secondary', fn: 'closeModal()' },
-    { label: 'Delete',  cls: 'btn-danger',    fn: 'deleteUser(' + id + ')' },
-    { label: 'Save',    cls: 'btn-primary',   fn: 'saveEditUser(' + id + ')' },
+    { label: 'Cancel',         cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Delete',         cls: 'btn-danger',    fn: 'deleteUser(' + id + ')' },
+    { label: 'Reset Password', cls: 'btn-secondary', fn: 'adminResetPassword(' + id + ')' },
+    { label: 'Save',           cls: 'btn-primary',   fn: 'saveEditUser(' + id + ')' },
   ]);
+}
+
+async function adminResetPassword(id) {
+  if (!confirm('Send this user a password reset link? This will immediately sign them out of any existing sessions.')) return;
+  try {
+    const res = await api('POST', '/admin/users/' + id + '/reset-password');
+    toast(res.message || 'Reset email sent ✓');
+    closeModal();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
 async function saveEditUser(id) {

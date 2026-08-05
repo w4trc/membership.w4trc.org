@@ -6,6 +6,7 @@ import { verifyPassword, hashPassword, createSession, destroySession, requireAut
 import { jsonResponse, jsonError, setCookieHeader, clearCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
+import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 
 export async function handleAuth(request, env, path) {
   const method = request.method;
@@ -142,20 +143,4 @@ export async function handleAuth(request, env, path) {
   }
 
   return jsonError('Not found', 404);
-}
-
-function generateId() {
-  const arr = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function generateToken() {
-  const arr = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function hashToken(token) {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest('SHA-256', enc.encode(token));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }

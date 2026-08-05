@@ -8,6 +8,7 @@
  * GET    /api/admin/sessions       - active sessions
  * DELETE /api/admin/sessions/:id   - revoke a session
  * POST   /api/admin/password       - change own password
+ * POST   /api/admin/users/:id/reset-password - send a member a password reset link
  * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
  */
 
@@ -16,7 +17,8 @@ import { hashPassword }               from '../lib/auth.js';
 import { jsonResponse, jsonError }    from '../lib/response.js';
 import { audit }                      from '../lib/audit.js';
 import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
-import { sendWeeklyRoundup }          from '../lib/email.js';
+import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
+import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -57,6 +59,8 @@ export async function handleAdmin(request, env, path, user) {
     if (!resId) {
       if (method === 'GET')  return listUsers(env);
       if (method === 'POST') return createUser(request, env, user);
+    } else if (segments[5] === 'reset-password') {
+      if (method === 'POST') return resetUserPassword(request, env, user, resId);
     } else {
       if (method === 'PUT')    return updateUser(request, env, user, resId);
       if (method === 'DELETE') return deleteUser(request, env, user, resId);
@@ -168,6 +172,44 @@ async function deleteUser(request, env, user, targetId) {
   await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetId).run();
   await audit(env, { userId: user.id, action: 'user.delete', targetType: 'user', targetId, request });
   return jsonResponse({ ok: true });
+}
+
+// POST /api/admin/users/:id/reset-password
+// Admin-triggered password reset: emails the account holder the same
+// reset link used by the self-service "forgot password" flow, and
+// immediately kills their existing sessions so a lost/compromised
+// password can't keep being used while the email is in flight.
+async function resetUserPassword(request, env, user, targetId) {
+  const target = await env.DB.prepare('SELECT id, email, is_active FROM users WHERE id = ?').bind(targetId).first();
+  if (!target) return jsonError('User not found', 404);
+  if (!target.is_active) return jsonError('Cannot reset password for a disabled account', 400);
+
+  const token = generateToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+  const id = generateId();
+
+  // Invalidate any existing unused tokens for this user
+  await env.DB.prepare(
+    `DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL`
+  ).bind(target.id).run();
+
+  await env.DB.prepare(
+    `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`
+  ).bind(id, target.id, tokenHash, expiresAt).run();
+
+  const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
+  const resetUrl = `https://${domain}/reset-password?token=${token}`;
+  await sendPasswordResetEmail(env, { to: target.email, resetUrl }).catch(err => {
+    console.error('Failed to send admin-triggered password reset email:', err);
+  });
+
+  // Force re-login on all existing sessions right away
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(target.id).run();
+
+  await audit(env, { userId: user.id, action: 'admin.password_reset', targetType: 'user', targetId: target.id, request });
+
+  return jsonResponse({ ok: true, message: `Password reset email sent to ${target.email}` });
 }
 
 async function getAuditLog(env, url) {
