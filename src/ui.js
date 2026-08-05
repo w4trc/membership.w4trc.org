@@ -172,7 +172,7 @@ nav { flex: 1; padding: 12px 0; }
 
 /* Table */
 .tbl-wrap { overflow-x: auto; overflow-y: clip; }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th {
   text-align: left; padding: 8px 12px; font-size: 11px;
   color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em;
