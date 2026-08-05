@@ -23,6 +23,33 @@ import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth }       from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 
+// ── Health check ────────────────────────────────────────────────────────
+// Public, unauthenticated endpoint for uptime monitors. Verifies the worker
+// is running and that D1 is reachable; does not leak any sensitive data.
+async function handleHealth(env) {
+  const checks = { db: 'ok' };
+  let healthy = true;
+
+  try {
+    await env.DB.prepare('SELECT 1').first();
+  } catch (err) {
+    checks.db = 'error';
+    healthy = false;
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: healthy ? 'ok' : 'error',
+      time: new Date().toISOString(),
+      checks,
+    }),
+    {
+      status: healthy ? 200 : 503,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    }
+  );
+}
+
 export default Sentry.withSentry(
   (env) => ({
     dsn: 'https://63f0e4b4c18a33b74a050a76b04b9678@o4509799469547520.ingest.us.sentry.io/4511391391809536',
@@ -52,6 +79,11 @@ export default Sentry.withSentry(
           'Cache-Control': 'public, max-age=86400',
         },
       });
+    }
+
+    // ── Health check (public, for uptime monitoring) ────────────────────
+    if (path === '/health') {
+      return handleHealth(env);
     }
 
     // ── Print directory (auth required) ────────────────────────────────
