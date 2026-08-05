@@ -2732,13 +2732,13 @@ async function prospects() {
     <div class="search-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
       <input type="text" id="prospect-search" placeholder="Search callsign or name…"
         oninput="prospectsState.q=this.value;prospectsState.page=1;loadProspects()" style="max-width:260px">
-      <select id="prospect-city" onchange="prospectsState.city=this.value;prospectsState.page=1;loadProspects()">
+      <select id="prospect-city" onchange="prospectsState.city=this.value;prospectsState.page=1;loadProspects()" style="width:140px">
         <option value="all">All Cities</option>
         <option value="Church Hill">Church Hill</option>
         <option value="Kingsport">Kingsport</option>
         <option value="Mount Carmel">Mount Carmel</option>
       </select>
-      <select id="prospect-status" onchange="prospectsState.status=this.value;prospectsState.page=1;loadProspects()">
+      <select id="prospect-status" onchange="prospectsState.status=this.value;prospectsState.page=1;loadProspects()" style="width:160px">
         <option value="all">All Statuses</option>
         <option value="non_members">Non-Members Only</option>
         <option value="not_contacted">Not Contacted</option>
@@ -2747,12 +2747,12 @@ async function prospects() {
         <option value="not_interested">Not Interested</option>
         <option value="members">Already Members</option>
       </select>
-      <select id="prospect-postcard" onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()">
+      <select id="prospect-postcard" onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()" style="width:160px">
         <option value="all">All Postcards</option>
         <option value="not_sent">Postcard Not Sent</option>
         <option value="sent">Postcard Sent</option>
       </select>
-      <select id="prospect-license-age" onchange="prospectsState.license_age=this.value;prospectsState.page=1;loadProspects()">
+      <select id="prospect-license-age" onchange="prospectsState.license_age=this.value;prospectsState.page=1;loadProspects()" style="width:160px">
         <option value="all">All License Ages</option>
         <option value="new">New (0–3 yrs)</option>
         <option value="recent">Recent (3–5 yrs)</option>
