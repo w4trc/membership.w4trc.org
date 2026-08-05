@@ -171,7 +171,11 @@ nav { flex: 1; padding: 12px 0; }
 .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
 
 /* Table */
-.tbl-wrap { overflow: auto; max-height: 70vh; }
+/* 100vh minus topbar (52px) + #page's own top/bottom padding (48px) + a
+   buffer (~140px) for whatever sits above the table on a given page
+   (search bar, stat cards, filters). Gets tables much closer to filling
+   the remaining viewport than a flat vh guess did. */
+.tbl-wrap { overflow: auto; max-height: calc(100vh - 240px); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th {
   text-align: left; padding: 8px 12px; font-size: 11px;
@@ -355,7 +359,7 @@ textarea { resize: vertical; min-height: 80px; }
   #nav-backdrop.open { display: block; }
   #page { padding: 16px; }
   #topbar { padding: 0 12px; }
-  .tbl-wrap { max-height: 60vh; }
+  .tbl-wrap { max-height: calc(100vh - 200px); }
   .modal { width: 96%; max-height: 94vh; margin: 0 auto; }
   .modal-body { padding: 16px; }
   .modal-footer { padding: 12px 16px; }
