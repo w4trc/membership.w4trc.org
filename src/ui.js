@@ -171,12 +171,13 @@ nav { flex: 1; padding: 12px 0; }
 .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
 
 /* Table */
-.tbl-wrap { overflow-x: auto; }
+.tbl-wrap { overflow-x: auto; overflow-y: clip; }
 table { width: 100%; border-collapse: collapse; }
 th {
   text-align: left; padding: 8px 12px; font-size: 11px;
   color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em;
   border-bottom: 1px solid var(--border); white-space: nowrap;
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
 }
 td { padding: 10px 12px; border-bottom: 1px solid rgba(42,48,80,.5); font-size: 13px; }
 html.light td { border-bottom-color: var(--border); }
