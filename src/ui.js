@@ -158,13 +158,13 @@ nav { flex: 1; padding: 12px 0; }
 /* Members/Dues/Donations list pages: the table card fills whatever
    vertical space is left under the search bar exactly (via flexbox)
    instead of guessing a pixel offset like .tbl-wrap's max-height does. */
-.card:has(> #members-table), .card:has(> #dues-table), .card:has(> #don-table) {
+.card:has(> #members-table), .card:has(> #dues-table), .card:has(> #don-table), .card:has(> #prospects-results) {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
-#members-table, #dues-table, #don-table {
+#members-table, #dues-table, #don-table, #prospects-results {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
-#members-table .tbl-wrap, #dues-table .tbl-wrap, #don-table .tbl-wrap {
+#members-table .tbl-wrap, #dues-table .tbl-wrap, #don-table .tbl-wrap, #prospects-results .tbl-wrap {
   flex: 1; min-height: 0; max-height: none;
 }
 
@@ -2760,7 +2760,10 @@ async function prospects() {
       </select>
       <span id="prospect-count" style="margin-left:auto;color:var(--text-muted);font-size:12px"></span>
     </div>
-    <div id="prospects-results"><div class="spinner"></div></div>
+    <div class="card" style="padding:0">
+      <div id="prospects-results"><div class="spinner"></div></div>
+      <div id="prospects-pagination" style="padding:12px 16px;display:flex;gap:8px;align-items:center"></div>
+    </div>
     <div id="prospect-modal-wrap"></div>
   \`);
   await loadProspects();
@@ -2831,14 +2834,20 @@ function renderProspects() {
         </tbody>
       </table>
     </div>
-    \${totalPages > 1 ? \`
-      <div style="display:flex;gap:8px;align-items:center;margin-top:16px;justify-content:center">
-        <button class="btn btn-sm btn-secondary" \${page<=1?'disabled':''} onclick="prospectsState.page=\${page-1};loadProspects()">← Prev</button>
-        <span style="color:var(--text-muted);font-size:13px">Page \${page} of \${totalPages}</span>
-        <button class="btn btn-sm btn-secondary" \${page>=totalPages?'disabled':''} onclick="prospectsState.page=\${page+1};loadProspects()">Next →</button>
-      </div>
-    \` : ''}
   \`;
+
+  const pagEl = document.getElementById('prospects-pagination');
+  if (pagEl) {
+    if (totalPages > 1) {
+      pagEl.innerHTML = \`
+        <button class="btn btn-sm btn-secondary" \${page<=1?'disabled':''} onclick="prospectsState.page=\${page-1};loadProspects()">‹ Prev</button>
+        <span style="font-size:12px;color:var(--text-muted)">Page \${page} of \${totalPages} (\${total} total)</span>
+        <button class="btn btn-sm btn-secondary" \${page>=totalPages?'disabled':''} onclick="prospectsState.page=\${page+1};loadProspects()">Next ›</button>
+      \`;
+    } else {
+      pagEl.innerHTML = \`<span style="font-size:12px;color:var(--text-muted)">\${total} results</span>\`;
+    }
+  }
 }
 
 function prospectStatusBadge(status) {
