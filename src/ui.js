@@ -96,7 +96,9 @@ body {
   width: 220px; flex-shrink: 0;
   background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 0;
+  min-height: 0; overflow-y: auto;
 }
+.sidebar-header, .sidebar-footer { flex-shrink: 0; }
 .sidebar-header {
   padding: 20px 16px 16px;
   border-bottom: 1px solid var(--border);
@@ -371,6 +373,7 @@ textarea { resize: vertical; min-height: 80px; }
   width: 220px; flex-shrink: 0;
   background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 0;
+  min-height: 0; overflow-y: auto;
 }
 #portal-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 #portal-topbar {
