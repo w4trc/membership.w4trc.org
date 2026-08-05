@@ -153,7 +153,20 @@ nav { flex: 1; padding: 12px 0; }
 #topbar h2 { font-size: 16px; font-weight: 600; }
 #topbar .spacer { flex: 1; }
 
-#page { flex: 1; overflow-y: auto; padding: 24px; }
+#page { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; }
+
+/* Members/Dues/Donations list pages: the table card fills whatever
+   vertical space is left under the search bar exactly (via flexbox)
+   instead of guessing a pixel offset like .tbl-wrap's max-height does. */
+.card:has(> #members-table), .card:has(> #dues-table), .card:has(> #don-table) {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+#members-table, #dues-table, #don-table {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+#members-table .tbl-wrap, #dues-table .tbl-wrap, #don-table .tbl-wrap {
+  flex: 1; min-height: 0; max-height: none;
+}
 
 /* ── Components ──────────────────────────────────────────────────────── */
 .card {
