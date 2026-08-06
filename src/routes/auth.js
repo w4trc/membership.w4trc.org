@@ -2,7 +2,7 @@
  * Auth routes: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
  */
 
-import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, DUMMY_HASH } from '../lib/auth.js';
+import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, DUMMY_HASH, withD1Retry } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader, clearCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
@@ -20,10 +20,10 @@ export async function handleAuth(request, env, path) {
     if (!email || !password) return jsonError('Email and password required', 400);
 
     // Look up user
-    const user = await env.DB.prepare(
+    const user = await withD1Retry(() => env.DB.prepare(
       `SELECT id, email, password_hash, role, is_active, member_id
        FROM users WHERE email = ? COLLATE NOCASE`
-    ).bind(email.trim()).first();
+    ).bind(email.trim()).first());
 
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 

@@ -56,12 +56,31 @@ const SESSION_TTL_SECS = {
   default: 8 * 60 * 60,     // 8 hours
 };
 
+// D1's underlying storage occasionally resets an in-flight operation with
+// "D1 DB storage operation exceeded timeout which caused object to be reset."
+// This is a transient Cloudflare-side hiccup, not a query problem — retry
+// once or twice with a short backoff before giving up.
+async function withD1Retry(fn, { attempts = 3, baseDelayMs = 100 } = {}) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const transient = /storage operation exceeded timeout|D1_ERROR/i.test(err?.message || '');
+      if (!transient || i === attempts - 1) throw err;
+      await new Promise(r => setTimeout(r, baseDelayMs * 2 ** i));
+    }
+  }
+  throw lastErr;
+}
+
 export async function createSession(userId, request, env, role = 'member') {
   const sessionId = generateId();
   const ttlSecs   = SESSION_TTL_SECS[role] ?? SESSION_TTL_SECS.default;
   const expiresAt = new Date(Date.now() + ttlSecs * 1000).toISOString();
 
-  await env.DB.prepare(
+  await withD1Retry(() => env.DB.prepare(
     `INSERT INTO sessions (id, user_id, ip_address, user_agent, expires_at)
      VALUES (?, ?, ?, ?, ?)`
   ).bind(
@@ -70,7 +89,7 @@ export async function createSession(userId, request, env, role = 'member') {
     request.headers.get('CF-Connecting-IP') || '',
     request.headers.get('User-Agent') || '',
     expiresAt
-  ).run();
+  ).run());
 
   // Update last_login
   await env.DB.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`)
@@ -115,6 +134,10 @@ export async function destroySession(sessionId, env) {
 export async function cleanExpiredSessions(env) {
   await env.DB.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
 }
+
+// Exported so route handlers can wrap other login-path D1 calls (e.g. the
+// user lookup) that hit the same transient D1 storage timeout.
+export { withD1Retry };
 
 // ── Role helpers ─────────────────────────────────────────────────────────────
 

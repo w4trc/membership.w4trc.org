@@ -20,7 +20,7 @@ import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/
 import { handleStripe }      from './routes/stripe.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
-import { requireAuth }       from './lib/auth.js';
+import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 
 // ── Health check ────────────────────────────────────────────────────────
@@ -188,6 +188,11 @@ export default Sentry.withSentry(
       console.error('Unhandled error:', err);
       return jsonError('Internal server error', 500);
     }
+  },
+
+  // ── Scheduled cleanup (Cron Trigger, see wrangler.toml) ────────────────
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(cleanExpiredSessions(env).catch(err => console.error('cleanExpiredSessions failed:', err)));
   },
 });
 

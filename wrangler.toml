@@ -39,3 +39,7 @@ FROM_EMAIL = "membership@w4trc.org"
 type = "Data"
 globs = ["**/*.png"]
 fallthrough = true
+
+# Daily cleanup of expired sessions (see scheduled() handler in src/index.js)
+[triggers]
+crons = ["0 8 * * *"]  # 8:00 UTC daily (3-4am Eastern)
