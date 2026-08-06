@@ -30,10 +30,6 @@ async function handleHealth(env) {
   const checks = { db: 'ok' };
   let healthy = true;
 
-  // TEMP: forcing failure to test alerting — revert before merging/deploying for real.
-  checks.db = 'error';
-  healthy = false;
-
   try {
     await env.DB.prepare('SELECT 1').first();
   } catch (err) {
