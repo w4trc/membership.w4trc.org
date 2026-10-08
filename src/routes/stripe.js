@@ -8,6 +8,7 @@
 import { requireAuth } from '../lib/auth.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
+import { duesYear } from '../lib/duesYear.js';
 
 export async function handleStripe(request, env, path, user = null) {
   const sub = path.replace('/api/stripe', '').replace(/^\//, '');
@@ -35,14 +36,14 @@ export async function handleStripe(request, env, path, user = null) {
 async function createCheckout(request, env, user) {
   if (!user.memberId) return jsonError('No member record linked to this account', 400);
 
-  const year = new Date().getFullYear();
+  const year = duesYear();
 
   const existing = await env.DB.prepare(
     `SELECT status FROM memberships WHERE member_id = ? AND year = ? LIMIT 1`
   ).bind(user.memberId, year).first();
 
   if (existing && ['active', 'honorary', 'waived'].includes(existing.status)) {
-    return jsonError('Dues are already paid for this year', 409);
+    return jsonError(`Dues are already paid for ${year}`, 409);
   }
 
   const member = await env.DB.prepare(
@@ -50,6 +51,9 @@ async function createCheckout(request, env, user) {
   ).bind(user.memberId).first();
 
   if (!member) return jsonError('Member not found', 404);
+  if (member.membership_type === 'lifetime_honorary') {
+    return jsonError('Lifetime honorary members do not pay dues', 409);
+  }
 
   // $21 individual, $31 family — includes $1 online processing fee
   const isFamily   = member.membership_type === 'family';
@@ -166,6 +170,14 @@ async function handleCheckoutCompleted(session, env) {
         (member_id, year, status, membership_type, amount_due, amount_paid, paid_date, payment_method, check_number, stripe_session_id)
       VALUES (?, ?, 'active', ?, ?, ?, ?, 'stripe', ?, ?)
     `).bind(memberId, year, membershipType, amountDue, amountPaid, paidDate, sessionId, sessionId).run();
+  }
+
+  // A lapsed member paying for the current year is active again now. Advance
+  // renewals (Oct–Dec) take effect Jan 1 via activateRenewedMembers().
+  if (year <= new Date().getUTCFullYear()) {
+    await env.DB.prepare(
+      `UPDATE members SET is_active = 1, updated_at = datetime('now') WHERE id = ? AND is_active = 0 AND is_silent_key = 0`
+    ).bind(memberId).run();
   }
 
   await audit(env, {

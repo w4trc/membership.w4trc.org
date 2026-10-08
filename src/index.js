@@ -22,6 +22,7 @@ import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
+import { activateRenewedMembers } from './lib/duesYear.js';
 
 // ── Health check ────────────────────────────────────────────────────────
 // Public, unauthenticated endpoint for uptime monitors. Verifies the worker
@@ -193,6 +194,7 @@ export default Sentry.withSentry(
   // ── Scheduled cleanup (Cron Trigger, see wrangler.toml) ────────────────
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(cleanExpiredSessions(env).catch(err => console.error('cleanExpiredSessions failed:', err)));
+    ctx.waitUntil(activateRenewedMembers(env).catch(err => console.error('activateRenewedMembers failed:', err)));
   },
 });
 

@@ -2601,6 +2601,7 @@ function auditDetail(r) {
       return parts.join(', ');
     }
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
+    case 'member.renewal_activated': return d?.activated_count != null ? d.activated_count + ' renewed member' + (d.activated_count !== 1 ? 's' : '') + ' activated for ' + d.year : '';
     case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';
     case 'login.failed':       return [d.email, d.reason?.replace(/_/g, ' ')].filter(Boolean).join(' — ');
     case 'user.create':        return [d.email, d.role ? 'role: ' + d.role : ''].filter(Boolean).join(', ');
@@ -3018,14 +3019,26 @@ async function portalHome() {
     document.getElementById('portal-callsign').textContent = m.callsign || '';
     document.getElementById('portal-name').textContent     = \`\${m.first_name} \${m.last_name}\`;
 
-    const isPaid = ['active', 'honorary', 'waived'].includes(m.dues_status);
+    const isLifetime = m.membership_type === 'lifetime_honorary';
+    const isPaid = isLifetime || ['active', 'honorary', 'waived'].includes(m.dues_status);
     const duesClass = isPaid ? 'paid' : (m.dues_status ? 'unpaid' : 'unknown');
-    const duesHeading = isPaid
+    const duesHeading = isLifetime
+      ? 'Lifetime honorary member — no dues'
+      : isPaid
       ? \`✓ Dues paid for \${year}\`
       : (m.dues_status === 'expired' ? \`Dues expired — \${year}\` : \`Dues not yet paid for \${year}\`);
     const dueSub = isPaid
       ? (m.dues_paid_date ? \`Paid \${fmtDate(m.dues_paid_date)}\${m.dues_amount_paid != null ? \` — $\${Number(m.dues_amount_paid).toFixed(2)}\` : ''}\` : '')
       : (m.dues_amount_due != null ? \`Amount due: $\${Number(m.dues_amount_due).toFixed(2)}\` : '');
+
+    // Oct–Dec: online payment applies to next year's dues
+    const payYear  = data.renewal_year || year;
+    const renewing = payYear !== year;
+    const renewalPaid = renewing && ['active', 'honorary', 'waived'].includes(data.renewal?.status);
+    const showPay = !isLifetime && (renewing ? !renewalPaid : !isPaid);
+    const renewalSub = renewalPaid && data.renewal.paid_date
+      ? \`Paid \${fmtDate(data.renewal.paid_date)}\${data.renewal.amount_paid != null ? \` — $\${Number(data.renewal.amount_paid).toFixed(2)}\` : ''}\`
+      : '';
 
     const licenseExpiry = m.license_expiry
       ? \`<div class="stat-card"><div class="stat-val" style="font-size:18px">\${escHtml(m.license_expiry)}</div><div class="stat-label">License Expiry</div></div>\`
@@ -3050,9 +3063,17 @@ async function portalHome() {
         \${dueSub ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(dueSub)}</div>\` : ''}
       </div>
 
-      \${!isPaid ? \`
+      \${renewing && !isLifetime ? \`
+      <div class="dues-card \${renewalPaid ? 'paid' : 'unknown'}">
+        <div class="dues-status-label">\${payYear} Dues</div>
+        <div style="font-size:15px;font-weight:600">\${renewalPaid ? \`✓ Dues paid for \${payYear}\` : \`\${payYear} renewal is now open\`}</div>
+        \${renewalSub ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(renewalSub)}</div>\` : ''}
+      </div>
+      \` : ''}
+
+      \${showPay ? \`
       <div class="payment-box">
-        <h4>Pay Dues Online</h4>
+        <h4>Pay \${payYear} Dues Online</h4>
         <button id="pay-online-btn" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="payOnline()">
           Pay Online — \${m.membership_type === 'family' ? '$31' : '$21'}
         </button>

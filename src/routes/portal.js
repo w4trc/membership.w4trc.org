@@ -26,6 +26,7 @@ import { audit } from '../lib/audit.js';
 import { sendVerificationCode } from '../lib/email.js';
 import { fetchHamDB } from './lookup.js';
 import { normalizeName } from '../lib/normalize.js';
+import { duesYear } from '../lib/duesYear.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -329,7 +330,18 @@ async function portalMe(env, user) {
 
   if (!member) return jsonError('Member record not found', 404);
 
-  return jsonResponse({ ok: true, member, year });
+  // During renewal season (Oct–Dec) online payment applies to next year
+  const renewalYear = duesYear();
+  let renewal = null;
+  if (renewalYear !== year) {
+    renewal = await env.DB.prepare(`
+      SELECT status, paid_date, amount_paid, amount_due
+      FROM memberships WHERE member_id = ? AND year = ?
+      ORDER BY id DESC LIMIT 1
+    `).bind(user.memberId, renewalYear).first();
+  }
+
+  return jsonResponse({ ok: true, member, year, renewal_year: renewalYear, renewal });
 }
 
 // ── PUT /api/portal/me ────────────────────────────────────────────────────────
