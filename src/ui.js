@@ -532,6 +532,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('donations');closeNav()" data-page="donations">
           <span class="icon">🎁</span> Donations
         </a>
+        <a class="nav-item hidden" id="nav-attendance" onclick="nav('attendance');closeNav()" data-page="attendance">
+          <span class="icon">📝</span> Attendance
+        </a>
         <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
@@ -814,6 +817,7 @@ function showApp() {
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
@@ -828,7 +832,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -838,13 +842,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, prospects, users, audit, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, attendance, prospects, users, audit, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -2228,6 +2232,230 @@ async function deleteDonation(id, memberId) {
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
+// ── ATTENDANCE ────────────────────────────────────────────────────────
+const MEETING_TYPES = {
+  monthly:    'Monthly Meeting',
+  board:      'Board Meeting',
+  ve_session: 'VE Session',
+  field_day:  'Field Day',
+  special:    'Special Event',
+  other:      'Other',
+};
+
+// Date-only values (YYYY-MM-DD) — format without timezone shifting
+function fmtDay(ymd) {
+  const [y, m, d] = String(ymd || '').split('-').map(Number);
+  if (!y || !m || !d) return ymd || '—';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function meetingLabel(mt) {
+  const type = MEETING_TYPES[mt.meeting_type] || mt.meeting_type;
+  return mt.title ? escHtml(mt.title) + ' <span style="color:var(--text-muted);font-size:12px">' + escHtml(type) + '</span>' : escHtml(type);
+}
+
+async function attendance() {
+  const yr = new Date().getFullYear();
+  setPage(\`
+    <div class="flex gap-8 align-center" style="margin-bottom:12px">
+      <select id="att-filter-year" style="width:120px" onchange="loadMeetingsTable()">
+        <option value="">All Time</option>
+        \${[yr, yr-1, yr-2, yr-3].map(y => \`<option value="\${y}" \${y===yr?'selected':''}>\${y}</option>\`).join('')}
+      </select>
+      <span style="font-size:13px;color:var(--text-muted)" id="att-count"></span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="openMeetingForm()">+ Record Meeting</button>
+    </div>
+    <div class="card" style="padding:0">
+      <div id="att-table"><div class="spinner"></div></div>
+    </div>
+  \`);
+  loadMeetingsTable();
+}
+
+async function loadMeetingsTable() {
+  const year = document.getElementById('att-filter-year')?.value || '';
+  let data;
+  try {
+    data = await api('GET', '/meetings' + (year ? '?year=' + year : ''));
+  } catch(e) {
+    const el = document.getElementById('att-table');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:24px;text-align:center">Failed to load meetings.</p>';
+    toast(e.data?.error || e.message || 'Failed to load meetings', 'error');
+    return;
+  }
+
+  const list = data.meetings || [];
+  const countEl = document.getElementById('att-count');
+  if (countEl) countEl.textContent = list.length + ' meeting' + (list.length !== 1 ? 's' : '');
+
+  const el = document.getElementById('att-table');
+  if (!el) return;
+  el.innerHTML = list.length === 0
+    ? '<p class="text-muted" style="padding:24px;text-align:center">No meetings recorded yet.</p>'
+    : \`<div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Meeting</th><th>Members</th><th>Visiting Hams</th><th>Non-Hams</th><th>Total</th><th></th></tr></thead>
+        <tbody>
+          \${list.map(mt => \`<tr style="cursor:pointer" onclick="openMeeting(\${mt.id})">
+            <td style="color:var(--text-muted)">\${escHtml(fmtDay(mt.meeting_date))}</td>
+            <td>\${meetingLabel(mt)}</td>
+            <td>\${mt.member_count || 0}</td>
+            <td>\${mt.visitor_count || 0}</td>
+            <td>\${mt.guest_count || 0}</td>
+            <td><strong>\${mt.total_count || 0}</strong></td>
+            <td><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openMeeting(\${mt.id})">View</button></td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+}
+
+function attendeeRow(a) {
+  const call = a.callsign ? \`<span class="callsign">\${escHtml(a.callsign)}</span> \` : '';
+  return \`<div style="padding:6px 0;border-bottom:1px solid var(--border)">\${call}\${escHtml(a.name || '')}\${!a.name && a.callsign ? '<span class="text-muted">(name unknown)</span>' : ''}</div>\`;
+}
+
+async function openMeeting(id) {
+  let data;
+  try { data = await api('GET', '/meetings/' + id); }
+  catch(e) { toast(e.data?.error || 'Failed to load meeting', 'error'); return; }
+
+  const mt = data.meeting;
+  const att = data.attendees || [];
+  const members  = att.filter(a => a.member_id);
+  const visitors = att.filter(a => !a.member_id && a.callsign);
+  const guests   = att.filter(a => !a.callsign);
+  const section = (label, rows) => rows.length ? \`
+    <div style="margin-top:16px">
+      <div style="font-weight:600;margin-bottom:4px">\${label} <span class="badge badge-gray">\${rows.length}</span></div>
+      \${rows.map(attendeeRow).join('')}
+    </div>\` : '';
+
+  const buttons = [
+    { label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Edit',  cls: 'btn-primary',   fn: 'editMeeting(' + id + ')' },
+  ];
+  if (state.user?.role === 'admin') buttons.unshift({ label: 'Delete', cls: 'btn-danger', fn: 'deleteMeeting(' + id + ')' });
+
+  showModal(\`
+    <div style="color:var(--text-muted)">\${escHtml(fmtDay(mt.meeting_date))} — \${meetingLabel(mt)}</div>
+    <div style="font-size:22px;font-weight:700;margin-top:6px">\${att.length} attendee\${att.length !== 1 ? 's' : ''}</div>
+    \${mt.notes ? \`<p style="margin-top:8px;color:var(--text-muted)">\${escHtml(mt.notes)}</p>\` : ''}
+    \${section('Members', members)}
+    \${section('Visiting Hams', visitors)}
+    \${section('Non-Hams', guests)}
+    \${att.length === 0 ? '<p class="text-muted" style="margin-top:16px">No attendees recorded.</p>' : ''}
+  \`, 'Meeting Attendance', buttons);
+}
+
+async function editMeeting(id) {
+  try {
+    const data = await api('GET', '/meetings/' + id);
+    openMeetingForm(data.meeting, data.attendees || []);
+  } catch(e) { toast(e.data?.error || 'Failed to load meeting', 'error'); }
+}
+
+function openMeetingForm(mt = null, attendees = []) {
+  const today = new Date().toISOString().slice(0, 10);
+  const calls  = attendees.filter(a => a.callsign).map(a => a.callsign).join('\\n');
+  const guests = attendees.filter(a => !a.callsign).map(a => a.name).join('\\n');
+  const type   = mt?.meeting_type || 'monthly';
+
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Meeting *</label>
+        <select id="mt-type">
+          \${Object.entries(MEETING_TYPES).map(([k, v]) => \`<option value="\${k}" \${k===type?'selected':''}>\${v}</option>\`).join('')}
+        </select>
+      </div>
+      \${fi('Date', 'mt-date', mt?.meeting_date || today, 'date', '', true)}
+      <div class="form-group full">
+        <label>Title (optional)</label>
+        <input type="text" id="mt-title" value="\${escHtml(mt?.title || '')}" placeholder="e.g. Christmas Party, Antenna Workshop">
+      </div>
+      <div class="form-group full">
+        <label>Callsigns</label>
+        <textarea id="mt-callsigns" rows="5" placeholder="Type or paste callsigns, separated by spaces, commas, or new lines" oninput="queueCallsignPreview()" style="font-family:var(--mono);text-transform:uppercase">\${escHtml(calls)}</textarea>
+        <div id="mt-preview" style="margin-top:8px;font-size:13px"></div>
+      </div>
+      <div class="form-group full">
+        <label>Non-Ham Attendees</label>
+        <textarea id="mt-guests" rows="3" placeholder="One name per line">\${escHtml(guests)}</textarea>
+      </div>
+    </div>
+    \${fi('Notes', 'mt-notes', mt?.notes || '', 'textarea')}
+  \`, mt ? 'Edit Meeting' : 'Record Meeting', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveMeeting(' + (mt?.id || 'null') + ')' },
+  ]);
+  if (calls) previewCallsigns();
+}
+
+let callsignPreviewTimer = null;
+function queueCallsignPreview() {
+  clearTimeout(callsignPreviewTimer);
+  callsignPreviewTimer = setTimeout(previewCallsigns, 600);
+}
+
+const ATTENDEE_SOURCE_BADGE = {
+  member:    '<span class="badge badge-green">Member</span>',
+  local_ham: '<span class="badge badge-blue">Local Ham</span>',
+  hamdb:     '<span class="badge badge-gray">Visitor</span>',
+  not_found: '<span class="badge badge-red">Not found</span>',
+};
+
+async function previewCallsigns() {
+  const el = document.getElementById('mt-preview');
+  const input = document.getElementById('mt-callsigns')?.value || '';
+  if (!el) return;
+  if (!input.trim()) { el.innerHTML = ''; return; }
+  el.innerHTML = '<span class="text-muted">Looking up callsigns…</span>';
+  try {
+    const data = await api('POST', '/meetings/resolve', { callsigns: input });
+    // Ignore stale responses if the user kept typing
+    if ((document.getElementById('mt-callsigns')?.value || '') !== input) return;
+    const list = data.attendees || [];
+    const unknown = list.filter(a => a.source === 'not_found').length;
+    el.innerHTML = list.length === 0 ? '<span class="text-muted">No valid callsigns yet.</span>' : \`
+      <div style="color:var(--text-muted);margin-bottom:4px">
+        \${list.length} ham\${list.length !== 1 ? 's' : ''}\${unknown ? \` — <span style="color:var(--danger)">\${unknown} not found, check spelling</span>\` : ''}
+      </div>
+      \${list.map(a => \`<div style="padding:3px 0"><span class="callsign">\${escHtml(a.callsign)}</span> \${escHtml(a.name || '')} \${ATTENDEE_SOURCE_BADGE[a.source] || ''}</div>\`).join('')}
+    \`;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--danger)">Lookup failed — callsigns will still be saved.</span>';
+  }
+}
+
+async function saveMeeting(id) {
+  const body = {
+    meeting_type: gv('mt-type'),
+    meeting_date: gv('mt-date'),
+    title:        gv('mt-title'),
+    callsigns:    gv('mt-callsigns'),
+    guests:       gv('mt-guests'),
+    notes:        gv('mt-notes'),
+  };
+  if (!body.meeting_date) { toast('Date is required', 'error'); return; }
+  try {
+    const data = await api(id ? 'PUT' : 'POST', '/meetings' + (id ? '/' + id : ''), body);
+    const n = (data.attendees || []).length;
+    toast(\`Meeting saved — \${n} attendee\${n !== 1 ? 's' : ''} ✓\`);
+    closeModal();
+    if (state.currentPage === 'attendance') loadMeetingsTable();
+  } catch(e) { toast(e.data?.error || 'Failed to save meeting', 'error'); }
+}
+
+async function deleteMeeting(id) {
+  if (!confirm('Delete this meeting and its attendance list? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/meetings/' + id);
+    toast('Meeting deleted');
+    closeModal();
+    if (state.currentPage === 'attendance') loadMeetingsTable();
+  } catch(e) { toast(e.data?.error || 'Failed to delete meeting', 'error'); }
+}
+
 // ── MEMBERSHIP CUTOFF ─────────────────────────────────────────────────
 async function cutoff() {
   const yr = new Date().getFullYear();
@@ -2600,6 +2828,9 @@ function auditDetail(r) {
       if (c.status)              parts.push('status: ' + c.status);
       return parts.join(', ');
     }
+    case 'meeting.create':
+    case 'meeting.update':     return d.meeting_date ? d.meeting_date + ' — ' + d.hams + ' ham' + (d.hams !== 1 ? 's' : '') + ', ' + d.guests + ' non-ham' + (d.guests !== 1 ? 's' : '') : '';
+    case 'meeting.delete':     return d.meeting_date || '';
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
     case 'member.renewal_activated': return d?.activated_count != null ? d.activated_count + ' renewed member' + (d.activated_count !== 1 ? 's' : '') + ' activated for ' + d.year : '';
     case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';

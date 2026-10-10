@@ -18,6 +18,7 @@ import { handleProspects }   from './routes/prospects.js';
 import { handlePrint }       from './routes/print.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
+import { handleMeetings }    from './routes/meetings.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
@@ -161,6 +162,11 @@ export default Sentry.withSentry(
       // Donations
       if (path.startsWith('/api/donations')) {
         return handleDonations(request, env, path, user);
+      }
+
+      // Meeting attendance
+      if (path.startsWith('/api/meetings')) {
+        return handleMeetings(request, env, path, user);
       }
 
       // Members CRUD
