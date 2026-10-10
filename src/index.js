@@ -19,6 +19,7 @@ import { handlePrint }       from './routes/print.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
 import { handleMeetings }    from './routes/meetings.js';
+import { handleInventory }   from './routes/inventory.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
@@ -167,6 +168,11 @@ export default Sentry.withSentry(
       // Meeting attendance
       if (path.startsWith('/api/meetings')) {
         return handleMeetings(request, env, path, user);
+      }
+
+      // Equipment inventory
+      if (path.startsWith('/api/inventory')) {
+        return handleInventory(request, env, path, user);
       }
 
       // Members CRUD

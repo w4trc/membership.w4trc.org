@@ -158,13 +158,13 @@ nav { flex: 1; padding: 12px 0; }
 /* Members/Dues/Donations list pages: the table card fills whatever
    vertical space is left under the search bar exactly (via flexbox)
    instead of guessing a pixel offset like .tbl-wrap's max-height does. */
-.card:has(> #members-table), .card:has(> #dues-table), .card:has(> #don-table), .card:has(> #prospects-results) {
+.card:has(> #members-table), .card:has(> #dues-table), .card:has(> #don-table), .card:has(> #inv-table), .card:has(> #prospects-results) {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
-#members-table, #dues-table, #don-table, #prospects-results {
+#members-table, #dues-table, #don-table, #inv-table, #prospects-results {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
-#members-table .tbl-wrap, #dues-table .tbl-wrap, #don-table .tbl-wrap, #prospects-results .tbl-wrap {
+#members-table .tbl-wrap, #dues-table .tbl-wrap, #don-table .tbl-wrap, #inv-table .tbl-wrap, #prospects-results .tbl-wrap {
   flex: 1; min-height: 0; max-height: none;
 }
 
@@ -535,6 +535,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item hidden" id="nav-attendance" onclick="nav('attendance');closeNav()" data-page="attendance">
           <span class="icon">📝</span> Attendance
         </a>
+        <a class="nav-item hidden" id="nav-inventory" onclick="nav('inventory');closeNav()" data-page="inventory">
+          <span class="icon">📦</span> Inventory
+        </a>
         <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
@@ -818,6 +821,7 @@ function showApp() {
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-inventory')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
@@ -832,7 +836,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -842,13 +846,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, attendance, prospects, users, audit, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -2456,6 +2460,399 @@ async function deleteMeeting(id) {
   } catch(e) { toast(e.data?.error || 'Failed to delete meeting', 'error'); }
 }
 
+// ── INVENTORY ─────────────────────────────────────────────────────────
+let invMeta = { locations: [], members: [] };
+let invSearchTimer = null;
+
+async function loadInvMeta() {
+  invMeta = await api('GET', '/inventory/meta');
+  return invMeta;
+}
+
+async function inventory() {
+  document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary btn-sm" onclick="addInvLocation()" style="margin-right:8px">+ Location</button>' +
+    '<button class="btn btn-primary" onclick="openInvForm()">+ Add Item</button>';
+
+  try { await loadInvMeta(); }
+  catch(e) { toast(e.data?.error || 'Failed to load locations', 'error'); }
+
+  setPage(\`
+    <div class="search-bar">
+      <input type="text" id="inv-search" placeholder="Search name, manufacturer, model, serial, member…"
+        oninput="clearTimeout(invSearchTimer); invSearchTimer = setTimeout(loadInvTable, 250)">
+      <select id="inv-filter-location" onchange="loadInvTable()" style="width:190px">
+        <option value="">All Locations</option>
+        \${invMeta.locations.map(l => \`<option value="\${l.id}">\${escHtml(l.name)}</option>\`).join('')}
+        <option value="out">Checked Out</option>
+      </select>
+      <span style="font-size:13px;color:var(--text-muted)" id="inv-count"></span>
+    </div>
+    <div class="card" style="padding:0">
+      <div id="inv-table"><div class="spinner"></div></div>
+    </div>
+  \`);
+  loadInvTable();
+}
+
+function invPhotoUrl(it, thumb) {
+  return '/api/inventory/' + it.id + '/photo?' + (thumb ? 'size=thumb&' : '') + 'v=' + encodeURIComponent(it.photo_updated_at || '');
+}
+
+function invMemberLabel(callsign, name) {
+  if (!callsign && !name) return '<span class="text-muted">a former member</span>';
+  return (callsign ? \`<span class="callsign">\${escHtml(callsign)}</span> \` : '') + escHtml(name || '');
+}
+
+function invWhere(it) {
+  if (it.assigned_member_id) return '<span class="badge badge-yellow">Checked out</span> ' + invMemberLabel(it.member_callsign, it.member_name);
+  if (it.location_name) return escHtml(it.location_name);
+  return '<span class="text-muted">Unknown</span>';
+}
+
+async function loadInvTable() {
+  const el = document.getElementById('inv-table');
+  if (!el) return;
+  const q   = document.getElementById('inv-search')?.value || '';
+  const loc = document.getElementById('inv-filter-location')?.value || '';
+  let data;
+  try {
+    data = await api('GET', '/inventory?q=' + encodeURIComponent(q) + '&location=' + encodeURIComponent(loc));
+  } catch(e) {
+    el.innerHTML = '<p class="text-muted" style="padding:24px;text-align:center">Failed to load inventory.</p>';
+    toast(e.data?.error || e.message || 'Failed to load inventory', 'error');
+    return;
+  }
+  // Ignore stale responses if the search or filter changed while loading
+  if ((document.getElementById('inv-search')?.value || '') !== q) return;
+  if ((document.getElementById('inv-filter-location')?.value || '') !== loc) return;
+
+  const list = data.items || [];
+  const countEl = document.getElementById('inv-count');
+  if (countEl) countEl.textContent = list.length + ' item' + (list.length !== 1 ? 's' : '');
+
+  el.innerHTML = list.length === 0
+    ? '<p class="text-muted" style="padding:24px;text-align:center">' + (q || loc ? 'No items match.' : 'No items in the inventory yet.') + '</p>'
+    : \`<div class="tbl-wrap"><table>
+        <thead><tr><th></th><th>Item</th><th>Manufacturer</th><th>Model</th><th>Serial #</th><th>Location</th><th>Since</th><th></th></tr></thead>
+        <tbody>
+          \${list.map(it => \`<tr style="cursor:pointer" onclick="openInvItem(\${it.id})">
+            <td style="width:56px">\${it.photo_updated_at
+              ? \`<img src="\${invPhotoUrl(it, true)}" alt="" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block">\`
+              : '<div style="width:44px;height:44px;border-radius:6px;background:var(--surface2);border:1px solid var(--border)"></div>'}</td>
+            <td><strong>\${escHtml(it.name)}</strong></td>
+            <td>\${escHtml(it.manufacturer || '—')}</td>
+            <td>\${escHtml(it.model || '—')}</td>
+            <td style="font-family:var(--mono)">\${escHtml(it.serial_number || '—')}</td>
+            <td>\${invWhere(it)}</td>
+            <td style="color:var(--text-muted);white-space:nowrap">\${it.location_since ? escHtml(fmtDay(it.location_since)) : '—'}</td>
+            <td><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openInvItem(\${it.id})">View</button></td>
+          </tr>\`).join('')}
+        </tbody>
+      </table></div>\`;
+}
+
+function invEventText(e) {
+  const place = (locName, memberId, callsign, memberName) =>
+    memberId ? invMemberLabel(callsign, memberName) : locName ? escHtml(locName) : '';
+  const from = place(e.from_location, e.from_member_id, e.from_callsign, e.from_member);
+  const to   = place(e.to_location,   e.to_member_id,   e.to_callsign,   e.to_member);
+  switch (e.event_type) {
+    case 'added':       return 'Added to inventory' + (to ? (e.to_member_id ? ' — checked out to ' : ' — at ') + to : '');
+    case 'checked_out': return 'Checked out to ' + (to || invMemberLabel()) + (from ? ' from ' + from : '');
+    case 'moved':       return (e.from_member_id ? 'Returned' : 'Moved') + (from ? ' from ' + from : '') + ' to ' + (to || 'an unknown location');
+    default:            return 'Note';
+  }
+}
+
+async function openInvItem(id) {
+  let data;
+  try { data = await api('GET', '/inventory/' + id); }
+  catch(e) { toast(e.data?.error || 'Failed to load item', 'error'); return; }
+
+  const it = data.item;
+  const events = data.events || [];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const buttons = [
+    { label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Edit',  cls: 'btn-secondary', fn: 'editInvItem(' + id + ')' },
+    { label: it.assigned_member_id ? 'Return / Move' : 'Move / Check Out', cls: 'btn-primary', fn: 'openInvMove(' + id + ')' },
+  ];
+  if (state.user?.role === 'admin') buttons.unshift({ label: 'Delete', cls: 'btn-danger', fn: 'deleteInvItem(' + id + ')' });
+
+  showModal(\`
+    <div class="flex gap-16" style="flex-wrap:wrap;margin-bottom:20px">
+      \${it.photo_updated_at ? \`
+        <a href="\${invPhotoUrl(it)}" target="_blank" title="Open full size">
+          <img src="\${invPhotoUrl(it)}" alt="\${escHtml(it.name)}" style="width:220px;max-width:100%;max-height:220px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border);display:block">
+        </a>\` : ''}
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:20px;font-weight:700;margin-bottom:12px">\${escHtml(it.name)}</div>
+        <div class="detail-grid">
+          \${dfield('Manufacturer', escHtml(it.manufacturer))}
+          \${dfield('Model', escHtml(it.model))}
+          \${dfield('Serial Number', it.serial_number ? '<span style="font-family:var(--mono)">' + escHtml(it.serial_number) + '</span>' : '')}
+          \${dfield('Location', invWhere(it))}
+          \${dfield('There Since', it.location_since ? escHtml(fmtDay(it.location_since)) : '')}
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>History &amp; Notes</h4>
+      <div class="form-group" style="margin-bottom:8px">
+        <textarea id="inv-new-note" placeholder="Add a note about this item…"></textarea>
+      </div>
+      <div class="flex gap-8 align-center">
+        <input type="date" id="inv-new-note-date" value="\${today}" style="width:160px">
+        <button class="btn btn-sm btn-primary" onclick="addInvNote(\${id})">Add Note</button>
+      </div>
+      <div class="divider"></div>
+      \${events.length === 0 ? '<p class="text-muted">No history yet.</p>' : events.map(e => \`
+        <div class="note-item">
+          <div class="note-meta">\${escHtml(fmtDay(e.event_date))}\${e.user_email ? ' · ' + escHtml(e.user_email) : ''}</div>
+          \${e.event_type !== 'note' ? \`<div style="font-size:13px;font-weight:600">\${invEventText(e)}</div>\` : ''}
+          \${e.note ? \`<div class="note-text"\${e.event_type !== 'note' ? ' style="margin-top:4px;color:var(--text-muted)"' : ''}>\${escHtml(e.note)}</div>\` : ''}
+        </div>
+      \`).join('')}
+    </div>
+  \`, 'Inventory Item', buttons);
+}
+
+// Location / member picker shared by the add and move forms
+function invDestFields(current) {
+  return \`
+    <div class="form-group">
+      <label>\${current ? 'Move To' : 'Location'} *</label>
+      <select id="inv-dest" onchange="onInvDestChange()">
+        \${invMeta.locations.map(l => \`<option value="\${l.id}" \${current?.location_id === l.id ? 'disabled' : ''}>\${escHtml(l.name)}\${current?.location_id === l.id ? ' (current)' : ''}</option>\`).join('')}
+        <option value="member">Checked out to a member…</option>
+      </select>
+    </div>
+    <div class="form-group" id="inv-member-wrap" hidden>
+      <label>Member *</label>
+      <select id="inv-member">
+        <option value="">— Select Member —</option>
+        \${invMeta.members.map(m => \`<option value="\${m.id}">\${m.callsign ? escHtml(m.callsign) + ' — ' : ''}\${escHtml(m.first_name)} \${escHtml(m.last_name)}</option>\`).join('')}
+      </select>
+    </div>
+  \`;
+}
+
+function onInvDestChange() {
+  const wrap = document.getElementById('inv-member-wrap');
+  if (wrap) wrap.hidden = gv('inv-dest') !== 'member';
+}
+
+// Returns { location_id } or { member_id }, or null (after a toast) if incomplete
+function invDestValue() {
+  const dest = gv('inv-dest');
+  if (dest !== 'member') {
+    if (!dest) { toast('Choose a location', 'error'); return null; }
+    return { location_id: Number(dest) };
+  }
+  const memberId = gv('inv-member');
+  if (!memberId) { toast('Choose the member it is checked out to', 'error'); return null; }
+  return { member_id: Number(memberId) };
+}
+
+async function editInvItem(id) {
+  try {
+    const data = await api('GET', '/inventory/' + id);
+    openInvForm(data.item);
+  } catch(e) { toast(e.data?.error || 'Failed to load item', 'error'); }
+}
+
+async function openInvForm(it = null) {
+  if (!it && !invMeta.locations.length) {
+    try { await loadInvMeta(); } catch(e) { toast(e.data?.error || 'Failed to load locations', 'error'); return; }
+  }
+  const today = new Date().toISOString().slice(0, 10);
+
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Item Name *</label>
+        <input type="text" id="inv-name" value="\${escHtml(it?.name || '')}" placeholder="e.g. HF Transceiver, 2m Repeater, Antenna Analyzer">
+      </div>
+      \${fi('Manufacturer', 'inv-manufacturer', it?.manufacturer || '')}
+      \${fi('Model', 'inv-model', it?.model || '')}
+      \${fi('Serial Number', 'inv-serial', it?.serial_number || '')}
+      \${it ? '' : invDestFields() + fi('Date', 'inv-date', today, 'date')}
+      <div class="form-group full">
+        <label>Photo</label>
+        \${it?.photo_updated_at ? \`
+          <div class="flex gap-8 align-center" style="margin-bottom:8px">
+            <img src="\${invPhotoUrl(it, true)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px">
+            <button class="btn btn-sm btn-danger" onclick="removeInvPhoto(\${it.id})">Remove Photo</button>
+          </div>\` : ''}
+        <input type="file" id="inv-photo" accept="image/*">
+        \${it?.photo_updated_at ? '<div style="font-size:12px;color:var(--text-muted)">Choosing a file replaces the current photo.</div>' : ''}
+      </div>
+    </div>
+    \${it ? '' : fi('Notes', 'inv-note', '', 'textarea')}
+  \`, it ? 'Edit Item' : 'Add Item', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: it ? 'openInvItem(' + it.id + ')' : 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveInvItem(' + (it?.id || 'null') + ')' },
+  ]);
+}
+
+function invScaleImage(img, maxDim, quality) {
+  const scale  = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; // JPEG has no transparency
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+// Phone photos are several MB — shrink to a JPEG that fits in a D1 row, plus a list thumbnail
+async function invReadPhoto(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload  = () => resolve(i);
+      i.onerror = () => reject(new Error('That file could not be read as an image'));
+      i.src = url;
+    });
+    let image = invScaleImage(img, 1600, 0.82);
+    if (image.length > 1600000) image = invScaleImage(img, 1200, 0.7);
+    return { image, thumb: invScaleImage(img, 240, 0.7) };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function saveInvItem(id) {
+  const body = {
+    name:          gv('inv-name').trim(),
+    manufacturer:  gv('inv-manufacturer'),
+    model:         gv('inv-model'),
+    serial_number: gv('inv-serial'),
+  };
+  if (!body.name) { toast('Item name is required', 'error'); return; }
+  if (!id) {
+    const dest = invDestValue();
+    if (!dest) return;
+    Object.assign(body, dest, { event_date: gv('inv-date'), note: gv('inv-note') });
+  }
+  const file = document.getElementById('inv-photo')?.files?.[0];
+
+  let itemId;
+  try {
+    const data = await api(id ? 'PUT' : 'POST', '/inventory' + (id ? '/' + id : ''), body);
+    itemId = data.item.id;
+  } catch(e) { toast(e.data?.error || 'Failed to save item', 'error'); return; }
+
+  let photoError = null;
+  if (file) {
+    try { await api('PUT', '/inventory/' + itemId + '/photo', await invReadPhoto(file)); }
+    catch(e) { photoError = e.data?.error || e.message || 'upload failed'; }
+  }
+  if (photoError) toast('Item saved, but the photo was not: ' + photoError, 'error');
+  else toast('Item saved ✓');
+
+  openInvItem(itemId);
+  if (state.currentPage === 'inventory') loadInvTable();
+}
+
+async function removeInvPhoto(id) {
+  if (!confirm('Remove the photo from this item?')) return;
+  try {
+    const data = await api('DELETE', '/inventory/' + id + '/photo');
+    toast('Photo removed');
+    openInvForm(data.item);
+    if (state.currentPage === 'inventory') loadInvTable();
+  } catch(e) { toast(e.data?.error || 'Failed to remove photo', 'error'); }
+}
+
+async function openInvMove(id) {
+  let data;
+  try {
+    [data] = await Promise.all([api('GET', '/inventory/' + id), loadInvMeta()]);
+  } catch(e) { toast(e.data?.error || 'Failed to load item', 'error'); return; }
+  const it = data.item;
+  const today = new Date().toISOString().slice(0, 10);
+
+  showModal(\`
+    <div style="margin-bottom:16px">
+      <div style="font-size:16px;font-weight:600">\${escHtml(it.name)}</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">Currently: \${invWhere(it)}</div>
+    </div>
+    <div class="form-grid">
+      \${invDestFields(it)}
+      \${fi('Date Moved', 'inv-date', today, 'date')}
+    </div>
+    \${fi('Notes', 'inv-note', '', 'textarea')}
+  \`, 'Move Item', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'openInvItem(' + id + ')' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveInvMove(' + id + ')' },
+  ]);
+  // Start on the first destination that isn't where the item already is
+  const sel = document.getElementById('inv-dest');
+  const first = [...sel.options].find(o => !o.disabled);
+  if (first) sel.value = first.value;
+  onInvDestChange();
+}
+
+async function saveInvMove(id) {
+  const dest = invDestValue();
+  if (!dest) return;
+  if (!gv('inv-date')) { toast('Date is required', 'error'); return; }
+  try {
+    await api('POST', '/inventory/' + id + '/move', { ...dest, event_date: gv('inv-date'), note: gv('inv-note') });
+    toast(dest.member_id ? 'Item checked out ✓' : 'Item moved ✓');
+    openInvItem(id);
+    if (state.currentPage === 'inventory') loadInvTable();
+  } catch(e) { toast(e.data?.error || 'Failed to move item', 'error'); }
+}
+
+async function addInvNote(id) {
+  const note = gv('inv-new-note').trim();
+  if (!note) { toast('Note text is required', 'error'); return; }
+  try {
+    await api('POST', '/inventory/' + id + '/notes', { note, event_date: gv('inv-new-note-date') });
+    toast('Note added');
+    openInvItem(id);
+  } catch(e) { toast(e.data?.error || 'Failed to add note', 'error'); }
+}
+
+async function deleteInvItem(id) {
+  if (!confirm('Delete this item along with its photo and history? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/inventory/' + id);
+    toast('Item deleted');
+    closeModal();
+    if (state.currentPage === 'inventory') loadInvTable();
+  } catch(e) { toast(e.data?.error || 'Failed to delete item', 'error'); }
+}
+
+function addInvLocation() {
+  showModal(\`
+    \${fi('Location Name', 'inv-loc-name', '', 'text', 'e.g. Clubhouse, Trailer', true)}
+    <p class="text-muted" style="font-size:12px;margin-top:8px">Current locations: \${invMeta.locations.map(l => escHtml(l.name)).join(', ') || 'none'}</p>
+  \`, 'Add Location', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveInvLocation()' },
+  ]);
+}
+
+async function saveInvLocation() {
+  const name = gv('inv-loc-name').trim();
+  if (!name) { toast('Location name is required', 'error'); return; }
+  try {
+    await api('POST', '/inventory/locations', { name });
+    toast('Location added ✓');
+    closeModal();
+    if (state.currentPage === 'inventory') inventory();
+  } catch(e) { toast(e.data?.error || 'Failed to add location', 'error'); }
+}
+
 // ── MEMBERSHIP CUTOFF ─────────────────────────────────────────────────
 async function cutoff() {
   const yr = new Date().getFullYear();
@@ -2804,6 +3201,7 @@ function auditTarget(r) {
     return \`membership #\${r.target_id}\`;
   }
   if (r.target_type === 'user') return d?.email || \`user #\${r.target_id}\`;
+  if (r.target_type === 'inventory_item' || r.target_type === 'inventory_location') return d?.name || \`item #\${r.target_id}\`;
   if (r.target_type === 'note') return d?.member_id ? \`note for member #\${d.member_id}\` : \`note #\${r.target_id}\`;
   return '—';
 }
@@ -2831,6 +3229,8 @@ function auditDetail(r) {
     case 'meeting.create':
     case 'meeting.update':     return d.meeting_date ? d.meeting_date + ' — ' + d.hams + ' ham' + (d.hams !== 1 ? 's' : '') + ', ' + d.guests + ' non-ham' + (d.guests !== 1 ? 's' : '') : '';
     case 'meeting.delete':     return d.meeting_date || '';
+    case 'inventory.update':   return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
+    case 'inventory.move':     return [d.event_type === 'checked_out' ? 'checked out' : 'moved', d.event_date].filter(Boolean).join(' — ');
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
     case 'member.renewal_activated': return d?.activated_count != null ? d.activated_count + ' renewed member' + (d.activated_count !== 1 ? 's' : '') + ' activated for ' + d.year : '';
     case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';

@@ -153,6 +153,7 @@ Schema migrations in `schema/`:
 - `001_initial.sql` — base schema
 - `002_seed.sql` — sample data for local dev
 - `003_family_linking.sql` — adds `covered_by_member_id` to memberships
+- `017_inventory.sql` — equipment inventory (items, locations, photos, move/note history)
 
 ---
 
@@ -183,6 +184,19 @@ PUT    /api/notes/:id                 Edit note (admin only)
 DELETE /api/notes/:id                 Delete note (admin only)
 
 GET    /api/lookup/:callsign          HamDB callsign lookup
+
+GET    /api/inventory                 List/search equipment (board+)
+POST   /api/inventory                 Add item (board+)
+GET    /api/inventory/:id             Item detail + move/note history
+PUT    /api/inventory/:id             Update item details
+DELETE /api/inventory/:id             Delete item (admin only)
+POST   /api/inventory/:id/move        Move to a location or check out to a member
+POST   /api/inventory/:id/notes       Add a dated note
+GET    /api/inventory/:id/photo       Item photo (?size=thumb)
+PUT    /api/inventory/:id/photo       Upload photo
+DELETE /api/inventory/:id/photo       Remove photo
+GET    /api/inventory/meta            Locations + members for dropdowns
+POST   /api/inventory/locations       Add a storage location
 
 GET    /api/admin/users               List user accounts (admin)
 POST   /api/admin/users               Create user account (admin)
