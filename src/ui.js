@@ -2588,13 +2588,16 @@ async function openInvItem(id) {
           <img src="\${invPhotoUrl(it)}" alt="\${escHtml(it.name)}" style="width:220px;max-width:100%;max-height:220px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border);display:block">
         </a>\` : ''}
       <div style="flex:1;min-width:220px">
-        <div style="font-size:20px;font-weight:700;margin-bottom:12px">\${escHtml(it.name)}</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:12px">\${escHtml(it.name)}\${it.is_donated ? ' <span class="badge badge-green">Donated</span>' : ''}</div>
         <div class="detail-grid">
           \${dfield('Manufacturer', escHtml(it.manufacturer))}
           \${dfield('Model', escHtml(it.model))}
           \${dfield('Serial Number', it.serial_number ? '<span style="font-family:var(--mono)">' + escHtml(it.serial_number) + '</span>' : '')}
           \${dfield('Location', invWhere(it))}
           \${dfield('There Since', it.location_since ? escHtml(fmtDay(it.location_since)) : '')}
+          \${dfield(it.is_donated ? 'Date Donated' : 'Purchase Date', it.purchase_date ? escHtml(fmtDay(it.purchase_date)) : '')}
+          \${dfield(it.is_donated ? 'Estimated Value' : 'Price', it.purchase_price != null ? '$' + Number(it.purchase_price).toFixed(2) : '')}
+          \${dfield(it.is_donated ? 'Donated By' : 'Purchased From', escHtml(it.purchased_from))}
         </div>
       </div>
     </div>
@@ -2630,7 +2633,7 @@ function invDestFields(current) {
         <option value="member">Checked out to a member…</option>
       </select>
     </div>
-    <div class="form-group" id="inv-member-wrap" hidden>
+    <div class="form-group hidden" id="inv-member-wrap">
       <label>Member *</label>
       <select id="inv-member">
         <option value="">— Select Member —</option>
@@ -2642,7 +2645,7 @@ function invDestFields(current) {
 
 function onInvDestChange() {
   const wrap = document.getElementById('inv-member-wrap');
-  if (wrap) wrap.hidden = gv('inv-dest') !== 'member';
+  if (wrap) wrap.classList.toggle('hidden', gv('inv-dest') !== 'member');
 }
 
 // Returns { location_id } or { member_id }, or null (after a toast) if incomplete
@@ -2679,6 +2682,16 @@ async function openInvForm(it = null) {
       \${fi('Manufacturer', 'inv-manufacturer', it?.manufacturer || '')}
       \${fi('Model', 'inv-model', it?.model || '')}
       \${fi('Serial Number', 'inv-serial', it?.serial_number || '')}
+      <div class="form-group full" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="inv-donated" style="width:auto" onchange="onInvDonatedChange()" \${it?.is_donated ? 'checked' : ''}>
+        <label for="inv-donated" style="margin:0">This item was donated</label>
+      </div>
+      \${fi('Purchase Date', 'inv-purchase-date', it?.purchase_date || '', 'date')}
+      <div class="form-group">
+        <label>Price ($)</label>
+        <input type="number" id="inv-purchase-price" value="\${it?.purchase_price ?? ''}" step="0.01" min="0">
+      </div>
+      \${fi('Purchased From', 'inv-purchased-from', it?.purchased_from || '')}
       \${it ? '' : invDestFields() + fi('Date', 'inv-date', today, 'date')}
       <div class="form-group full">
         <label>Photo</label>
@@ -2696,6 +2709,19 @@ async function openInvForm(it = null) {
     { label: 'Cancel', cls: 'btn-secondary', fn: it ? 'openInvItem(' + it.id + ')' : 'closeModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveInvItem(' + (it?.id || 'null') + ')' },
   ]);
+  onInvDonatedChange();
+}
+
+// A donated item reuses the purchase fields for when it came in, what it's worth, and who gave it
+function onInvDonatedChange() {
+  const donated = !!document.getElementById('inv-donated')?.checked;
+  const relabel = (id, text) => {
+    const label = document.getElementById(id)?.closest('.form-group')?.querySelector('label');
+    if (label) label.textContent = text;
+  };
+  relabel('inv-purchase-date',  donated ? 'Date Donated' : 'Purchase Date');
+  relabel('inv-purchase-price', donated ? 'Estimated Value ($)' : 'Price ($)');
+  relabel('inv-purchased-from', donated ? 'Donated By' : 'Purchased From');
 }
 
 function invScaleImage(img, maxDim, quality) {
@@ -2734,6 +2760,10 @@ async function saveInvItem(id) {
     manufacturer:  gv('inv-manufacturer'),
     model:         gv('inv-model'),
     serial_number: gv('inv-serial'),
+    purchase_date:  gv('inv-purchase-date'),
+    purchase_price: gv('inv-purchase-price'),
+    purchased_from: gv('inv-purchased-from'),
+    is_donated:     !!document.getElementById('inv-donated')?.checked,
   };
   if (!body.name) { toast('Item name is required', 'error'); return; }
   if (!id) {

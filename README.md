@@ -154,6 +154,7 @@ Schema migrations in `schema/`:
 - `002_seed.sql` — sample data for local dev
 - `003_family_linking.sql` — adds `covered_by_member_id` to memberships
 - `017_inventory.sql` — equipment inventory (items, locations, photos, move/note history)
+- `018_inventory_purchase.sql` — inventory purchase date, price, source, and donated flag
 
 ---
 

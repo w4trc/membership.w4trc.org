@@ -14,6 +14,8 @@
  * DELETE /api/inventory/:id/photo    - remove photo
  *
  * Destination input (create + move): { location_id } or { member_id }, exactly one.
+ * Acquisition (create + update): purchase_date, purchase_price, purchased_from, is_donated.
+ * For a donated item those hold the date received, estimated value, and donor.
  */
 
 import { isBoardOrAbove, isAdmin } from '../lib/auth.js';
@@ -81,7 +83,18 @@ function itemFields(body) {
     manufacturer:  clean(body.manufacturer),
     model:         clean(body.model),
     serial_number: clean(body.serial_number),
+    purchase_date:  clean(body.purchase_date),
+    purchase_price: clean(body.purchase_price) === null ? null : Number(body.purchase_price),
+    purchased_from: clean(body.purchased_from),
+    is_donated:     body.is_donated ? 1 : 0,
   };
+}
+
+function validateItem(f) {
+  if (!f.name) return 'name is required';
+  if (f.purchase_date && !/^\d{4}-\d{2}-\d{2}$/.test(f.purchase_date)) return 'purchase_date must be YYYY-MM-DD';
+  if (f.purchase_price !== null && !(Number.isFinite(f.purchase_price) && f.purchase_price >= 0)) return 'purchase_price must be a number, zero or more';
+  return null;
 }
 
 function eventDate(body) {
@@ -211,16 +224,19 @@ async function createItem(request, env, user) {
   try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
 
   const f = itemFields(body);
-  if (!f.name) return jsonError('name is required', 400);
+  const err = validateItem(f);
+  if (err) return jsonError(err, 400);
   const when = eventDate(body);
   if (when.error) return jsonError(when.error, 400);
   const dest = await resolveDestination(env, body);
   if (dest.error) return jsonError(dest.error, 400);
 
   const result = await env.DB.prepare(`
-    INSERT INTO inventory_items (name, manufacturer, model, serial_number, location_id, assigned_member_id, location_since, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(f.name, f.manufacturer, f.model, f.serial_number, dest.location_id, dest.member_id, when.date, user.id).run();
+    INSERT INTO inventory_items (name, manufacturer, model, serial_number, purchase_date, purchase_price, purchased_from, is_donated,
+                                 location_id, assigned_member_id, location_since, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(f.name, f.manufacturer, f.model, f.serial_number, f.purchase_date, f.purchase_price, f.purchased_from, f.is_donated,
+          dest.location_id, dest.member_id, when.date, user.id).run();
   const id = result.meta.last_row_id;
 
   await env.DB.prepare(`
@@ -243,12 +259,14 @@ async function updateItem(request, env, user, id) {
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
   const f = itemFields(body);
-  if (!f.name) return jsonError('name is required', 400);
+  const err = validateItem(f);
+  if (err) return jsonError(err, 400);
 
   await env.DB.prepare(`
-    UPDATE inventory_items SET name = ?, manufacturer = ?, model = ?, serial_number = ?, updated_at = datetime('now')
+    UPDATE inventory_items SET name = ?, manufacturer = ?, model = ?, serial_number = ?,
+      purchase_date = ?, purchase_price = ?, purchased_from = ?, is_donated = ?, updated_at = datetime('now')
     WHERE id = ?
-  `).bind(f.name, f.manufacturer, f.model, f.serial_number, id).run();
+  `).bind(f.name, f.manufacturer, f.model, f.serial_number, f.purchase_date, f.purchase_price, f.purchased_from, f.is_donated, id).run();
 
   const changed = Object.keys(f).filter(k => (f[k] ?? '') !== (existing[k] ?? ''));
   await audit(env, {
