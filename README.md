@@ -200,6 +200,11 @@ Put local secrets in `.dev.vars`. `npm run import-members` loads members from a 
 Board users also get donations, meeting attendance, inventory, and local hams. Deleting
 a donation, meeting, inventory item, or note is admin only.
 
+Admin and board users whose login is linked to a member record land on the member portal
+like everyone else (so they can pay their own dues and donate online), with an **Admin
+Section** button in the sidebar; **My Membership** in the admin sidebar switches back.
+An officer login with no linked member record goes straight to the admin section.
+
 ---
 
 ## Database Schema

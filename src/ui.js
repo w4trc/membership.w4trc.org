@@ -541,6 +541,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
+        <a class="nav-item hidden" id="nav-my-membership" onclick="closeNav();showPortal()">
+          <span class="icon">🏠</span> My Membership
+        </a>
         <div class="nav-section" id="nav-section-admin">Admin</div>
         <a class="nav-item" onclick="nav('users');closeNav()" data-page="users">
           <span class="icon">🔐</span> User Accounts
@@ -585,7 +588,7 @@ textarea { resize: vertical; min-height: 80px; }
     </div>
   </div>
 
-  <!-- Member portal shell (shown for 'member' role) -->
+  <!-- Member portal shell (members, and officers with a linked member record) -->
   <div id="portal-shell" class="hidden">
     <div id="portal-backdrop" onclick="closePortalNav()"></div>
     <aside id="portal-sidebar">
@@ -609,6 +612,9 @@ textarea { resize: vertical; min-height: 80px; }
         </a>
         <a class="nav-item" href="/directory" target="_blank">
           <span class="icon">📡</span> Public Directory ↗
+        </a>
+        <a class="nav-item hidden" id="portal-admin-link" onclick="closePortalNav();showAdmin()">
+          <span class="icon">🔐</span> Admin Section
         </a>
       </nav>
       <div class="sidebar-footer">
@@ -733,6 +739,7 @@ document.getElementById('login-pass').addEventListener('keydown', e => { if (e.k
 async function doLogout() {
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
+  sessionStorage.removeItem('view');
   document.getElementById('main-shell').classList.add('hidden');
   document.getElementById('portal-shell').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -808,14 +815,27 @@ async function checkSession() {
 
 function showApp() {
   const u = state.user;
+  const officer = ['board','admin'].includes(u.role);
+  document.getElementById('portal-admin-link').classList.toggle('hidden', !officer);
+  document.getElementById('nav-my-membership').classList.toggle('hidden', !u.memberId);
 
-  // Member role gets the portal shell, not the admin shell
-  if (u.role === 'member') {
+  // Officers with a member record land on the same portal as members, with a
+  // button to the admin section. A reload keeps them in the admin section;
+  // coming back from Stripe checkout always returns to the portal.
+  const fromCheckout = new URLSearchParams(location.search).has('payment');
+  const lastView = sessionStorage.getItem('view');
+  if (!officer || (u.memberId && (fromCheckout || lastView !== 'admin'))) {
     showPortal();
     return;
   }
+  showAdmin();
+}
 
+function showAdmin() {
+  const u = state.user;
+  sessionStorage.setItem('view', 'admin');
   document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('portal-shell').classList.add('hidden');
   document.getElementById('main-shell').classList.remove('hidden');
   // Set user info in sidebar
   document.getElementById('user-email').textContent = u.email;
@@ -3643,7 +3663,10 @@ function closePortalNav() {
 }
 
 function showPortal() {
+  sessionStorage.setItem('view', 'portal');
+  state.currentPage = null; // admin keyboard shortcuts stay off in the portal
   document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('main-shell').classList.add('hidden');
   document.getElementById('portal-shell').classList.remove('hidden');
   document.getElementById('portal-avatar').textContent = state.user.email[0].toUpperCase();
 
