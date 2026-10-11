@@ -6,6 +6,35 @@ A Cloudflare Workers-based membership management system.
 
 ---
 
+## Features
+
+**For admins and board members**
+- **Members** — add/edit records with HamDB callsign auto-fill, notes, family linking, ARRL / Eastman / silent key / lifetime honorary flags, filters, CSV export, and a print-friendly directory (`/print`)
+- **Dues** — record payments per year (amount, method, date, check number); a family payment covers everyone linked under the payer
+- **Dashboard** — paid counts and revenue with year-over-year comparison, charts, "not yet renewed" list, and license expiry warnings
+- **Donations** — monetary and item donations from members, organizations, or anonymous donors
+- **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
+- **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
+- **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
+- **Callsign report** — active member callsigns as a copyable list
+- **Admin only** — user accounts, member password resets, audit log with filters, and the annual membership cutoff
+
+**For members**
+- **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
+- **Member portal** — dues status, profile (contact info, bio, interests, emergency contact), membership history
+- **Online dues** and **online donations** through Stripe Checkout
+- **Public directory** (`/directory`) — opt-in, no login required
+
+**Automated**
+- Weekly email roundup of new dues payments to the board
+- Daily cron: expired session cleanup, and January reactivation of members who renewed in advance
+- `/health` endpoint for uptime monitoring
+- Dark / light theme, mobile sidebar, keyboard shortcuts (`/` search, `N` add member, `Esc` close)
+
+Open work is tracked in [TODO.md](TODO.md).
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -16,6 +45,9 @@ A Cloudflare Workers-based membership management system.
 | Auth | Server-side sessions (PBKDF2 passwords) |
 | Frontend | Single-page app served from Worker |
 | Callsign API | HamDB (free, no key needed) |
+| Email | Resend |
+| Payments | Stripe Checkout |
+| Error tracking | Sentry |
 
 ---
 
@@ -24,8 +56,8 @@ A Cloudflare Workers-based membership management system.
 ### 1. Prerequisites
 
 ```bash
-npm install -g wrangler
-wrangler login
+npm install
+npx wrangler login
 ```
 
 ### 2. Create the D1 database
@@ -45,7 +77,7 @@ database_id = "PASTE_ID_HERE"   # ← paste here
 ### 3. Create the KV namespace (for rate limiting)
 
 ```bash
-wrangler kv:namespace create RATE_LIMIT_KV
+wrangler kv namespace create RATE_LIMIT_KV
 ```
 
 Paste the `id` into `wrangler.toml`:
@@ -58,15 +90,21 @@ id = "PASTE_ID_HERE"   # ← paste here
 ### 4. Set secrets
 
 ```bash
-# Generate a random 64-char string for JWT signing
-wrangler secret put JWT_SECRET
-
-# A one-time key you'll use to create your first admin account
-wrangler secret put ADMIN_SETUP_KEY
+wrangler secret put ADMIN_SETUP_KEY        # one-time key for creating the first admin account
+wrangler secret put RESEND_API_KEY         # outgoing email (verification codes, password resets, roundup)
+wrangler secret put STRIPE_SECRET_KEY      # sk_test_... or sk_live_...
+wrangler secret put STRIPE_WEBHOOK_SECRET  # whsec_... for the /api/stripe/webhook endpoint
+wrangler secret put CRON_SECRET            # bearer token for the weekly roundup endpoint
 ```
 
-For `ADMIN_SETUP_KEY`, pick something memorable — you'll need it in step 7.
-For `JWT_SECRET`, use a random string: `openssl rand -hex 32`
+For `ADMIN_SETUP_KEY`, pick something memorable — you'll need it in step 8.
+For `CRON_SECRET`, use a random string: `openssl rand -hex 32`
+
+Non-secret settings (`CLUB_NAME`, `CLUB_CALLSIGN`, `CLUB_DOMAIN`, `FROM_EMAIL`) live under `[vars]` in `wrangler.toml`.
+
+In Stripe, point a webhook at `https://members.w4trc.org/api/stripe/webhook` for the
+`checkout.session.completed` event. Test and live mode each have their own key and
+webhook secret; switching between them is only a matter of swapping the two secrets.
 
 ### 5. Create a `.env` file
 
@@ -83,10 +121,16 @@ CLOUDFLARE_API_TOKEN=your_api_token
 npm run db:init
 ```
 
-To apply the family membership migration (if upgrading):
+Then apply each migration in `schema/` in order, from `003` up (`002` and `009` are seed data):
+
 ```bash
-dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=schema/003_family_linking.sql
+npm run db:migrate -- schema/003_family_linking.sql
+npm run db:migrate -- schema/004_arrl_member.sql
+# ...through the latest file
 ```
+
+Migrations are not tracked — when upgrading, apply only the files added since your last deploy,
+and apply them **before** deploying the code that needs them.
 
 ### 7. Deploy the Worker
 
@@ -109,6 +153,18 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 - Add a CNAME record: `members` → your worker (wrangler handles this via the route in `wrangler.toml`)
 - Or let wrangler set it up automatically when you deploy with the route configured.
 
+### 10. Schedule the weekly roundup
+
+The daily cleanup cron runs inside the Worker (`[triggers]` in `wrangler.toml`). The weekly
+roundup email does not — an outside scheduler has to call it:
+
+```bash
+curl -X POST https://members.w4trc.org/api/admin/weekly-roundup \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+It sends nothing if no dues were recorded in the last 7 days.
+
 ---
 
 ## Local Development
@@ -116,6 +172,9 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 ```bash
 # Initialize local D1 schema
 npm run db:init:local
+
+# Apply migrations (repeat for each file, in order)
+npm run db:migrate:local -- schema/003_family_linking.sql
 
 # (Optional) seed with sample data
 npm run db:seed:local
@@ -125,6 +184,9 @@ npm run dev
 # → http://localhost:8787
 ```
 
+Put local secrets in `.dev.vars`. `npm run import-members` loads members from a CSV
+(`scripts/import-members.js`), and `bruno/` holds a Bruno API collection.
+
 ---
 
 ## Role System
@@ -133,29 +195,68 @@ npm run dev
 |---|---|---|---|---|---|---|
 | `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `board` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `member` | ✅ (future) | ❌ | Own profile | ❌ | ❌ | ❌ |
+| `member` | ✅ (portal) | ❌ | Own profile | ❌ | ❌ | ❌ |
+
+Board users also get donations, meeting attendance, inventory, and local hams. Deleting
+a donation, meeting, inventory item, or note is admin only.
 
 ---
 
 ## Database Schema
 
 ```
-users         → login accounts (email, password_hash, role)
-members       → member records (callsign, name, address, license info)
-memberships   → annual dues (year, status, amount_paid, payment_method,
-                             covered_by_member_id for family linking)
-notes         → admin/board log notes on members
-audit_log     → security trail (every significant action)
-sessions      → active login sessions
+users                  → login accounts (email, password_hash, role, member_id)
+members                → member records (callsign, name, address, license info, flags,
+                         show_in_directory)
+memberships            → annual dues (year, status, amount_paid, payment_method,
+                         stripe_session_id, covered_by_member_id for family linking)
+notes                  → admin/board log notes on members
+audit_log              → security trail (every significant action)
+sessions               → active login sessions
+portal_tokens          → email verification codes for portal registration
+password_reset_tokens  → password reset links
+prospects              → local hams who aren't members, with outreach status
+donations              → monetary and item donations
+meetings               → meetings (date, type)
+meeting_attendees      → who attended each meeting
+inventory_items        → club equipment
+inventory_locations    → where equipment is stored
+inventory_photos       → item photo + thumbnail
+inventory_events       → item move / check-out / note history
 ```
 
 Schema migrations in `schema/`:
 - `001_initial.sql` — base schema
 - `002_seed.sql` — sample data for local dev
 - `003_family_linking.sql` — adds `covered_by_member_id` to memberships
+- `004_arrl_member.sql` — ARRL member flag
+- `005_callsign_mismatch.sql` — flags members whose record disagrees with HamDB
+- `006_silent_key.sql` — silent key flag
+- `007_lifetime_honorary.sql` — lifetime honorary membership type
+- `008_prospects.sql` — local hams (prospects) table
+- `009_prospects_seed.sql` — prospect seed data
+- `010_prospects_hamdb.sql` — address and license fields on prospects
+- `011_portal.sql` — `show_in_directory` on members, `portal_tokens` table
+- `012_password_reset.sql` — password reset tokens
+- `013_stripe.sql` — `stripe` payment method and `stripe_session_id` on memberships
+- `014_eastman_member.sql` — Eastman member flag and `eastman` payment method
+- `015_donations.sql` — donations table
+- `016_attendance.sql` — meetings and attendees
 - `017_inventory.sql` — equipment inventory (items, locations, photos, move/note history)
 - `018_inventory_purchase.sql` — inventory purchase date, price, source, and donated flag
 - `019_donation_stripe.sql` — links online donations to their Stripe Checkout session
+
+---
+
+## Pages
+
+```
+/                 Admin / board app and member portal (single-page app)
+/register         Member self-registration (public)
+/directory        Public member directory (opt-in members only)
+/print            Print-friendly member directory (login required)
+/health           Uptime check — 200 if the Worker and D1 are reachable, 503 if not
+```
 
 ---
 
@@ -166,13 +267,17 @@ POST   /api/setup                     One-time admin setup
 POST   /api/auth/login                Login
 POST   /api/auth/logout               Logout
 GET    /api/auth/me                   Current session info
+POST   /api/auth/forgot-password      Email a password reset link
+POST   /api/auth/reset-password       Set a new password from a reset link
 
 GET    /api/members                   List/search members
 POST   /api/members                   Create member (board+)
+GET    /api/members/export            CSV roster export (board+)
 GET    /api/members/:id               Member detail + memberships + notes
 PUT    /api/members/:id               Update member (board+)
 DELETE /api/members/:id               Deactivate member (admin only)
 GET    /api/members/:id/history       Membership year history
+POST   /api/members/:id/resolve-callsign  Resolve a HamDB callsign mismatch (board+)
 
 GET    /api/memberships               List memberships by year
 POST   /api/memberships               Record payment (board+)
@@ -185,12 +290,41 @@ POST   /api/notes                     Add note (board+)
 PUT    /api/notes/:id                 Edit note (admin only)
 DELETE /api/notes/:id                 Delete note (admin only)
 
-GET    /api/lookup/:callsign          HamDB callsign lookup
+GET    /api/lookup/:callsign          HamDB callsign lookup (?force=1 to re-sync now)
+
+GET    /api/donations                 List donations (?member_id, ?year, ?kind)
+POST   /api/donations                 Record a donation (board+)
+GET    /api/donations/:id             Single donation
+PUT    /api/donations/:id             Update a donation (board+)
+DELETE /api/donations/:id             Delete a donation (admin only)
+GET    /api/donations/stats           Donation totals
+
+GET    /api/meetings                  List meetings with attendee counts (board+, ?year)
+POST   /api/meetings                  Record a meeting and its attendees
+POST   /api/meetings/resolve          Look up callsigns without saving
+GET    /api/meetings/:id              Meeting with attendee list
+PUT    /api/meetings/:id              Update a meeting; replaces its attendee list
+DELETE /api/meetings/:id              Delete a meeting (admin only)
+
+GET    /api/prospects                 List local hams with member cross-reference (board+)
+GET    /api/prospects/stats           Outreach summary counts
+PUT    /api/prospects/:id             Update outreach status / postcard / notes
+
+POST   /api/portal/lookup             Find a member record to claim (public)
+POST   /api/portal/request-token      Email a verification code (public)
+POST   /api/portal/claim              Claim an existing record with a code (public)
+POST   /api/portal/register           Register as a new member (public)
+GET    /api/portal/directory          Public directory data (public)
+GET    /api/portal/callsign-lookup/:callsign  HamDB lookup for the register form (public)
+GET    /api/portal/me                 The logged-in member's record and dues status
+PUT    /api/portal/me                 Update own profile
+GET    /api/portal/history            Own membership history
+GET    /api/portal/donations          The logged-in member's own donations
+PUT    /api/portal/directory-opt-in   Show/hide self in the public directory
 
 POST   /api/stripe/create-checkout           Start online dues payment (member)
 POST   /api/stripe/create-donation-checkout  Start an online donation (member)
 POST   /api/stripe/webhook                   Stripe webhook (records dues and donations)
-GET    /api/portal/donations                 The logged-in member's own donations
 
 GET    /api/inventory                 List/search equipment (board+)
 POST   /api/inventory                 Add item (board+)
@@ -205,30 +339,46 @@ DELETE /api/inventory/:id/photo       Remove photo
 GET    /api/inventory/meta            Locations + members for dropdowns
 POST   /api/inventory/locations       Add a storage location
 
+GET    /api/admin/stats               Dashboard stats (board+)
+GET    /api/admin/charts              Dashboard chart data (board+)
+GET    /api/admin/callsigns           Active member callsign report (board+)
+POST   /api/admin/password            Change own password (any role)
 GET    /api/admin/users               List user accounts (admin)
 POST   /api/admin/users               Create user account (admin)
 PUT    /api/admin/users/:id           Update user (admin)
 DELETE /api/admin/users/:id           Delete user (admin)
-POST   /api/admin/password            Change own password
+POST   /api/admin/users/:id/reset-password  Send a user a password reset link (admin)
 GET    /api/admin/audit               Audit log (admin)
 GET    /api/admin/sessions            Active sessions (admin)
-GET    /api/admin/stats               Dashboard stats
+DELETE /api/admin/sessions/:id        Revoke a session (admin)
+POST   /api/admin/cutoff              Deactivate members who haven't renewed (admin, dry run by default)
+POST   /api/admin/sync-hamdb          Bulk sync member license data from HamDB (admin)
+POST   /api/admin/sync-prospects      Bulk sync local hams from HamDB (admin)
+POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
 ```
 
 ---
 
 ## Membership Dues
 
-| Type | Annual Fee |
-|---|---|
-| Individual | $20.00 |
-| Family | $30.00 |
+| Type | Annual Fee | Paid Online |
+|---|---|---|
+| Individual | $20.00 | $21.00 |
+| Family | $30.00 | $31.00 |
 
-Payment methods tracked: `cash`, `check`, `paypal`, `other`
+Online payments include a $1 processing fee.
+
+Payment methods tracked: `cash`, `check`, `paypal`, `stripe`, `eastman`, `other`
+
+Renewal season opens October 1: from then through December 31, online payments apply to
+the following year. A lapsed member who renews in that window is reactivated on January 1.
 
 Family members can be linked via `covered_by_member_id` — the secondary member's
 dues record points to the primary (paying) member's ID. This shows on the member
-detail, dues list, and audit log.
+detail, dues list, and audit log. When the payer pays family dues online, everyone
+linked under them is marked covered for that year, and the link carries forward from
+each dependent's most recent dues record. Covered members see "Covered by a Family
+Membership" in the portal instead of a pay button.
 
 ---
 
@@ -244,25 +394,16 @@ re-synced in the background if data is older than 7 days.
 
 ---
 
-## Roadmap / Future Phases
-
-- **Phase 2**: Board member role — backend done, UI in progress
-- **Phase 3**: Member portal (members log in, view directory, edit their profile)
-- **Phase 4**: Public directory (opt-in, shows callsign, class, interests)
-- **Phase 5**: Online dues payment (PayPal, Stripe)
-- **Phase 6**: Email reminders for expiring memberships
-
----
-
 ## Security Notes
 
-- Passwords hashed with PBKDF2 (310,000 iterations, SHA-256)
-- Sessions stored server-side in D1 (not JWT — no token theft risk)
-- Rate limiting on login (10 attempts/15 min per IP)
+- Passwords hashed with PBKDF2 (100,000 iterations, SHA-256)
+- Sessions stored server-side in D1 (not JWT — no token theft risk); 30 days for admin and board, 8 hours for members
+- Rate limiting on login, password reset, and portal verification (10 attempts/15 min per IP); 120 requests/min on the rest of the auth and portal API
 - Full audit trail on all significant actions
 - Admin-only endpoints protected at route level
 - CORS locked to `members.w4trc.org` only
 - `HttpOnly`, `Secure`, `SameSite=Strict` session cookies
+- Stripe webhook requests are signature-verified
 
 ---
 

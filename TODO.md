@@ -1,66 +1,27 @@
 # W4TRC Membership System — TODO
 
----
-
-## From Our Conversations
-
-These are things you've mentioned, noted, or that came up while building the system.
-
-### In Progress
-- [x] **Board role UI** — nav hides Admin section (User Accounts, Audit Log, Cutoff) for non-admin users. Board users get a full dashboard, Members, and Dues pages. Password change accessible via sidebar key button for all roles.
-
-### Completed ✓
-- [x] Family membership linking (`covered_by_member_id` on memberships, migration 003)
-- [x] Payment details on membership creation (amount paid, method, date, check number inline with member add form)
-- [x] Audit log with target names, callsigns, and membership years for better readability
-- [x] Mobile sidebar with hamburger toggle and backdrop
-- [x] Force-refresh on callsign lookup (`?force=true` param to bypass 7-day cache)
-- [x] Background callsign sync after member record update
+What's already built is described in [README.md](README.md). This file only lists open work.
 
 ---
 
-## Ideas Worth Considering
+## Finish What's Started
 
-Things I'd suggest based on how the system is built and what a club like this typically needs.
+### Online dues payment (Stripe)
+- [ ] **Go live** — built and tested in sandbox (test mode). Swap both secrets for the live versions (`sk_live_...` + live webhook signing secret); no code changes needed. Until then, use the test key (`sk_test_...`) and test card `4242 4242 4242 4242`.
+- [ ] Run one family checkout end-to-end in Stripe test mode before relying on it.
+- [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
 
-### Near-Term (Low Effort, High Value)
-- [x] **CSV/roster export** — a "Download CSV" button on the Members page. Useful for the club secretary, ARRL reporting, or emergency contact lists. Could filter by year, status, or membership type.
-- [x] **License expiry warnings** — members whose FCC license expired in the last 90 days or expires within the next year get a dashboard widget. Color-coded by urgency.
-- [x] **Upcoming renewals widget on Dashboard** — "Not Yet Renewed" card shows active members from the prior year with no current-year record. Includes grace period messaging through March 31.
-- [x] **Keyboard shortcut to add member** — `/` focuses search, `N` opens the Add Member form (both members page only, no modal open). `Escape` closes any modal.
-
-### Medium-Term
-- [x] **Print-friendly member directory** — `/print` route renders a standalone page (callsign, name, class, phone, email, city/state, current-year dues tick). "Print Directory" button opens it in a new tab from the Members page.
-- [x] **Year-over-year stats** — extend the Dashboard to compare this year's paid count and revenue against last year. One extra query, big context for the board.
-
-### Longer-Term (Aligns with Roadmap)
-- [ ] **Google Groups sync** — when a member is marked as paid for a given year, automatically add them to the corresponding Google Group (e.g. `members-2026@w4trc.org`). Requires a Google Workspace service account with domain-wide delegation and the Admin SDK Directory API. On payment: `POST /admin/directory/v1/groups/{groupKey}/members`. Should also handle removals if a membership is voided. Could be triggered from the same server-side code that records the payment.
-- [x] **Phase 3 — Member portal + self-registration** — `/register` page (email token verification to claim existing records, or full self-registration for new members). Member portal shell (different nav/pages for `member` role): My Dashboard (dues status + payment instructions), My Profile (editable contact info, bio, interests, emergency contact, directory opt-in toggle), Membership History. Email sent via Resend — requires `RESEND_API_KEY` secret and `FROM_EMAIL` env var. Schema: `show_in_directory` on members, `portal_tokens` table (migration 011).
-- [x] **Phase 4 — Public directory** — `/directory` page showing all members with `show_in_directory = 1`. Opt-in toggle on My Profile in member portal. No login required.
-- [ ] **Phase 5 — Online dues payment** — Stripe Checkout integration. `POST /api/stripe/create-checkout` creates a hosted checkout session; `POST /api/stripe/webhook` handles `checkout.session.completed` and marks the member as paid. $21 individual / $31 family (includes $1 online processing fee). Schema: migration 013 adds `stripe_session_id` to memberships. Secrets: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
-  - **Currently in sandbox (test mode).** Use Stripe test key (`sk_test_...`) and test card `4242 4242 4242 4242` to verify end-to-end before going live.
-  - **To go live:** swap both secrets for live versions (`sk_live_...` + live webhook signing secret) — no code changes needed.
-  - [x] **Family membership online payment** — a family payment now also marks everyone linked under the payer as covered for that year (`src/lib/family.js`). The link carries forward from each dependent's most recent dues record (`covered_by_member_id`), so no yearly re-linking is needed. Portal: the payer sees who their membership covers; dependents see "Covered by a Family Membership" instead of a pay button, and checkout is blocked for them. Also fixed the admin dues form saving a covered member's $0.00 amount due as $20.
-    - [ ] Run one family checkout end-to-end in Stripe test mode before relying on it.
-    - [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
-- [ ] **Phase 6 — Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
-- [x] weekly email roundups sent to board members, new members, online dues paid, total members 
-
-### Operational / Nice-to-Have
-- [ ] **Session list UI** — the `GET /api/admin/sessions` and `DELETE /api/admin/sessions/:id` endpoints exist, but there's no page for them in the UI yet. Useful for auditing who's logged in and revoking a session.
-- [x] **ARRL membership tracking** — `is_arrl_member` field on members table (migration 004). Shows as ARRL badge in the members list, filterable by ARRL/non-ARRL, visible in member detail, editable in both add/edit forms, and counted in dashboard stats.
-- [x] **Dark/light mode toggle** — the UI is dark-only right now. Not urgent, but some operators may prefer light mode.
+### Online donations
+- [ ] Apply migration 019 to production **before** deploying, then run one donation in Stripe test mode.
+- [ ] Donation add-on at dues checkout ("add a donation to my renewal").
+- [ ] Include online donations in the weekly board roundup.
+- [ ] Public donate page for non-members (no login).
 
 ---
 
-## Ideas Added October 2026
+## Ideas
 
 ### Money
-- [x] **Online donations** — "Donate" page in the member portal: preset or custom amount ($1–$5,000) and an optional note, paid through Stripe Checkout (`POST /api/stripe/create-donation-checkout`). The webhook records it in `donations` as a member monetary donation with `payment_method = 'stripe'`; the page also lists the member's past donations. Schema: migration 019 adds `stripe_session_id` to donations.
-  - [ ] Apply migration 019 to production **before** deploying, then run one donation in Stripe test mode.
-  - [ ] Donation add-on at dues checkout ("add a donation to my renewal").
-  - [ ] Include online donations in the weekly board roundup.
-  - [ ] Public donate page for non-members (no login).
 - [ ] **Donation receipts** — year-end emailed receipt per donor (monetary and item donations), sent via Resend.
 - [ ] **Treasurer report** — one page / CSV combining dues, donations, and payment method by year.
 
@@ -70,16 +31,22 @@ Things I'd suggest based on how the system is built and what a club like this ty
 - [ ] **Asset value report** — total and per-location value from purchase price / estimated value, for insurance.
 
 ### Members & Outreach
+- [ ] **Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
+- [ ] **Google Groups sync** — when a member is marked as paid for a given year, automatically add them to the corresponding Google Group (e.g. `members-2026@w4trc.org`). Requires a Google Workspace service account with domain-wide delegation and the Admin SDK Directory API. On payment: `POST /admin/directory/v1/groups/{groupKey}/members`. Should also handle removals if a membership is voided. Could be triggered from the same server-side code that records the payment.
 - [ ] **Prospect outreach** — the local-ham list is already synced from HamDB. Add mailing labels and a "newly licensed in the area" section in the weekly roundup.
 - [ ] **Officer and president history** — who held which position in which year, shown on the directory. The club has a full presidents history and knows some of the other officers, so the data model must allow partial years (president only) and unknown positions.
 - [ ] **Membership card / certificate** — printable PDF from the portal once dues are paid.
+
+### Admin
+- [ ] **Session list UI** — the `GET /api/admin/sessions` and `DELETE /api/admin/sessions/:id` endpoints exist, but there's no page for them in the UI yet. Useful for auditing who's logged in and revoking a session.
 
 ### Under the Hood
 - [ ] **Tests and CI** — none today. Start with the Stripe webhook, dues-year logic, and family coverage.
 - [ ] **Migration tracking** — the schema files are applied by hand one at a time; switch to `wrangler d1 migrations` so applied migrations are recorded.
 - [ ] **Scheduled D1 backup to R2** — all member data lives in one database with no export of its own.
-- [ ] **README refresh** — still lists phases 3–5 as future and omits most of the schema and routes.
 
-### Not Doing
+---
+
+## Not Doing
 - Meeting self check-in (QR at the door)
 - VE session → member pipeline
