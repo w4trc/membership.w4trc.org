@@ -27,6 +27,7 @@ import { sendVerificationCode } from '../lib/email.js';
 import { fetchHamDB } from './lookup.js';
 import { normalizeName } from '../lib/normalize.js';
 import { duesYear } from '../lib/duesYear.js';
+import { familyPayer, familyDependents } from '../lib/family.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -341,7 +342,16 @@ async function portalMe(env, user) {
     `).bind(user.memberId, renewalYear).first();
   }
 
-  return jsonResponse({ ok: true, member, year, renewal_year: renewalYear, renewal });
+  // Family link for the year online payment applies to
+  const coveredBy = await familyPayer(env, user.memberId, renewalYear);
+  const coveredMembers = member.membership_type === 'family' && !coveredBy
+    ? await familyDependents(env, user.memberId, renewalYear)
+    : [];
+
+  return jsonResponse({
+    ok: true, member, year, renewal_year: renewalYear, renewal,
+    covered_by: coveredBy, covered_members: coveredMembers,
+  });
 }
 
 // ── PUT /api/portal/me ────────────────────────────────────────────────────────

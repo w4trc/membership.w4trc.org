@@ -1781,7 +1781,7 @@ async function saveDues(memberId) {
     year:                 parseInt(gv('d-year'), 10),
     status:               gv('d-status'),
     membership_type:      gv('d-membership_type'),
-    amount_due:           parseFloat(gv('d-amount_due')) || null,
+    amount_due:           gv('d-amount_due') !== '' ? parseFloat(gv('d-amount_due')) : null,
     amount_paid:          gv('d-amount_paid') ? parseFloat(gv('d-amount_paid')) : null,
     paid_date:            gv('d-paid_date') || null,
     payment_method:       gv('d-payment_method') || null,
@@ -1868,7 +1868,7 @@ async function updateDues(id, memberId) {
   const body = {
     status:               gv('ed-status'),
     membership_type:      gv('ed-membership_type'),
-    amount_due:           parseFloat(gv('ed-amount_due')) || null,
+    amount_due:           gv('ed-amount_due') !== '' ? parseFloat(gv('ed-amount_due')) : null,
     amount_paid:          gv('ed-amount_paid') ? parseFloat(gv('ed-amount_paid')) : null,
     paid_date:            gv('ed-paid_date') || null,
     payment_method:       gv('ed-payment_method') || null,
@@ -3696,7 +3696,16 @@ async function portalHome() {
     const payYear  = data.renewal_year || year;
     const renewing = payYear !== year;
     const renewalPaid = renewing && ['active', 'honorary', 'waived'].includes(data.renewal?.status);
-    const showPay = !isLifetime && (renewing ? !renewalPaid : !isPaid);
+    const needsPay = !isLifetime && (renewing ? !renewalPaid : !isPaid);
+
+    // Family memberships: dependents are paid for by the primary member
+    const memberLabel = x => \`\${x.callsign ? x.callsign + ' — ' : ''}\${x.first_name} \${x.last_name}\`;
+    const coveredBy = data.covered_by;
+    const coveredMembers = data.covered_members || [];
+    const showPay = needsPay && !coveredBy;
+    const familyNote = coveredMembers.length
+      ? \`<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Your family membership also covers: \${escHtml(coveredMembers.map(memberLabel).join(', '))}</p>\`
+      : '';
     const renewalSub = renewalPaid && data.renewal.paid_date
       ? \`Paid \${fmtDate(data.renewal.paid_date)}\${data.renewal.amount_paid != null ? \` — $\${Number(data.renewal.amount_paid).toFixed(2)}\` : ''}\`
       : '';
@@ -3727,7 +3736,7 @@ async function portalHome() {
       \${renewing && !isLifetime ? \`
       <div class="dues-card \${renewalPaid ? 'paid' : 'unknown'}">
         <div class="dues-status-label">\${payYear} Dues</div>
-        <div style="font-size:15px;font-weight:600">\${renewalPaid ? \`✓ Dues paid for \${payYear}\` : \`\${payYear} renewal is now open\`}</div>
+        <div style="font-size:15px;font-weight:600">\${renewalPaid ? \`✓ Dues paid for \${payYear}\` : coveredBy ? \`\${payYear} renewal — covered by a family membership\` : \`\${payYear} renewal is now open\`}</div>
         \${renewalSub ? \`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">\${escHtml(renewalSub)}</div>\` : ''}
       </div>
       \` : ''}
@@ -3738,6 +3747,7 @@ async function portalHome() {
         <button id="pay-online-btn" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="payOnline()">
           Pay Online — \${m.membership_type === 'family' ? '$31' : '$21'}
         </button>
+        \${familyNote}
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Includes a $1 online processing fee. Or pay in person ($\${m.membership_type === 'family' ? '30' : '20'}):</p>
         <ul style="margin:0 0 0 18px;line-height:2;font-size:13px">
           <li><strong>At a meeting:</strong> Cash or check payable to <em>Kingsport Amateur Radio Club</em></li>
@@ -3746,6 +3756,16 @@ async function portalHome() {
         <p style="margin-top:10px;color:var(--text-muted);font-size:12px">In-person payments are recorded by a club officer.</p>
       </div>
       \` : ''}
+
+      \${needsPay && coveredBy ? \`
+      <div class="payment-box">
+        <h4>Covered by a Family Membership</h4>
+        <p style="font-size:13px">Your \${payYear} dues are covered under the family membership of <strong>\${escHtml(memberLabel(coveredBy))}</strong>. There is nothing for you to pay — your dues will show as paid once that membership is renewed.</p>
+        <p style="margin-top:10px;color:var(--text-muted);font-size:12px">If this is no longer correct, contact a club officer.</p>
+      </div>
+      \` : ''}
+
+      \${!needsPay && familyNote ? familyNote : ''}
     \`);
   } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
 }

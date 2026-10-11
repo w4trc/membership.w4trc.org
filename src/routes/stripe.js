@@ -9,6 +9,7 @@ import { requireAuth } from '../lib/auth.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { duesYear } from '../lib/duesYear.js';
+import { familyPayer, coverFamilyDependents } from '../lib/family.js';
 
 export async function handleStripe(request, env, path, user = null) {
   const sub = path.replace('/api/stripe', '').replace(/^\//, '');
@@ -53,6 +54,13 @@ async function createCheckout(request, env, user) {
   if (!member) return jsonError('Member not found', 404);
   if (member.membership_type === 'lifetime_honorary') {
     return jsonError('Lifetime honorary members do not pay dues', 409);
+  }
+
+  // Dependents on someone else's family membership are paid for by that member
+  const payer = await familyPayer(env, member.id, year);
+  if (payer) {
+    const who = [payer.callsign, `${payer.first_name} ${payer.last_name}`].filter(Boolean).join(' — ');
+    return jsonError(`Your ${year} dues are covered under the family membership of ${who}. Contact a club officer if that has changed.`, 409);
   }
 
   // $21 individual, $31 family — includes $1 online processing fee
@@ -172,12 +180,19 @@ async function handleCheckoutCompleted(session, env) {
     `).bind(memberId, year, membershipType, amountDue, amountPaid, paidDate, sessionId, sessionId).run();
   }
 
+  // A family payment also covers the members linked under the payer
+  const coveredIds = membershipType === 'family'
+    ? await coverFamilyDependents(env, memberId, year, paidDate)
+    : [];
+
   // A lapsed member paying for the current year is active again now. Advance
   // renewals (Oct–Dec) take effect Jan 1 via activateRenewedMembers().
   if (year <= new Date().getUTCFullYear()) {
-    await env.DB.prepare(
-      `UPDATE members SET is_active = 1, updated_at = datetime('now') WHERE id = ? AND is_active = 0 AND is_silent_key = 0`
-    ).bind(memberId).run();
+    for (const id of [memberId, ...coveredIds]) {
+      await env.DB.prepare(
+        `UPDATE members SET is_active = 1, updated_at = datetime('now') WHERE id = ? AND is_active = 0 AND is_silent_key = 0`
+      ).bind(id).run();
+    }
   }
 
   await audit(env, {
@@ -185,7 +200,7 @@ async function handleCheckoutCompleted(session, env) {
     action: 'membership.stripe_paid',
     targetType: 'member',
     targetId: memberId,
-    detail: { year, amount_paid: amountPaid, stripe_session_id: sessionId },
+    detail: { year, amount_paid: amountPaid, stripe_session_id: sessionId, covered_member_ids: coveredIds },
   });
 }
 

@@ -30,7 +30,7 @@ export async function activateRenewedMembers(env, now = new Date()) {
     SELECT ms.member_id FROM memberships ms
     WHERE ms.year = ?
       AND ms.status = 'active'
-      AND ms.amount_paid IS NOT NULL
+      AND (ms.amount_paid IS NOT NULL OR ms.covered_by_member_id IS NOT NULL)
       AND ms.paid_date < ?
   `;
   const yearStart = `${year}-01-01`;
