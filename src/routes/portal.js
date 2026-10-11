@@ -82,6 +82,7 @@ export async function handlePortal(request, env, path) {
   if (method === 'GET' && sub === 'me')                   return portalMe(env, user);
   if (method === 'PUT' && sub === 'me')                   return portalUpdateMe(request, env, user);
   if (method === 'GET' && sub === 'history')              return portalHistory(env, user);
+  if (method === 'GET' && sub === 'donations')            return portalDonations(env, user);
   if (method === 'PUT' && sub === 'directory-opt-in')     return portalDirectoryOptIn(request, env, user);
 
   return jsonError('Not found', 404);
@@ -438,7 +439,23 @@ async function portalHistory(env, user) {
   return jsonResponse({ ok: true, history: results });
 }
 
-// ── PUT /api/portal/directory-opt-in ─────────────────────────────────────────
+// ── GET /api/portal/donations ────────────────────────────────────────────────
+
+async function portalDonations(env, user) {
+  if (!user.memberId) return jsonError('No member record linked to this account', 404);
+
+  // Officer notes on a donation are internal, so they are not returned here
+  const { results } = await env.DB.prepare(`
+    SELECT id, donation_kind, amount, item_description, estimated_value, donation_date, payment_method
+    FROM donations
+    WHERE member_id = ? AND donor_type = 'member'
+    ORDER BY donation_date DESC, id DESC
+  `).bind(user.memberId).all();
+
+  return jsonResponse({ ok: true, donations: results });
+}
+
+// ── PUT /api/portal/directory-opt-in─────────────────────────────────────────
 
 async function portalDirectoryOptIn(request, env, user) {
   if (!user.memberId) return jsonError('No member record linked to this account', 404);

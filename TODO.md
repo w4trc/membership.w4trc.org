@@ -56,7 +56,11 @@ Things I'd suggest based on how the system is built and what a club like this ty
 ## Ideas Added October 2026
 
 ### Money
-- [ ] **Online donations** — donations are admin-entered only. Add a Stripe "Donate" button in the member portal (and optionally an add-on amount at dues checkout), reusing the existing checkout + webhook code. The `donations` table already accepts `payment_method = 'stripe'`.
+- [x] **Online donations** — "Donate" page in the member portal: preset or custom amount ($1–$5,000) and an optional note, paid through Stripe Checkout (`POST /api/stripe/create-donation-checkout`). The webhook records it in `donations` as a member monetary donation with `payment_method = 'stripe'`; the page also lists the member's past donations. Schema: migration 019 adds `stripe_session_id` to donations.
+  - [ ] Apply migration 019 to production **before** deploying, then run one donation in Stripe test mode.
+  - [ ] Donation add-on at dues checkout ("add a donation to my renewal").
+  - [ ] Include online donations in the weekly board roundup.
+  - [ ] Public donate page for non-members (no login).
 - [ ] **Donation receipts** — year-end emailed receipt per donor (monetary and item donations), sent via Resend.
 - [ ] **Treasurer report** — one page / CSV combining dues, donations, and payment method by year.
 

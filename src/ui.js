@@ -604,6 +604,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="pNav('portal-history');closePortalNav()" data-ppage="portal-history">
           <span class="icon">📋</span> Membership History
         </a>
+        <a class="nav-item" onclick="pNav('portal-donate');closePortalNav()" data-ppage="portal-donate">
+          <span class="icon">🎁</span> Donate
+        </a>
         <a class="nav-item" href="/directory" target="_blank">
           <span class="icon">📡</span> Public Directory ↗
         </a>
@@ -3648,8 +3651,10 @@ function showPortal() {
   if (payStatus) history.replaceState({}, '', '/');
   if (payStatus === 'success') toast('Payment received! Your dues record has been updated.', 'success');
   else if (payStatus === 'cancelled') toast('Payment cancelled — you can pay any time.', 'warn');
+  else if (payStatus === 'donation-success') toast('Thank you! Your donation has been received.', 'success');
+  else if (payStatus === 'donation-cancelled') toast('Donation cancelled — nothing was charged.', 'warn');
 
-  pNav('portal-home');
+  pNav(payStatus?.startsWith('donation-') ? 'portal-donate' : 'portal-home');
 }
 
 function setPortalPage(html) { document.getElementById('portal-page').innerHTML = html; }
@@ -3662,11 +3667,13 @@ function pNav(page) {
     'portal-home':    'My Dashboard',
     'portal-profile': 'My Profile',
     'portal-history': 'Membership History',
+    'portal-donate':  'Donate',
   };
   document.getElementById('portal-page-title').textContent = titles[page] || page;
   if (page === 'portal-home')    portalHome();
   if (page === 'portal-profile') portalProfile();
   if (page === 'portal-history') portalHistory();
+  if (page === 'portal-donate')  portalDonate();
 }
 
 // ── Portal: My Dashboard ──────────────────────────────────────────────
@@ -3920,6 +3927,65 @@ async function portalHistory() {
       </div>
     \`);
   } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+// ── Portal: Donate ────────────────────────────────────────────────────
+async function portalDonate() {
+  setPortalPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/portal/donations');
+    const rows = data.donations.map(d => \`
+      <tr>
+        <td>\${d.donation_date ? fmtDate(d.donation_date) : '—'}</td>
+        <td>\${d.donation_kind === 'monetary'
+          ? '$' + Number(d.amount || 0).toFixed(2)
+          : escHtml(d.item_description || 'Item') + (d.estimated_value != null ? \` <span style="color:var(--text-muted)">(est. $\${Number(d.estimated_value).toFixed(2)})</span>\` : '')}</td>
+        <td style="text-transform:capitalize">\${escHtml(d.donation_kind === 'monetary' ? (d.payment_method || '—') : 'item')}</td>
+      </tr>
+    \`).join('');
+
+    setPortalPage(\`
+      <div class="card">
+        <div class="card-title">Donate to the Club</div>
+        <p style="font-size:13px;margin-bottom:14px">Donations are separate from dues and go to the Kingsport Amateur Radio Club. Pick an amount or enter your own.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          \${[10, 25, 50, 100].map(n => \`<button class="btn btn-secondary btn-sm" onclick="setDonateAmt(\${n})">$\${n}</button>\`).join('')}
+        </div>
+        <div class="form-grid">
+          <div class="form-group"><label>Amount (USD) *</label><input type="number" id="don-amount" min="1" max="5000" step="1" placeholder="25"></div>
+          <div class="form-group"><label>Note (optional)</label><input type="text" id="don-note" maxlength="200" placeholder="e.g. in memory of, or what it is for"></div>
+        </div>
+        <button id="donate-btn" class="btn btn-primary" style="width:100%;margin-top:6px" onclick="donateOnline()">Donate Online</button>
+        <p style="margin-top:10px;color:var(--text-muted);font-size:12px">You will be taken to Stripe's secure checkout to enter your card. To give by cash or check, see a club officer.</p>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div class="card-title" style="padding:16px 16px 0">My Donations</div>
+        \${rows
+          ? \`<table><thead><tr><th>Date</th><th>Donation</th><th>Method</th></tr></thead><tbody>\${rows}</tbody></table>\`
+          : '<p class="text-muted" style="padding:16px">No donations recorded yet.</p>'}
+      </div>
+    \`);
+  } catch(e) { setPortalPage(\`<p class="text-muted">\${escHtml(e.data?.error || e.message)}</p>\`); }
+}
+
+function setDonateAmt(n) {
+  const el = document.getElementById('don-amount');
+  if (el) el.value = n;
+}
+
+async function donateOnline() {
+  const amount = parseFloat(gv('don-amount'));
+  if (!(amount >= 1 && amount <= 5000)) { toast('Enter an amount between $1 and $5,000.', 'error'); return; }
+  const btn = document.getElementById('donate-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to checkout…'; }
+  try {
+    const data = await api('POST', '/stripe/create-donation-checkout', { amount, note: gv('don-note') });
+    window.location.href = data.url;
+  } catch(e) {
+    toast(e.data?.error || 'Failed to start checkout. Please try again.', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Donate Online'; }
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────

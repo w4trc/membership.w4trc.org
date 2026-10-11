@@ -155,6 +155,7 @@ Schema migrations in `schema/`:
 - `003_family_linking.sql` — adds `covered_by_member_id` to memberships
 - `017_inventory.sql` — equipment inventory (items, locations, photos, move/note history)
 - `018_inventory_purchase.sql` — inventory purchase date, price, source, and donated flag
+- `019_donation_stripe.sql` — links online donations to their Stripe Checkout session
 
 ---
 
@@ -185,6 +186,11 @@ PUT    /api/notes/:id                 Edit note (admin only)
 DELETE /api/notes/:id                 Delete note (admin only)
 
 GET    /api/lookup/:callsign          HamDB callsign lookup
+
+POST   /api/stripe/create-checkout           Start online dues payment (member)
+POST   /api/stripe/create-donation-checkout  Start an online donation (member)
+POST   /api/stripe/webhook                   Stripe webhook (records dues and donations)
+GET    /api/portal/donations                 The logged-in member's own donations
 
 GET    /api/inventory                 List/search equipment (board+)
 POST   /api/inventory                 Add item (board+)
