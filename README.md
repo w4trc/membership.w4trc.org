@@ -292,6 +292,9 @@ member. From October 1 it also fills next year's group as people renew.
 - Groups are **not** created automatically. Create next year's group before October 1; until it
   exists the sync reports an error for that year and changes nothing.
 - A run makes at most 35 changes, so the first sync of a full group takes a few runs.
+- Addresses in `GOOGLE_GROUP_ALWAYS_ADD` in `wrangler.toml` (comma-separated) are added to
+  every synced group whether or not they belong to a member. Taking one out of the setting
+  removes it from the groups on the next run.
 - `GOOGLE_SYNC_START_YEAR` in `wrangler.toml` is the first year the sync manages. Groups for
   earlier years are never contacted. It is set to `2027`, so `2026members@` is left alone;
   lower it (and deploy) to bring an earlier year in.

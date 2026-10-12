@@ -35,6 +35,7 @@ CLUB_DOMAIN = "members.w4trc.org"
 FROM_EMAIL = "membership@w4trc.org"
 GOOGLE_GROUP_FORMAT = "{year}members@w4trc.org"  # each year's Google Group
 GOOGLE_SYNC_START_YEAR = "2027"  # the sync ignores groups for earlier years
+GOOGLE_GROUP_ALWAYS_ADD = "automations@n4jhc.com"  # also in every synced group (comma-separated)
 
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # JWT_SECRET              - random 64-char string for signing sessions

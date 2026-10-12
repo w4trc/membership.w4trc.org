@@ -41,6 +41,11 @@ export function syncYears(env, now = new Date()) {
   return (dues === year ? [year] : [year, dues]).filter(y => y >= start);
 }
 
+/** Addresses in GOOGLE_GROUP_ALWAYS_ADD: placed in every synced group, member or not. */
+function alwaysAdd(env) {
+  return (env.GOOGLE_GROUP_ALWAYS_ADD || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+}
+
 // Current members for a year: paid, covered by a paid family membership,
 // paid for by Eastman, honorary or waived for the year, or lifetime honorary.
 // Binds: year.
@@ -82,12 +87,16 @@ export async function planSync(env, now = new Date()) {
     for (const m of current) {
       if (m.email && !desired.has(m.email)) desired.set(m.email, m.id);
     }
+    const memberEmails = new Set(desired.keys());
+    for (const email of alwaysAdd(env)) {
+      if (!desired.has(email)) desired.set(email, null);
+    }
     const trackedEmails = new Set(tracked.map(t => t.email));
 
     return {
       year,
       group: groupAddress(env, year),
-      in_group: tracked.filter(t => desired.has(t.email)).length,
+      in_group: tracked.filter(t => memberEmails.has(t.email)).length,
       no_email: current.filter(m => !m.email).length,
       add: [...desired].filter(([email]) => !trackedEmails.has(email)).map(([email, member_id]) => ({ email, member_id })),
       remove: tracked.filter(t => !desired.has(t.email)),

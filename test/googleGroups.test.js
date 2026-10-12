@@ -145,6 +145,50 @@ describe('start year', () => {
   });
 });
 
+describe('always-added addresses', () => {
+  const withExtras = (value) => ({ ...testEnv, GOOGLE_GROUP_ALWAYS_ADD: value });
+
+  it('adds them to every synced group, member or not', async () => {
+    await paidMember('this@example.com', 2026);
+
+    const result = await sync(NOVEMBER, withExtras('Automations@n4jhc.com, second@example.com'));
+
+    expect(inGroup(G2026)).toEqual(['automations@n4jhc.com', 'second@example.com', 'this@example.com']);
+    expect(inGroup(G2027)).toEqual(['automations@n4jhc.com', 'second@example.com']);
+    expect(result.years.every(y => y.errors.length === 0)).toBe(true);
+  });
+
+  it('adds them once and does not count them as members', async () => {
+    const e = withExtras('automations@n4jhc.com');
+    await paidMember('paid@example.com');
+    await sync(MARCH, e);
+    calls = [];
+
+    await sync(MARCH, e);
+
+    expect(calls).toEqual([]);
+    expect((await planSync(e, MARCH))[0]).toMatchObject({ in_group: 1, add: [], remove: [] });
+  });
+
+  it('does not duplicate an address that is also a member', async () => {
+    await paidMember('automations@n4jhc.com');
+
+    await sync(MARCH, withExtras('automations@n4jhc.com'));
+
+    expect(calls).toEqual([`POST ${G2026} automations@n4jhc.com`]);
+  });
+
+  it('removes them once they are taken out of the setting', async () => {
+    await sync(MARCH, withExtras('automations@n4jhc.com'));
+    expect(inGroup(G2026)).toEqual(['automations@n4jhc.com']);
+
+    const result = await sync(MARCH, testEnv);
+
+    expect(result.years[0].removed).toEqual(['automations@n4jhc.com']);
+    expect(inGroup(G2026)).toEqual([]);
+  });
+});
+
 describe('who is synced', () => {
   it('adds every kind of current member', async () => {
     await paidMember('paid@example.com');
