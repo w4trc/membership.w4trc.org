@@ -42,6 +42,7 @@ Open work is tracked in [TODO.md](TODO.md).
 | Runtime | Cloudflare Workers |
 | Database | Cloudflare D1 (SQLite) |
 | Rate Limiting | Cloudflare KV |
+| Backups | Cloudflare R2 (daily SQL dump) |
 | Auth | Server-side sessions (PBKDF2 passwords) |
 | Frontend | Single-page app served from Worker |
 | Callsign API | HamDB (free, no key needed) |
@@ -85,6 +86,13 @@ Paste the `id` into `wrangler.toml`:
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
 id = "PASTE_ID_HERE"   # ← paste here
+```
+
+Then create the R2 bucket that holds the daily database backup. The name must match
+`bucket_name` under `[[r2_buckets]]` in `wrangler.toml`:
+
+```bash
+wrangler r2 bucket create karc-membership-backups
 ```
 
 ### 4. Set secrets
@@ -159,7 +167,7 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 
 ### 10. Schedule the weekly roundup
 
-The daily cleanup cron runs inside the Worker (`[triggers]` in `wrangler.toml`). The weekly
+The daily cleanup and backup cron runs inside the Worker (`[triggers]` in `wrangler.toml`). The weekly
 roundup email does not — an outside scheduler has to call it:
 
 ```bash
@@ -198,7 +206,7 @@ npm run test:watch  # re-run on change
 
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
-the dues-year rules, and family coverage. Nothing leaves the machine: Stripe is mocked and no
+the dues-year rules, family coverage, and the database backup. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -212,6 +220,50 @@ npm run db:migrate                        # apply to production, then deploy
 ```
 
 Never edit a migration that has been applied to production — add a new one instead.
+
+---
+
+## Backups
+
+The daily cron (8:00 UTC) writes the whole database to the `karc-membership-backups` R2 bucket
+as a gzipped SQL file:
+
+```
+daily/karc-membership-YYYY-MM-DD.sql.gz    kept for 30 days
+monthly/karc-membership-YYYY-MM.sql.gz     first backup of each month, kept for 12 months
+```
+
+Login sessions, password reset tokens, and portal verification codes are left out, so a copy
+of a backup cannot be used to sign in as someone. Everything else is included, photos too.
+The bucket is private; treat the files like the database itself.
+
+An admin can take a backup at any time with `POST /api/admin/backup`. Failures are logged as
+`backupDatabase failed` in the Worker logs (`wrangler tail`).
+
+### Restoring
+
+A backup loads into a **new, empty** database — it will not load over the existing one.
+
+```bash
+# 1. Download and unzip a backup
+wrangler r2 object get karc-membership-backups/daily/karc-membership-2026-10-12.sql.gz   --remote --file backup.sql.gz
+gunzip backup.sql.gz
+
+# 2. Create a new database, and put its name and id in wrangler.toml
+wrangler d1 create karc-membership-restored
+
+# 3. Load the backup into it
+wrangler d1 execute karc-membership-restored --remote --file backup.sql
+
+# 4. Deploy, so the Worker uses the new database
+npm run deploy
+```
+
+Everyone has to log in again afterwards. The restored database keeps its migration history,
+so `npm run db:migrate` carries on from where the backup left off.
+
+To undo a recent mistake, D1 Time Travel (`wrangler d1 time-travel restore`) is quicker and
+rewinds the live database in place. The R2 backups are for when the database itself is lost.
 
 ---
 
@@ -383,6 +435,7 @@ DELETE /api/admin/sessions/:id        Revoke a session (admin)
 POST   /api/admin/cutoff              Deactivate members who haven't renewed (admin, dry run by default)
 POST   /api/admin/sync-hamdb          Bulk sync member license data from HamDB (admin)
 POST   /api/admin/sync-prospects      Bulk sync local hams from HamDB (admin)
+POST   /api/admin/backup              Back up the database to R2 now (admin)
 POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
 ```
 

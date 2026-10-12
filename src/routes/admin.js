@@ -10,6 +10,7 @@
  * POST   /api/admin/password       - change own password
  * POST   /api/admin/users/:id/reset-password - send a member a password reset link
  * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
+ * POST   /api/admin/backup        - back up the database to R2 now
  */
 
 import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
@@ -19,6 +20,7 @@ import { audit }                      from '../lib/audit.js';
 import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
+import { backupDatabase }             from '../lib/backup.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -93,7 +95,32 @@ export async function handleAdmin(request, env, path, user) {
     return syncProspectsHamDB(request, env, user);
   }
 
+  // ── Database backup ──────────────────────────────────────────────────────
+  if (resource === 'backup' && method === 'POST') {
+    return runBackup(request, env, user);
+  }
+
   return jsonError('Not found', 404);
+}
+
+// POST /api/admin/backup — the same backup the daily cron takes
+async function runBackup(request, env, user) {
+  let backup;
+  try {
+    backup = await backupDatabase(env);
+  } catch (err) {
+    console.error('backupDatabase failed:', err);
+    return jsonError('Backup failed', 500);
+  }
+
+  await audit(env, {
+    userId: user.id,
+    action: 'backup.run',
+    detail: { key: backup.key, size: backup.size, rows: backup.rows },
+    request,
+  });
+
+  return jsonResponse(backup);
 }
 
 async function listUsers(env) {

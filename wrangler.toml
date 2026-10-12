@@ -21,6 +21,11 @@ migrations_dir = "schema"  # applied and tracked by `wrangler d1 migrations` (np
 binding = "RATE_LIMIT_KV"
 id = "10a64914bfe34022a48b986a7b4b07a7"
 
+# R2 bucket for the daily database backup (see src/lib/backup.js)
+[[r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "karc-membership-backups"
+
 # Environment variables (non-secret)
 [vars]
 ENVIRONMENT = "production"
@@ -41,6 +46,6 @@ type = "Data"
 globs = ["**/*.png"]
 fallthrough = true
 
-# Daily cleanup of expired sessions (see scheduled() handler in src/index.js)
+# Daily session cleanup and database backup (see scheduled() handler in src/index.js)
 [triggers]
 crons = ["0 8 * * *"]  # 8:00 UTC daily (3-4am Eastern)

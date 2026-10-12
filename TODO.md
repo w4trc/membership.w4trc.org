@@ -42,7 +42,7 @@ What's already built is described in [README.md](README.md). This file only list
 
 ### Under the Hood
 - [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and sessions, the annual cutoff, and role checks on the admin routes.
-- [ ] **Scheduled D1 backup to R2** — all member data lives in one database with no export of its own.
+- [ ] **Backup check** — the daily R2 backup only reports failures to the logs. Add the age of the latest backup to `/health` so the uptime monitor notices if it stops.
 
 ---
 

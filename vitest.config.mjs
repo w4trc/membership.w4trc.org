@@ -12,6 +12,8 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: './wrangler.toml' },
         miniflare: {
+          // RESTORE_DB is an empty database the backup test restores into
+          d1Databases: ['DB', 'RESTORE_DB'],
           bindings: {
             TEST_MIGRATIONS: migrations,
             STRIPE_SECRET_KEY: 'sk_test_vitest',
