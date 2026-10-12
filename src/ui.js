@@ -551,6 +551,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('audit');closeNav()" data-page="audit">
           <span class="icon">📋</span> Audit Log
         </a>
+        <a class="nav-item" onclick="nav('sessions');closeNav()" data-page="sessions">
+          <span class="icon">🔑</span> Active Sessions
+        </a>
         <a class="nav-item hidden" id="nav-cutoff" onclick="nav('cutoff');closeNav()" data-page="cutoff">
           <span class="icon">⚡</span> Membership Cutoff
         </a>
@@ -848,7 +851,7 @@ function showAdmin() {
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
-    document.querySelectorAll('[data-page="users"],[data-page="audit"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[data-page="users"],[data-page="audit"],[data-page="sessions"]').forEach(el => el.classList.add('hidden'));
   }
   nav('dashboard');
 }
@@ -859,11 +862,11 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const adminOnly = new Set(['users', 'audit', 'cutoff']);
+  const adminOnly = new Set(['users', 'audit', 'sessions', 'cutoff']);
   if (adminOnly.has(page) && state.user?.role !== 'admin') {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to administrators.</p>');
     return;
@@ -875,7 +878,7 @@ function nav(page) {
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, sessions, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -3229,6 +3232,61 @@ async function audit(opts = {}) {
       </div>
     \`);
   } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
+}
+
+// ── ACTIVE SESSIONS ───────────────────────────────────────────────────
+async function sessions() {
+  setPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/admin/sessions');
+    setPage(\`
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>User</th><th>Role</th><th>Device</th><th>IP Address</th><th>Signed In</th><th>Expires</th><th></th></tr></thead>
+          <tbody>
+            \${data.sessions.map(s => \`<tr>
+              <td>\${escHtml(s.email)}\${s.callsign ? ' <span class="callsign">' + escHtml(s.callsign) + '</span>' : ''}</td>
+              <td>\${roleBadge(s.role)}</td>
+              <td title="\${escHtml(s.user_agent)}">\${escHtml(sessionDevice(s.user_agent))}</td>
+              <td style="font-size:12px">\${escHtml(s.ip_address||'—')}</td>
+              <td style="color:var(--text-muted);white-space:nowrap">\${fmtDate(s.created_at)}</td>
+              <td style="color:var(--text-muted);white-space:nowrap">\${fmtDate(s.expires_at)}</td>
+              <td style="white-space:nowrap">
+                \${s.current ? '<span class="badge badge-green">This device</span>' : ''}
+                <button class="btn btn-sm btn-danger" onclick="revokeSession('\${escHtml(s.id)}', \${s.current ? 'true' : 'false'})">Sign Out</button>
+              </td>
+            </tr>\`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+      <p class="text-muted" style="font-size:12px;margin-top:12px">Everyone currently signed in. Signing a session out takes effect immediately; the user can log in again unless their account is disabled under User Accounts.</p>
+    \`);
+  } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
+}
+
+// "Chrome on Windows" from a User-Agent string
+function sessionDevice(ua) {
+  if (!ua) return 'Unknown';
+  const has = (t) => ua.includes(t);
+  const browser = has('Edg/') ? 'Edge' : has('OPR/') ? 'Opera' : has('Firefox/') ? 'Firefox'
+    : has('Chrome/') ? 'Chrome' : has('Safari/') ? 'Safari' : null;
+  const os = has('iPhone') ? 'iPhone' : has('iPad') ? 'iPad' : has('Android') ? 'Android'
+    : has('Windows') ? 'Windows' : has('Mac OS X') ? 'Mac' : has('CrOS') ? 'ChromeOS' : has('Linux') ? 'Linux' : null;
+  if (!browser && !os) return ua.slice(0, 40);
+  return [browser || 'Browser', os].filter(Boolean).join(' on ');
+}
+
+async function revokeSession(id, current) {
+  const msg = current
+    ? 'Sign out this device? You will have to log in again.'
+    : 'Sign this session out? Whoever is using it will have to log in again.';
+  if (!confirm(msg)) return;
+  try {
+    await api('DELETE', '/admin/sessions/' + id);
+    if (current) return doLogout();
+    toast('Session signed out ✓');
+    sessions();
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
 function tryParseJson(str) {

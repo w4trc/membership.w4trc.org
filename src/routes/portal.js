@@ -136,7 +136,7 @@ async function portalRequestToken(request, env) {
   if (!memberId) return jsonError('Member ID required', 400);
 
   // Passive cleanup of old tokens (best-effort, doesn't affect the response)
-  env.DB.prepare(`DELETE FROM portal_tokens WHERE expires_at < datetime('now', '-1 day')`).run().catch(() => {});
+  env.DB.prepare(`DELETE FROM portal_tokens WHERE datetime(expires_at) < datetime('now', '-1 day')`).run().catch(() => {});
 
   const member = await env.DB.prepare(
     `SELECT id, first_name, email FROM members WHERE id = ?`
@@ -183,7 +183,7 @@ async function portalClaim(request, env) {
   if (password.length < 10)          return jsonError('Password must be at least 10 characters', 400);
 
   const token = await env.DB.prepare(
-    `SELECT * FROM portal_tokens WHERE id = ? AND expires_at > datetime('now') AND used_at IS NULL`
+    `SELECT * FROM portal_tokens WHERE id = ? AND datetime(expires_at) > datetime('now') AND used_at IS NULL`
   ).bind(tokenId).first();
 
   if (!token) return jsonError('Verification code has expired or already been used. Please request a new one.', 400);

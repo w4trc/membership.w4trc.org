@@ -6,7 +6,7 @@
  * DELETE /api/admin/users/:id      - delete login account
  * GET    /api/admin/audit          - view audit log
  * GET    /api/admin/sessions       - active sessions
- * DELETE /api/admin/sessions/:id   - revoke a session
+ * DELETE /api/admin/sessions/:ref  - revoke a session (ref from the list, not the session ID)
  * POST   /api/admin/password       - change own password
  * POST   /api/admin/users/:id/reset-password - send a member a password reset link
  * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
@@ -76,9 +76,9 @@ export async function handleAdmin(request, env, path, user) {
 
   // ── Sessions ───────────────────────────────────────────────────────────
   if (resource === 'sessions') {
-    const sessionId = segments[4] || null;  // hex string, not an integer
-    if (method === 'GET' && !sessionId) return listSessions(env);
-    if (method === 'DELETE' && sessionId) return revokeSession(env, user, sessionId);
+    const ref = segments[4] || null;  // hex string, not an integer
+    if (method === 'GET' && !ref) return listSessions(env, user);
+    if (method === 'DELETE' && ref) return revokeSession(request, env, user, ref);
   }
 
   // ── Membership cutoff ───────────────────────────────────────────────────
@@ -291,22 +291,46 @@ async function getAuditLog(env, url) {
   return jsonResponse({ log: results, page });
 }
 
-async function listSessions(env) {
+// A session ID is the login credential itself, so it is never sent to the
+// browser. The API refers to a session by a hash of its ID instead.
+const sessionRef = async (sessionId) => (await hashToken(sessionId)).slice(0, 16);
+
+async function activeSessions(env) {
   const { results } = await env.DB.prepare(`
-    SELECT s.id, s.user_id, s.ip_address, s.created_at, s.expires_at,
-           u.email
+    SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.created_at, s.expires_at,
+           u.email, u.role, m.callsign
     FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.expires_at > datetime('now')
+    LEFT JOIN members m ON m.id = u.member_id
+    WHERE datetime(s.expires_at) > datetime('now')
     ORDER BY s.created_at DESC
   `).all();
-  return jsonResponse({ sessions: results });
+  return Promise.all(results.map(async s => ({ ...s, ref: await sessionRef(s.id) })));
 }
 
-async function revokeSession(env, user, sessionId) {
-  await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
-  await audit(env, { userId: user.id, action: 'session.revoke', detail: { sessionId } });
-  return jsonResponse({ ok: true });
+async function listSessions(env, user) {
+  const sessions = (await activeSessions(env)).map(({ id, ref, ...s }) => ({
+    ...s,
+    id: ref,
+    current: id === user.sessionId,
+  }));
+  return jsonResponse({ sessions });
+}
+
+async function revokeSession(request, env, user, ref) {
+  const session = (await activeSessions(env)).find(s => s.ref === ref);
+  if (!session) return jsonError('Session not found', 404);
+
+  await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(session.id).run();
+  await audit(env, {
+    userId: user.id,
+    action: 'session.revoke',
+    targetType: 'user',
+    targetId: session.user_id,
+    detail: { email: session.email, session: ref },
+    request,
+  });
+  return jsonResponse({ ok: true, current: session.id === user.sessionId });
 }
 
 async function changePassword(request, env, user) {

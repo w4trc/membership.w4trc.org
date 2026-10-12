@@ -104,12 +104,14 @@ export async function requireAuth(request, env) {
   if (!match) return { ok: false, error: 'Not authenticated' };
 
   const sessionId = match[1];
+  // expires_at is stored as ISO 8601 ("...T...Z"); datetime() puts it in the
+  // same format as datetime('now') so the two compare correctly.
   const row = await env.DB.prepare(
     `SELECT s.id, s.user_id, s.expires_at,
             u.email, u.role, u.is_active, u.member_id
      FROM sessions s
      JOIN users u ON u.id = s.user_id
-     WHERE s.id = ? AND s.expires_at > datetime('now')`
+     WHERE s.id = ? AND datetime(s.expires_at) > datetime('now')`
   ).bind(sessionId).first();
 
   if (!row)           return { ok: false, error: 'Session expired or invalid' };
@@ -132,7 +134,7 @@ export async function destroySession(sessionId, env) {
 }
 
 export async function cleanExpiredSessions(env) {
-  await env.DB.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
+  await env.DB.prepare(`DELETE FROM sessions WHERE datetime(expires_at) < datetime('now')`).run();
 }
 
 // Exported so route handlers can wrap other login-path D1 calls (e.g. the

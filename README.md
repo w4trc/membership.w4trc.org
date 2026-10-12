@@ -17,7 +17,7 @@ A Cloudflare Workers-based membership management system.
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
-- **Admin only** — user accounts, member password resets, audit log with filters, and the annual membership cutoff
+- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, and the annual membership cutoff
 
 **For members**
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
@@ -439,7 +439,7 @@ DELETE /api/admin/users/:id           Delete user (admin)
 POST   /api/admin/users/:id/reset-password  Send a user a password reset link (admin)
 GET    /api/admin/audit               Audit log (admin)
 GET    /api/admin/sessions            Active sessions (admin)
-DELETE /api/admin/sessions/:id        Revoke a session (admin)
+DELETE /api/admin/sessions/:ref       Revoke a session, by the id from the list (admin)
 POST   /api/admin/cutoff              Deactivate members who haven't renewed (admin, dry run by default)
 POST   /api/admin/sync-hamdb          Bulk sync member license data from HamDB (admin)
 POST   /api/admin/sync-prospects      Bulk sync local hams from HamDB (admin)

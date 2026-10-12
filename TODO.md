@@ -37,11 +37,8 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] **Officer and president history** — who held which position in which year, shown on the directory. The club has a full presidents history and knows some of the other officers, so the data model must allow partial years (president only) and unknown positions.
 - [ ] **Membership card / certificate** — printable PDF from the portal once dues are paid.
 
-### Admin
-- [ ] **Session list UI** — the `GET /api/admin/sessions` and `DELETE /api/admin/sessions/:id` endpoints exist, but there's no page for them in the UI yet. Useful for auditing who's logged in and revoking a session.
-
 ### Under the Hood
-- [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and sessions, the annual cutoff, and role checks on the admin routes.
+- [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login, the annual cutoff, and role checks on the admin routes.
 
 ---
 

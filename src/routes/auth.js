@@ -121,7 +121,7 @@ export async function handleAuth(request, env, path) {
     const tokenHash = await hashToken(token);
     const row = await env.DB.prepare(
       `SELECT id, user_id FROM password_reset_tokens
-       WHERE token_hash = ? AND used_at IS NULL AND expires_at > datetime('now')`
+       WHERE token_hash = ? AND used_at IS NULL AND datetime(expires_at) > datetime('now')`
     ).bind(tokenHash).first();
 
     if (!row) return jsonError('Reset link is invalid or has expired', 400);
