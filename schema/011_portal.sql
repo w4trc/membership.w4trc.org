@@ -1,5 +1,4 @@
 -- Phase 3: Member portal + self-registration
--- Run: wrangler d1 execute karc-membership --file=schema/011_portal.sql
 
 -- Directory opt-in flag on member records
 ALTER TABLE members ADD COLUMN show_in_directory INTEGER NOT NULL DEFAULT 0;

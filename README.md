@@ -118,19 +118,23 @@ CLOUDFLARE_API_TOKEN=your_api_token
 ### 6. Run the database schema
 
 ```bash
-npm run db:init
+npm run db:migrate
 ```
 
-Then apply each migration in `schema/` in order, from `003` up (`002` and `009` are seed data):
+This applies every migration in `schema/` that the database does not have yet, in order,
+and records each one in the `d1_migrations` table. When upgrading, run it again **before**
+deploying the code that needs the new migrations. `npm run db:migrate:list` shows what is
+still waiting to be applied.
+
+Optionally load the local-ham list (FCC export for the Kingsport area):
 
 ```bash
-npm run db:migrate -- schema/003_family_linking.sql
-npm run db:migrate -- schema/004_arrl_member.sql
-# ...through the latest file
+npm run db:seed:prospects
 ```
 
-Migrations are not tracked — when upgrading, apply only the files added since your last deploy,
-and apply them **before** deploying the code that needs them.
+> **Database set up before migrations were tracked?** Run `npm run db:baseline` once. It marks
+> migrations 001–019 as already applied without running them again. Only do this on a database
+> that really has all of them.
 
 ### 7. Deploy the Worker
 
@@ -170,14 +174,12 @@ It sends nothing if no dues were recorded in the last 7 days.
 ## Local Development
 
 ```bash
-# Initialize local D1 schema
-npm run db:init:local
+# Build the local D1 database (applies every migration not yet applied)
+npm run db:migrate:local
 
-# Apply migrations (repeat for each file, in order)
-npm run db:migrate:local -- schema/003_family_linking.sql
-
-# (Optional) seed with sample data
+# (Optional) seed with a sample admin and the local-ham list
 npm run db:seed:local
+npm run db:seed:prospects:local
 
 # Start local dev server
 npm run dev
@@ -186,6 +188,30 @@ npm run dev
 
 Put local secrets in `.dev.vars`. `npm run import-members` loads members from a CSV
 (`scripts/import-members.js`), and `bruno/` holds a Bruno API collection.
+
+### Tests
+
+```bash
+npm test            # run once
+npm run test:watch  # re-run on change
+```
+
+Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
+database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
+the dues-year rules, and family coverage. Nothing leaves the machine: Stripe is mocked and no
+secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
+request (`.github/workflows/ci.yml`).
+
+### Adding a migration
+
+```bash
+npm run db:migrate:new -- add_something   # creates the next numbered file in schema/
+npm run db:migrate:local                  # try it locally
+npm test                                  # tests rebuild the database from schema/
+npm run db:migrate                        # apply to production, then deploy
+```
+
+Never edit a migration that has been applied to production — add a new one instead.
 
 ---
 
@@ -230,16 +256,14 @@ inventory_photos       → item photo + thumbnail
 inventory_events       → item move / check-out / note history
 ```
 
-Schema migrations in `schema/`:
+Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migration):
 - `001_initial.sql` — base schema
-- `002_seed.sql` — sample data for local dev
 - `003_family_linking.sql` — adds `covered_by_member_id` to memberships
 - `004_arrl_member.sql` — ARRL member flag
 - `005_callsign_mismatch.sql` — flags members whose record disagrees with HamDB
 - `006_silent_key.sql` — silent key flag
 - `007_lifetime_honorary.sql` — lifetime honorary membership type
 - `008_prospects.sql` — local hams (prospects) table
-- `009_prospects_seed.sql` — prospect seed data
 - `010_prospects_hamdb.sql` — address and license fields on prospects
 - `011_portal.sql` — `show_in_directory` on members, `portal_tokens` table
 - `012_password_reset.sql` — password reset tokens

@@ -133,9 +133,3 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id    ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
-
--- ============================================================
--- SEED: Initial admin user (N4JHC)
--- Password: ChangeMe2024! (bcrypt hash generated separately)
--- Run: wrangler d1 execute karc-membership --file=schema/002_seed.sql
--- ============================================================

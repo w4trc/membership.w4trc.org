@@ -1,5 +1,5 @@
 -- KARC Membership System - Seed Data
--- Run AFTER 001_initial.sql
+-- Sample data for local dev only. Run after the migrations: npm run db:seed:local
 -- 
 -- Creates the initial admin member record for N4JHC
 -- and the admin login account.

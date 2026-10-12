@@ -1,5 +1,4 @@
 -- Password reset tokens
--- Run: wrangler d1 execute karc-membership --file=schema/012_password_reset.sql
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id         TEXT    PRIMARY KEY,

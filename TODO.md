@@ -12,7 +12,7 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
 
 ### Online donations
-- [ ] Apply migration 019 to production **before** deploying, then run one donation in Stripe test mode.
+- [ ] Run one donation in Stripe test mode.
 - [ ] Donation add-on at dues checkout ("add a donation to my renewal").
 - [ ] Include online donations in the weekly board roundup.
 - [ ] Public donate page for non-members (no login).
@@ -41,8 +41,7 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] **Session list UI** — the `GET /api/admin/sessions` and `DELETE /api/admin/sessions/:id` endpoints exist, but there's no page for them in the UI yet. Useful for auditing who's logged in and revoking a session.
 
 ### Under the Hood
-- [ ] **Tests and CI** — none today. Start with the Stripe webhook, dues-year logic, and family coverage.
-- [ ] **Migration tracking** — the schema files are applied by hand one at a time; switch to `wrangler d1 migrations` so applied migrations are recorded.
+- [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and sessions, the annual cutoff, and role checks on the admin routes.
 - [ ] **Scheduled D1 backup to R2** — all member data lives in one database with no export of its own.
 
 ---

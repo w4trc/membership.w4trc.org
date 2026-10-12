@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Runs in the Workers runtime against a D1 database built from schema/,
+      # so a migration that does not apply cleanly fails here too.
+      - name: Test
+        run: npm test
+
+      # Bundles the Worker without deploying; needs no Cloudflare credentials.
+      - name: Build check
+        run: npx wrangler deploy --dry-run

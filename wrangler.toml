@@ -14,6 +14,7 @@ routes = [
 binding = "DB"
 database_name = "karc-membership"
 database_id = "3f035a24-d216-42c8-9587-4a6a0cc22e24"
+migrations_dir = "schema"  # applied and tracked by `wrangler d1 migrations` (npm run db:migrate)
 
 # KV namespace for rate limiting
 [[kv_namespaces]]

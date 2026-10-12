@@ -19,7 +19,7 @@ async function main() {
   console.log('\n🔧 KARC Membership System - Initial Admin Setup\n');
   console.log('Before running this, make sure you have:');
   console.log('  1. Created your D1 database: wrangler d1 create karc-membership');
-  console.log('  2. Run the schema: npm run db:init');
+  console.log('  2. Run the schema: npm run db:migrate');
   console.log('  3. Set your setup key: wrangler secret put ADMIN_SETUP_KEY');
   console.log('  4. Deployed the worker: npm run deploy\n');
 

@@ -6,20 +6,27 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "dotenv -e .env -- wrangler deploy",
-    "db:init": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=schema/001_initial.sql",
-    "db:seed": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=schema/002_seed.sql",
-    "db:init:local": "wrangler d1 execute karc-membership --local --file=schema/001_initial.sql",
-    "db:seed:local": "wrangler d1 execute karc-membership --local --file=schema/002_seed.sql",
-    "db:migrate": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file",
-    "db:migrate:local": "wrangler d1 execute karc-membership --local --file",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "dotenv -e .env -- wrangler d1 migrations apply karc-membership --remote",
+    "db:migrate:local": "wrangler d1 migrations apply karc-membership --local",
+    "db:migrate:list": "dotenv -e .env -- wrangler d1 migrations list karc-membership --remote",
+    "db:migrate:new": "wrangler d1 migrations create karc-membership",
+    "db:baseline": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=scripts/baseline-migrations.sql",
+    "db:baseline:local": "wrangler d1 execute karc-membership --local --file=scripts/baseline-migrations.sql",
+    "db:seed:local": "wrangler d1 execute karc-membership --local --file=seeds/dev_admin.sql",
+    "db:seed:prospects": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=seeds/prospects.sql",
+    "db:seed:prospects:local": "wrangler d1 execute karc-membership --local --file=seeds/prospects.sql",
     "setup-admin": "node scripts/setup-admin.js",
     "db:clean": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=scripts/cleanup.sql",
     "db:clean:local": "wrangler d1 execute karc-membership --local --file=scripts/cleanup.sql",
     "import-members": "node scripts/import-members.js"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.0",
     "bcryptjs": "^2.4.3",
     "dotenv-cli": "^11.0.0",
+    "vitest": "^4.1.11",
     "wrangler": "^4.95.0"
   },
   "dependencies": {
