@@ -42,6 +42,7 @@ What's already built is described in [README.md](README.md). This file only list
 
 
 Public donate page 
+Audit Google Groups vs membership list
 
 ---
 
