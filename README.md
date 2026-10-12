@@ -17,7 +17,7 @@ A Cloudflare Workers-based membership management system.
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
-- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, and the annual membership cutoff
+- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync, and the annual membership cutoff
 
 **For members**
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
@@ -43,6 +43,7 @@ Open work is tracked in [TODO.md](TODO.md).
 | Database | Cloudflare D1 (SQLite) |
 | Rate Limiting | Cloudflare KV |
 | Backups | Cloudflare R2 (daily SQL file) |
+| Mailing lists | Google Groups (optional, synced hourly) |
 | Auth | Server-side sessions (PBKDF2 passwords) |
 | Frontend | Single-page app served from Worker |
 | Callsign API | HamDB (free, no key needed) |
@@ -167,7 +168,8 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 
 ### 10. Schedule the weekly roundup
 
-The daily cleanup and backup cron runs inside the Worker (`[triggers]` in `wrangler.toml`). The weekly
+The daily cleanup and backup cron and the hourly Google Groups sync run inside the Worker
+(`[triggers]` in `wrangler.toml`). The weekly
 roundup email does not — an outside scheduler has to call it:
 
 ```bash
@@ -206,7 +208,8 @@ npm run test:watch  # re-run on change
 
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
-the dues-year rules, family coverage, and the database backup. Nothing leaves the machine: Stripe is mocked and no
+the dues-year rules, family coverage, sessions, the database backup, and the Google Groups
+sync. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -275,6 +278,57 @@ rewinds the live database in place. The R2 backups are for when the database its
 
 ---
 
+## Google Groups
+
+Optional. Each year has its own Google Group — `2026members@w4trc.org`, `2027members@w4trc.org`,
+and so on (the pattern is `GOOGLE_GROUP_FORMAT` in `wrangler.toml`). Every hour the Worker adds
+that year's current members to the group: anyone who has paid, is covered by a paid family
+membership, is paid for by Eastman, is honorary or waived for the year, or is a lifetime honorary
+member. From October 1 it also fills next year's group as people renew.
+
+- Members with no email on file are skipped. A shared family address is added once.
+- If a payment is voided or a member's email changes, the old address is removed — but **only
+  if the sync added it**. Anyone you add to a group by hand in Google is never removed.
+- Groups are **not** created automatically. Create next year's group before October 1; until it
+  exists the sync reports an error for that year and changes nothing.
+- A run makes at most 35 changes, so the first sync of a full group takes a few runs.
+- `GOOGLE_SYNC_START_YEAR` in `wrangler.toml` is the first year the sync manages. Groups for
+  earlier years are never contacted. It is set to `2027`, so `2026members@` is left alone;
+  lower it (and deploy) to bring an earlier year in.
+
+The **Google Groups** page under Admin shows what is waiting to be added or removed for each
+year, and has a **Sync Now** button. Until the key below is set, the page works as a preview
+and nothing is sent to Google.
+
+### Setup
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project (or pick
+   one), enable the **Admin SDK API**, create a **service account**, and download a **JSON key**
+   for it.
+2. Let the service account manage group members. In the Google Workspace Admin console go to
+   **Account → Admin roles → Groups Admin → Assign service accounts** and enter the service
+   account's email address.
+3. Store the key as a secret, then delete the downloaded file:
+
+   ```bash
+   # bash
+   wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY < path/to/key.json
+
+   # PowerShell
+   Get-Content path\to\key.json -Raw | wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
+   ```
+
+4. Create this year's group in Google (for example `2026members@w4trc.org`).
+5. Open **Google Groups** under Admin and press **Sync Now**.
+
+If you would rather use domain-wide delegation than an admin role, skip step 2: authorize the
+service account's client ID for the scope
+`https://www.googleapis.com/auth/admin.directory.group.member` under **Security → API controls →
+Domain-wide delegation**, and set `GOOGLE_ADMIN_EMAIL` (a `[vars]` entry) to a Workspace admin
+for the sync to act as.
+
+---
+
 ## Role System
 
 | Role | Login | Add Members | Edit Members | Delete/Deactivate | Manage Users | Audit Log |
@@ -314,6 +368,7 @@ inventory_items        → club equipment
 inventory_locations    → where equipment is stored
 inventory_photos       → item photo + thumbnail
 inventory_events       → item move / check-out / note history
+google_group_members   → addresses the Google Groups sync has placed in each year's group
 ```
 
 Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migration):
@@ -334,6 +389,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `017_inventory.sql` — equipment inventory (items, locations, photos, move/note history)
 - `018_inventory_purchase.sql` — inventory purchase date, price, source, and donated flag
 - `019_donation_stripe.sql` — links online donations to their Stripe Checkout session
+- `020_google_group_sync.sql` — record of addresses synced to each year's Google Group
 
 ---
 
@@ -444,6 +500,8 @@ POST   /api/admin/cutoff              Deactivate members who haven't renewed (ad
 POST   /api/admin/sync-hamdb          Bulk sync member license data from HamDB (admin)
 POST   /api/admin/sync-prospects      Bulk sync local hams from HamDB (admin)
 POST   /api/admin/backup              Back up the database to R2 now (admin)
+GET    /api/admin/google-sync         What the Google Groups sync would change (admin)
+POST   /api/admin/google-sync         Run the Google Groups sync now (admin)
 POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
 ```
 

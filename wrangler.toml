@@ -33,12 +33,15 @@ CLUB_NAME = "Kingsport Amateur Radio Club"
 CLUB_CALLSIGN = "W4TRC"
 CLUB_DOMAIN = "members.w4trc.org"
 FROM_EMAIL = "membership@w4trc.org"
+GOOGLE_GROUP_FORMAT = "{year}members@w4trc.org"  # each year's Google Group
+GOOGLE_SYNC_START_YEAR = "2027"  # the sync ignores groups for earlier years
 
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # JWT_SECRET              - random 64-char string for signing sessions
 # ADMIN_SETUP_KEY         - one-time key for /api/setup endpoint
 # STRIPE_SECRET_KEY       - Stripe secret key (sk_live_... or sk_test_...)
 # STRIPE_WEBHOOK_SECRET   - Stripe webhook signing secret (whsec_...)
+# GOOGLE_SERVICE_ACCOUNT_KEY - service account JSON key for the Google Groups sync (optional)
 
 # Bundle binary assets (logo, etc.) as Data modules
 [[rules]]
@@ -46,6 +49,9 @@ type = "Data"
 globs = ["**/*.png"]
 fallthrough = true
 
-# Daily session cleanup and database backup (see scheduled() handler in src/index.js)
+# Cron triggers (see scheduled() handler in src/index.js)
 [triggers]
-crons = ["0 8 * * *"]  # 8:00 UTC daily (3-4am Eastern)
+crons = [
+  "0 8 * * *",   # 8:00 UTC daily (3-4am Eastern): session cleanup and database backup
+  "15 * * * *",  # hourly: Google Groups sync
+]

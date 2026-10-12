@@ -554,6 +554,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('sessions');closeNav()" data-page="sessions">
           <span class="icon">🔑</span> Active Sessions
         </a>
+        <a class="nav-item" onclick="nav('googleGroups');closeNav()" data-page="googleGroups">
+          <span class="icon">📧</span> Google Groups
+        </a>
         <a class="nav-item hidden" id="nav-cutoff" onclick="nav('cutoff');closeNav()" data-page="cutoff">
           <span class="icon">⚡</span> Membership Cutoff
         </a>
@@ -851,7 +854,7 @@ function showAdmin() {
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
-    document.querySelectorAll('[data-page="users"],[data-page="audit"],[data-page="sessions"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('[data-page="users"],[data-page="audit"],[data-page="sessions"],[data-page="googleGroups"]').forEach(el => el.classList.add('hidden'));
   }
   nav('dashboard');
 }
@@ -862,11 +865,11 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const adminOnly = new Set(['users', 'audit', 'sessions', 'cutoff']);
+  const adminOnly = new Set(['users', 'audit', 'sessions', 'googleGroups', 'cutoff']);
   if (adminOnly.has(page) && state.user?.role !== 'admin') {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to administrators.</p>');
     return;
@@ -878,7 +881,7 @@ function nav(page) {
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, sessions, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -3287,6 +3290,68 @@ async function revokeSession(id, current) {
     toast('Session signed out ✓');
     sessions();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+// ── GOOGLE GROUPS ─────────────────────────────────────────────────────
+async function googleGroups(lastRun) {
+  setPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/admin/google-sync');
+    document.getElementById('topbar-actions').innerHTML = data.configured
+      ? '<button class="btn btn-primary" onclick="runGoogleSync()">Sync Now</button>' : '';
+
+    const emailList = (label, emails) => emails.length ? \`
+      <details style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:13px">\${label} (\${emails.length})</summary>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.7">\${emails.map(escHtml).join('<br>')}</div>
+      </details>\` : '';
+
+    setPage(\`
+      \${data.configured ? '' : \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Not set up yet</div>
+          <p style="font-size:13px;color:var(--text-muted)">The sync needs a Google service account key (the GOOGLE_SERVICE_ACCOUNT_KEY secret). Until it is added, nothing is sent to Google. The lists below show what would be synced. See "Google Groups" in the README.</p>
+        </div>\`}
+      \${lastRun?.error ? \`
+        <div class="card" style="margin-bottom:16px;border-color:var(--danger)">
+          <div class="card-title" style="color:var(--danger)">Sync stopped</div>
+          <p style="font-size:13px">\${escHtml(lastRun.error)}</p>
+        </div>\` : ''}
+      \${data.years.map(y => {
+        const ran = lastRun?.years?.find(r => r.year === y.year);
+        const pending = y.to_add.length + y.to_remove.length;
+        return \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">\${y.year} — \${escHtml(y.group)}</div>
+          <p style="font-size:13px">
+            \${pending ? '<span class="badge badge-yellow">' + pending + ' pending</span>' : '<span class="badge badge-green">Up to date</span>'}
+            <span style="margin-left:8px">\${y.in_group} current member\${y.in_group !== 1 ? 's' : ''} in the group</span>
+          </p>
+          \${y.no_email ? '<p style="font-size:12px;color:var(--text-muted);margin-top:6px">' + y.no_email + ' current member' + (y.no_email !== 1 ? 's have' : ' has') + ' no email on file and cannot be added.</p>' : ''}
+          \${emailList('To add', y.to_add)}
+          \${emailList('To remove', y.to_remove)}
+          \${ran ? \`
+            <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Last sync: added \${ran.added.length}, removed \${ran.removed.length}\${ran.pending ? ', ' + ran.pending + ' left for the next run' : ''}.</p>
+            \${ran.errors.map(e => '<p style="font-size:12px;color:var(--danger);margin-top:4px">' + escHtml(e) + '</p>').join('')}\` : ''}
+        </div>\`;
+      }).join('')}
+      \${data.years.length ? '' : '<div class="card" style="margin-bottom:16px"><p style="font-size:13px;color:var(--text-muted)">No group is being synced right now. The sync starts with the year set in GOOGLE_SYNC_START_YEAR.</p></div>'}
+      <p class="text-muted" style="font-size:12px">Current members are added to their year's group automatically every hour. The sync only removes addresses it added itself; anyone added to a group by hand in Google is left alone. Groups are not created automatically.</p>
+    \`);
+  } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
+}
+
+async function runGoogleSync() {
+  setPage('<div class="spinner"></div>');
+  try {
+    const result = await api('POST', '/admin/google-sync');
+    const problems = Boolean(result.error) || result.years.some(y => y.errors.length);
+    toast(problems ? 'Sync finished with problems' : 'Google Groups synced ✓', problems ? 'error' : 'success');
+    googleGroups(result);
+  } catch(e) {
+    toast(e.data?.error || e.message, 'error');
+    googleGroups();
+  }
 }
 
 function tryParseJson(str) {

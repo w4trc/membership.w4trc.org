@@ -32,13 +32,16 @@ What's already built is described in [README.md](README.md). This file only list
 
 ### Members & Outreach
 - [ ] **Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
-- [ ] **Google Groups sync** — when a member is marked as paid for a given year, automatically add them to the corresponding Google Group (e.g. `members-2026@w4trc.org`). Requires a Google Workspace service account with domain-wide delegation and the Admin SDK Directory API. On payment: `POST /admin/directory/v1/groups/{groupKey}/members`. Should also handle removals if a membership is voided. Could be triggered from the same server-side code that records the payment.
+- [ ] **Google Groups setup** — the sync is built but does nothing until the service account key is added (see "Google Groups" in the README). Create next year's group each September.
 - [ ] **Prospect outreach** — the local-ham list is already synced from HamDB. Add mailing labels and a "newly licensed in the area" section in the weekly roundup.
 - [ ] **Officer and president history** — who held which position in which year, shown on the directory. The club has a full presidents history and knows some of the other officers, so the data model must allow partial years (president only) and unknown positions.
 - [ ] **Membership card / certificate** — printable PDF from the portal once dues are paid.
 
 ### Under the Hood
 - [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login, the annual cutoff, and role checks on the admin routes.
+
+
+Public donate page 
 
 ---
 

@@ -9,6 +9,7 @@ export async function resetDb() {
     env.DB.prepare('DELETE FROM audit_log'),
     env.DB.prepare('DELETE FROM donations'),
     env.DB.prepare('DELETE FROM memberships'),
+    env.DB.prepare('DELETE FROM google_group_members'),
     env.DB.prepare('DELETE FROM users'),
     env.DB.prepare('DELETE FROM members'),
   ]);

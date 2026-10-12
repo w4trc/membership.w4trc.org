@@ -26,6 +26,7 @@ import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 import { activateRenewedMembers } from './lib/duesYear.js';
 import { backupDatabase, backupStatus } from './lib/backup.js';
+import { syncGoogleGroups } from './lib/googleGroups.js';
 
 // ── Health check ────────────────────────────────────────────────────────
 // Public, unauthenticated endpoint for uptime monitors. Verifies the worker
@@ -218,6 +219,16 @@ export default Sentry.withSentry(
 
   // ── Scheduled cleanup and backup (Cron Trigger, see wrangler.toml) ─────
   async scheduled(controller, env, ctx) {
+    // Hourly trigger: Google Groups sync only
+    if (controller.cron === '15 * * * *') {
+      ctx.waitUntil(
+        syncGoogleGroups(env)
+          .then(r => { if (r.error) console.error('syncGoogleGroups failed:', r.error); })
+          .catch(err => console.error('syncGoogleGroups failed:', err))
+      );
+      return;
+    }
+
     ctx.waitUntil(cleanExpiredSessions(env).catch(err => console.error('cleanExpiredSessions failed:', err)));
     ctx.waitUntil(activateRenewedMembers(env).catch(err => console.error('activateRenewedMembers failed:', err)));
     ctx.waitUntil(

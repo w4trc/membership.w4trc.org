@@ -11,6 +11,8 @@
  * POST   /api/admin/users/:id/reset-password - send a member a password reset link
  * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
  * POST   /api/admin/backup        - back up the database to R2 now
+ * GET    /api/admin/google-sync   - what the Google Groups sync would change
+ * POST   /api/admin/google-sync   - run the Google Groups sync now
  */
 
 import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
@@ -21,6 +23,7 @@ import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
+import { isConfigured as googleConfigured, planSync, syncGoogleGroups } from '../lib/googleGroups.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -95,12 +98,40 @@ export async function handleAdmin(request, env, path, user) {
     return syncProspectsHamDB(request, env, user);
   }
 
+  // ── Google Groups sync ───────────────────────────────────────────────────
+  if (resource === 'google-sync') {
+    if (method === 'GET')  return googleSyncStatus(env);
+    if (method === 'POST') return runGoogleSync(request, env, user);
+  }
+
   // ── Database backup ──────────────────────────────────────────────────────
   if (resource === 'backup' && method === 'POST') {
     return runBackup(request, env, user);
   }
 
   return jsonError('Not found', 404);
+}
+
+// What each year's group looks like now and what a sync would change
+async function googleSyncStatus(env) {
+  const plans = await planSync(env);
+  return jsonResponse({
+    configured: googleConfigured(env),
+    years: plans.map(p => ({
+      year: p.year,
+      group: p.group,
+      in_group: p.in_group,
+      no_email: p.no_email,
+      to_add: p.add.map(a => a.email),
+      to_remove: p.remove.filter(r => r.added_by_sync).map(r => r.email),
+    })),
+  });
+}
+
+// POST /api/admin/google-sync — the same sync the hourly cron runs
+async function runGoogleSync(request, env, user) {
+  if (!googleConfigured(env)) return jsonError('Google Groups sync is not set up', 400);
+  return jsonResponse(await syncGoogleGroups(env, { userId: user.id, request }));
 }
 
 // POST /api/admin/backup — the same backup the daily cron takes
