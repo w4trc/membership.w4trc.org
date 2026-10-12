@@ -42,7 +42,7 @@ Open work is tracked in [TODO.md](TODO.md).
 | Runtime | Cloudflare Workers |
 | Database | Cloudflare D1 (SQLite) |
 | Rate Limiting | Cloudflare KV |
-| Backups | Cloudflare R2 (daily SQL dump) |
+| Backups | Cloudflare R2 (daily SQL file) |
 | Auth | Server-side sessions (PBKDF2 passwords) |
 | Frontend | Single-page app served from Worker |
 | Callsign API | HamDB (free, no key needed) |
@@ -226,28 +226,36 @@ Never edit a migration that has been applied to production — add a new one ins
 ## Backups
 
 The daily cron (8:00 UTC) writes the whole database to the `karc-membership-backups` R2 bucket
-as a gzipped SQL file:
+as a SQL file:
 
 ```
-daily/karc-membership-YYYY-MM-DD.sql.gz    kept for 30 days
-monthly/karc-membership-YYYY-MM.sql.gz     first backup of each month, kept for 12 months
+daily/karc-membership-YYYY-MM-DD.sql    kept for 30 days
+monthly/karc-membership-YYYY-MM.sql     first backup of each month, kept for 12 months
 ```
 
 Login sessions, password reset tokens, and portal verification codes are left out, so a copy
 of a backup cannot be used to sign in as someone. Everything else is included, photos too.
 The bucket is private; treat the files like the database itself.
 
-An admin can take a backup at any time with `POST /api/admin/backup`. Failures are logged as
-`backupDatabase failed` in the Worker logs (`wrangler tail`).
+An admin can take a backup at any time with `POST /api/admin/backup`.
+
+`/health` reports the backup too. It answers `503` with `"backup": "stale"` when there is no
+backup for today or yesterday (UTC), so an uptime monitor notices within a day or so of the
+backups stopping. That includes a fresh install before its first backup — take one by hand
+after the first deploy. Failures are also logged as `backupDatabase failed` (`wrangler tail`).
+
+The backup is built to fit the Workers free plan (10 ms CPU, 50 subrequests per run), which is
+why the file is not compressed. It will outgrow those limits as the database grows; `/health`
+going stale is the sign, and moving to a paid plan or exporting with `wrangler d1 export` from
+outside the Worker are the ways out.
 
 ### Restoring
 
 A backup loads into a **new, empty** database — it will not load over the existing one.
 
 ```bash
-# 1. Download and unzip a backup
-wrangler r2 object get karc-membership-backups/daily/karc-membership-2026-10-12.sql.gz   --remote --file backup.sql.gz
-gunzip backup.sql.gz
+# 1. Download a backup
+wrangler r2 object get karc-membership-backups/daily/karc-membership-2026-10-12.sql   --remote --file backup.sql
 
 # 2. Create a new database, and put its name and id in wrangler.toml
 wrangler d1 create karc-membership-restored
@@ -336,7 +344,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /register         Member self-registration (public)
 /directory        Public member directory (opt-in members only)
 /print            Print-friendly member directory (login required)
-/health           Uptime check — 200 if the Worker and D1 are reachable, 503 if not
+/health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
 ```
 
 ---

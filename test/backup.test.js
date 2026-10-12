@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { backupDatabase, dumpStatements } from '../src/lib/backup.js';
+import { backupDatabase, backupStatus, dumpStatements } from '../src/lib/backup.js';
 import { handleAdmin } from '../src/routes/admin.js';
 import { resetDb, addMember, addMembership, auditActions } from './helpers.js';
 
@@ -12,8 +12,7 @@ async function bucketKeys() {
 }
 
 async function readBackup(key) {
-  const obj = await env.BACKUP_BUCKET.get(key);
-  return new Response(obj.body.pipeThrough(new DecompressionStream('gzip'))).text();
+  return (await env.BACKUP_BUCKET.get(key)).text();
 }
 
 async function addUser(role = 'admin') {
@@ -63,17 +62,19 @@ describe('dumpStatements', () => {
     const dependent = await addMember();
     await addMembership(payer, 2026, { amount_paid: 31.5, paid_date: '2026-03-15', payment_method: 'stripe' });
     await addMembership(dependent, 2026, { amount_due: 0, covered_by_member_id: payer });
-    // More rows than one page, so paging is exercised
     for (let start = 0; start < 600; start += 100) {
       await env.DB.batch(Array.from({ length: 100 }, (_, i) =>
         env.DB.prepare(`INSERT INTO prospects (callsign, first_name) VALUES (?, ?)`)
           .bind(`KX4${start + i}`, `Ham ${start + i}`)
       ));
     }
-    const item = (await env.DB.prepare(`INSERT INTO inventory_items (name) VALUES ('Repeater')`).run()).meta.last_row_id;
-    const image = Uint8Array.from({ length: 300 }, (_, i) => i % 256);
-    await env.DB.prepare(`INSERT INTO inventory_photos (item_id, image, thumb) VALUES (?, ?, ?)`)
-      .bind(item, image, new Uint8Array([0, 255, 16])).run();
+    // More photos than one page of a BLOB table, so paging is exercised
+    for (let n = 0; n < 9; n++) {
+      const item = (await env.DB.prepare(`INSERT INTO inventory_items (name) VALUES (?)`).bind(`Radio ${n}`).run()).meta.last_row_id;
+      const image = Uint8Array.from({ length: 300 }, (_, i) => (i + n) % 256);
+      await env.DB.prepare(`INSERT INTO inventory_photos (item_id, image, thumb) VALUES (?, ?, ?)`)
+        .bind(item, image, new Uint8Array([0, 255, n])).run();
+    }
 
     const { statements, tables, rows } = await dumpStatements(env.DB);
     await env.RESTORE_DB.batch(statements.map(s => env.RESTORE_DB.prepare(s)));
@@ -117,16 +118,16 @@ describe('dumpStatements', () => {
 });
 
 describe('backupDatabase', () => {
-  it('writes a gzipped SQL file for the day and the month', async () => {
+  it('writes a SQL file for the day and the month', async () => {
     await addMember({ callsign: 'KT4BKP' });
 
     const result = await backupDatabase(env, NOW);
 
-    expect(result).toMatchObject({ key: 'daily/karc-membership-2026-10-12.sql.gz', deleted: [] });
+    expect(result).toMatchObject({ key: 'daily/karc-membership-2026-10-12.sql', deleted: [] });
     expect(result.size).toBeGreaterThan(0);
     expect(await bucketKeys()).toEqual([
-      'daily/karc-membership-2026-10-12.sql.gz',
-      'monthly/karc-membership-2026-10.sql.gz',
+      'daily/karc-membership-2026-10-12.sql',
+      'monthly/karc-membership-2026-10.sql',
     ]);
 
     const sql = await readBackup(result.key);
@@ -140,8 +141,8 @@ describe('backupDatabase', () => {
     await addMember({ callsign: 'KT4LATE' });
     await backupDatabase(env, new Date('2026-10-13T08:00:00Z'));
 
-    expect(await readBackup('daily/karc-membership-2026-10-13.sql.gz')).toContain('KT4LATE');
-    expect(await readBackup('monthly/karc-membership-2026-10.sql.gz')).not.toContain('KT4LATE');
+    expect(await readBackup('daily/karc-membership-2026-10-13.sql')).toContain('KT4LATE');
+    expect(await readBackup('monthly/karc-membership-2026-10.sql')).not.toContain('KT4LATE');
   });
 
   it('replaces the daily backup when run twice in a day', async () => {
@@ -150,21 +151,21 @@ describe('backupDatabase', () => {
     await backupDatabase(env, NOW);
 
     expect(await bucketKeys()).toHaveLength(2);
-    expect(await readBackup('daily/karc-membership-2026-10-12.sql.gz')).toContain('KT4TWICE');
+    expect(await readBackup('daily/karc-membership-2026-10-12.sql')).toContain('KT4TWICE');
   });
 
   it('deletes daily backups older than 30 days and monthly ones older than 12 months', async () => {
     const stale = [
-      'daily/karc-membership-2026-09-11.sql.gz',
-      'daily/karc-membership-2025-12-31.sql.gz',
-      'monthly/karc-membership-2025-09.sql.gz',
+      'daily/karc-membership-2026-09-11.sql',
+      'daily/karc-membership-2025-12-31.sql',
+      'monthly/karc-membership-2025-09.sql',
     ];
     const kept = [
-      'daily/karc-membership-2026-09-12.sql.gz',
-      'daily/karc-membership-2026-10-11.sql.gz',
-      'monthly/karc-membership-2025-10.sql.gz',
-      'monthly/karc-membership-2026-09.sql.gz',
-      'notes/karc-membership-2020-01-01.sql.gz',
+      'daily/karc-membership-2026-09-12.sql',
+      'daily/karc-membership-2026-10-11.sql',
+      'monthly/karc-membership-2025-10.sql',
+      'monthly/karc-membership-2026-09.sql',
+      'notes/karc-membership-2020-01-01.sql',
       'daily/readme.txt',
     ];
     for (const key of [...stale, ...kept]) await env.BACKUP_BUCKET.put(key, 'x');
@@ -174,14 +175,50 @@ describe('backupDatabase', () => {
     expect(result.deleted.sort()).toEqual([...stale].sort());
     expect(await bucketKeys()).toEqual([
       ...kept,
-      'daily/karc-membership-2026-10-12.sql.gz',
-      'monthly/karc-membership-2026-10.sql.gz',
+      'daily/karc-membership-2026-10-12.sql',
+      'monthly/karc-membership-2026-10.sql',
     ].sort());
   });
 
   it('fails clearly when the bucket is not configured', async () => {
     await expect(backupDatabase({ DB: env.DB }, NOW)).rejects.toThrow('BACKUP_BUCKET is not configured');
     expect(await bucketKeys()).toEqual([]);
+  });
+});
+
+describe('backupStatus', () => {
+  it('is ok when a backup exists for today', async () => {
+    await backupDatabase(env, NOW);
+
+    expect(await backupStatus(env, NOW)).toEqual({ status: 'ok', last_backup: '2026-10-12' });
+  });
+
+  it('is ok on the backup from the day before, until the cron has run', async () => {
+    await backupDatabase(env, NOW);
+
+    expect(await backupStatus(env, new Date('2026-10-13T07:59:00Z')))
+      .toEqual({ status: 'ok', last_backup: '2026-10-12' });
+  });
+
+  it('is stale once a whole day has been missed', async () => {
+    await backupDatabase(env, NOW);
+
+    expect(await backupStatus(env, new Date('2026-10-14T00:00:00Z')))
+      .toEqual({ status: 'stale', last_backup: null });
+  });
+
+  it('is stale when no backup has ever been taken', async () => {
+    expect(await backupStatus(env, NOW)).toEqual({ status: 'stale', last_backup: null });
+  });
+
+  it('does not count the monthly copy', async () => {
+    await env.BACKUP_BUCKET.put('monthly/karc-membership-2026-10.sql', 'x');
+
+    expect((await backupStatus(env, NOW)).status).toBe('stale');
+  });
+
+  it('is an error when the bucket is not configured', async () => {
+    expect(await backupStatus({ DB: env.DB }, NOW)).toEqual({ status: 'error', last_backup: null });
   });
 });
 

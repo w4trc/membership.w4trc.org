@@ -25,14 +25,16 @@ import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 import { activateRenewedMembers } from './lib/duesYear.js';
-import { backupDatabase }  from './lib/backup.js';
+import { backupDatabase, backupStatus } from './lib/backup.js';
 
 // ── Health check ────────────────────────────────────────────────────────
 // Public, unauthenticated endpoint for uptime monitors. Verifies the worker
-// is running and that D1 is reachable; does not leak any sensitive data.
+// is running, that D1 is reachable, and that the daily backup is current;
+// does not leak any sensitive data.
 async function handleHealth(env) {
-  const checks = { db: 'ok' };
+  const checks = { db: 'ok', backup: 'ok' };
   let healthy = true;
+  let lastBackup = null;
 
   try {
     await env.DB.prepare('SELECT 1').first();
@@ -41,11 +43,21 @@ async function handleHealth(env) {
     healthy = false;
   }
 
+  try {
+    const backup = await backupStatus(env);
+    checks.backup = backup.status;
+    lastBackup = backup.last_backup;
+  } catch (err) {
+    checks.backup = 'error';
+  }
+  if (checks.backup !== 'ok') healthy = false;
+
   return new Response(
     JSON.stringify({
       status: healthy ? 'ok' : 'error',
       time: new Date().toISOString(),
       checks,
+      last_backup: lastBackup,
     }),
     {
       status: healthy ? 200 : 503,
