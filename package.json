@@ -20,7 +20,8 @@
     "setup-admin": "node scripts/setup-admin.js",
     "db:clean": "dotenv -e .env -- wrangler d1 execute karc-membership --remote --file=scripts/cleanup.sql",
     "db:clean:local": "wrangler d1 execute karc-membership --local --file=scripts/cleanup.sql",
-    "import-members": "node scripts/import-members.js"
+    "import-members": "node scripts/import-members.js",
+    "tui": "node scripts/tui.js"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.0",
