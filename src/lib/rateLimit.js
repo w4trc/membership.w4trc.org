@@ -6,6 +6,7 @@
 const LIMITS = {
   login:  { window: 900,  max: 10  }, // 10 attempts per 15 min
   api:    { window: 60,   max: 120 }, // 120 req/min general
+  donate: { window: 900,  max: 10  }, // 10 public donation checkouts per 15 min
 };
 
 export async function rateLimit(request, env, type = 'api') {

@@ -12,7 +12,7 @@ A Cloudflare Workers-based membership management system.
 - **Members** — add/edit records with HamDB callsign auto-fill, notes, family linking, ARRL / Eastman / silent key / lifetime honorary flags, filters, CSV export, and a print-friendly directory (`/print`)
 - **Dues** — record payments per year (amount, method, date, check number); a family payment covers everyone linked under the payer
 - **Dashboard** — paid counts and revenue with year-over-year comparison, charts, "not yet renewed" list, and license expiry warnings
-- **Donations** — monetary and item donations from members, organizations, or anonymous donors
+- **Donations** — monetary and item donations from members, non-member individuals, organizations, or anonymous donors
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
@@ -25,6 +25,7 @@ A Cloudflare Workers-based membership management system.
 - **Member portal** — dues status, profile (contact info, bio, interests, emergency contact), membership history
 - **Online dues** and **online donations** through Stripe Checkout
 - **Public directory** (`/directory`) — opt-in, no login required
+- **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
 - Weekly email roundup of new dues payments to the board
@@ -433,6 +434,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `018_inventory_purchase.sql` — inventory purchase date, price, source, and donated flag
 - `019_donation_stripe.sql` — links online donations to their Stripe Checkout session
 - `020_google_group_sync.sql` — record of addresses synced to each year's Google Group
+- `021_public_donations.sql` — `individual` donor type, `donor_name` and `donor_email` on donations
 
 ---
 
@@ -442,6 +444,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /                 Admin / board app and member portal (single-page app)
 /register         Member self-registration (public)
 /directory        Public member directory (opt-in members only)
+/donate           Public donation form (no login)
 /print            Print-friendly member directory (login required)
 /health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
 ```
@@ -512,6 +515,7 @@ PUT    /api/portal/directory-opt-in   Show/hide self in the public directory
 
 POST   /api/stripe/create-checkout           Start online dues payment (member)
 POST   /api/stripe/create-donation-checkout  Start an online donation (member)
+POST   /api/stripe/create-public-donation-checkout  Start an online donation from /donate (public)
 POST   /api/stripe/webhook                   Stripe webhook (records dues and donations)
 
 GET    /api/inventory                 List/search equipment (board+)

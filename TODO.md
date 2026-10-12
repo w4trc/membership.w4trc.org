@@ -15,7 +15,7 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] Run one donation in Stripe test mode.
 - [ ] Donation add-on at dues checkout ("add a donation to my renewal").
 - [ ] Include online donations in the weekly board roundup.
-- [ ] Public donate page for non-members (no login).
+- [ ] Run one donation from the public `/donate` page in Stripe test mode.
 
 ---
 
@@ -41,7 +41,6 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and role checks on the admin routes.
 
 
-Public donate page 
 Audit Google Groups vs membership list
 
 ---

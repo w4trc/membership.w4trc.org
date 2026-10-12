@@ -3,6 +3,7 @@
  *
  * POST /api/stripe/create-checkout           — authenticated member, returns Stripe checkout URL for dues
  * POST /api/stripe/create-donation-checkout  — authenticated member, returns Stripe checkout URL for a donation
+ * POST /api/stripe/create-public-donation-checkout — public (the /donate page), returns Stripe checkout URL for a donation
  * POST /api/stripe/webhook                   — Stripe webhook (signature-verified, no session auth)
  */
 
@@ -17,6 +18,10 @@ export async function handleStripe(request, env, path, user = null) {
 
   if (request.method === 'POST' && sub === 'webhook') {
     return stripeWebhook(request, env);
+  }
+
+  if (request.method === 'POST' && sub === 'create-public-donation-checkout') {
+    return createPublicDonationCheckout(request, env);
   }
 
   // user is passed in from the global auth gate in index.js for non-webhook routes
@@ -100,17 +105,27 @@ async function createCheckout(request, env, user) {
 const DONATION_MIN = 1;
 const DONATION_MAX = 5000;
 
+const DONATION_RANGE_ERROR =
+  `Donation amount must be between $${DONATION_MIN} and $${DONATION_MAX.toLocaleString('en-US')}`;
+
+// Returns the donation amount in cents, or null if it is missing or out of range
+function donationCents(body) {
+  const cents = Math.round(Number(body?.amount) * 100);
+  if (!Number.isFinite(cents) || cents < DONATION_MIN * 100 || cents > DONATION_MAX * 100) return null;
+  return cents;
+}
+
+const trimmed = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+
 async function createDonationCheckout(request, env, user) {
   if (!user.memberId) return jsonError('No member record linked to this account', 400);
 
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
 
-  const cents = Math.round(Number(body?.amount) * 100);
-  if (!Number.isFinite(cents) || cents < DONATION_MIN * 100 || cents > DONATION_MAX * 100) {
-    return jsonError(`Donation amount must be between $${DONATION_MIN} and $${DONATION_MAX.toLocaleString('en-US')}`, 400);
-  }
-  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : '';
+  const cents = donationCents(body);
+  if (cents === null) return jsonError(DONATION_RANGE_ERROR, 400);
+  const note = trimmed(body.note, 200);
 
   const member = await env.DB.prepare(
     `SELECT id, callsign, email FROM members WHERE id = ?`
@@ -137,6 +152,39 @@ async function createDonationCheckout(request, env, user) {
   });
 
   if (member.email) params.set('customer_email', member.email);
+
+  return createStripeSession(env, params);
+}
+
+// ── POST /api/stripe/create-public-donation-checkout ─────────────────────────
+// No login: anyone can give from the /donate page. Stripe collects the email.
+
+async function createPublicDonationCheckout(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
+
+  const cents = donationCents(body);
+  if (cents === null) return jsonError(DONATION_RANGE_ERROR, 400);
+  const name = trimmed(body.name, 100);
+  const note = trimmed(body.note, 200);
+
+  const club   = env.CLUB_NAME || 'Kingsport Amateur Radio Club';
+  const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
+
+  const params = new URLSearchParams({
+    mode: 'payment',
+    submit_type: 'donate',
+    'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][unit_amount]': String(cents),
+    'line_items[0][price_data][product_data][name]': `Donation to ${club}`,
+    'line_items[0][quantity]': '1',
+    'metadata[kind]': 'donation',
+    'metadata[source]': 'public',
+    'metadata[donor_name]': name,
+    'metadata[note]': note,
+    success_url: `https://${domain}/donate?payment=success`,
+    cancel_url:  `https://${domain}/donate?payment=cancelled`,
+  });
 
   return createStripeSession(env, params);
 }
@@ -262,11 +310,13 @@ async function handleCheckoutCompleted(session, env) {
 }
 
 async function handleDonationCompleted(session, env) {
-  const memberId  = parseInt(session.metadata?.member_id, 10);
+  // A donation from the public /donate page has no member behind it
+  const isPublic  = session.metadata?.source === 'public';
+  const memberId  = isPublic ? null : parseInt(session.metadata?.member_id, 10);
   const amount    = (session.amount_total || 0) / 100;
   const sessionId = session.id;
 
-  if (!memberId || !amount) {
+  if ((!isPublic && !memberId) || !amount) {
     console.error('Stripe webhook: bad donation session', session.metadata, session.amount_total);
     return;
   }
@@ -280,13 +330,18 @@ async function handleDonationCompleted(session, env) {
   const donationDate = new Date().toISOString().slice(0, 10);
   const note = session.metadata?.note?.trim() || null;
 
+  // Public donors who leave the name blank are recorded as anonymous
+  const donorName  = isPublic ? (session.metadata?.donor_name?.trim() || null) : null;
+  const donorEmail = isPublic ? (session.customer_details?.email || null) : null;
+  const donorType  = !isPublic ? 'member' : donorName ? 'individual' : 'anonymous';
+
   let result;
   try {
     result = await env.DB.prepare(`
       INSERT INTO donations
-        (donor_type, member_id, donation_kind, amount, donation_date, payment_method, notes, stripe_session_id)
-      VALUES ('member', ?, 'monetary', ?, ?, 'stripe', ?, ?)
-    `).bind(memberId, amount, donationDate, note, sessionId).run();
+        (donor_type, member_id, donor_name, donor_email, donation_kind, amount, donation_date, payment_method, notes, stripe_session_id)
+      VALUES (?, ?, ?, ?, 'monetary', ?, ?, 'stripe', ?, ?)
+    `).bind(donorType, memberId, donorName, donorEmail, amount, donationDate, note, sessionId).run();
   } catch (err) {
     // A duplicate delivery raced us past the check above
     if (err.message?.includes('UNIQUE')) return;
@@ -298,7 +353,9 @@ async function handleDonationCompleted(session, env) {
     action: 'donation.stripe_paid',
     targetType: 'donation',
     targetId: result.meta.last_row_id,
-    detail: { member_id: memberId, amount, stripe_session_id: sessionId },
+    detail: isPublic
+      ? { donor_name: donorName, amount, stripe_session_id: sessionId }
+      : { member_id: memberId, amount, stripe_session_id: sessionId },
   });
 }
 

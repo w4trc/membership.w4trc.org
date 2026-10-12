@@ -113,3 +113,18 @@ export function donationEvent({ sessionId = 'cs_test_donation', memberId, amount
     },
   };
 }
+
+/** A checkout.session.completed event for a donation made on the public /donate page. */
+export function publicDonationEvent({ sessionId = 'cs_test_public', amountTotal = 2500, name = '', note = '', email = 'donor@example.com' }) {
+  return {
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: sessionId,
+        amount_total: amountTotal,
+        customer_details: { email },
+        metadata: { kind: 'donation', source: 'public', donor_name: name, note },
+      },
+    },
+  };
+}

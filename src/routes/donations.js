@@ -84,8 +84,8 @@ async function createDonation(request, env, user) {
   if (!donation_kind) return jsonError('donation_kind is required', 400);
   if (!donation_date) return jsonError('donation_date is required', 400);
 
-  if (!['member', 'organization', 'anonymous'].includes(donor_type)) {
-    return jsonError('donor_type must be member, organization, or anonymous', 400);
+  if (!['member', 'individual', 'organization', 'anonymous'].includes(donor_type)) {
+    return jsonError('donor_type must be member, individual, organization, or anonymous', 400);
   }
   if (!['monetary', 'item'].includes(donation_kind)) {
     return jsonError('donation_kind must be monetary or item', 400);
@@ -93,6 +93,9 @@ async function createDonation(request, env, user) {
 
   if (donor_type === 'member' && !body.member_id) {
     return jsonError('member_id is required when donor_type is member', 400);
+  }
+  if (donor_type === 'individual' && !body.donor_name?.trim()) {
+    return jsonError('donor_name is required when donor_type is individual', 400);
   }
   if (donor_type === 'organization' && !body.organization_name?.trim()) {
     return jsonError('organization_name is required when donor_type is organization', 400);
@@ -111,14 +114,16 @@ async function createDonation(request, env, user) {
 
   const result = await env.DB.prepare(`
     INSERT INTO donations (
-      donor_type, member_id, organization_name,
+      donor_type, member_id, organization_name, donor_name, donor_email,
       donation_kind, amount, item_description, estimated_value,
       donation_date, payment_method, check_number, notes, recorded_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     donor_type,
     donor_type === 'member' ? (body.member_id || null) : null,
     donor_type === 'organization' ? (body.organization_name?.trim() || null) : null,
+    donor_type === 'individual' ? (body.donor_name?.trim() || null) : null,
+    donor_type === 'individual' ? (body.donor_email?.trim() || null) : null,
     donation_kind,
     donation_kind === 'monetary' ? (parseFloat(body.amount) || null) : null,
     donation_kind === 'item' ? (body.item_description?.trim() || null) : null,
@@ -162,6 +167,8 @@ async function updateDonation(request, env, user, id) {
       donor_type        = ?,
       member_id         = ?,
       organization_name = ?,
+      donor_name        = ?,
+      donor_email       = ?,
       donation_kind     = ?,
       amount            = ?,
       item_description  = ?,
@@ -177,6 +184,9 @@ async function updateDonation(request, env, user, id) {
     donorType,
     donorType === 'member'       ? ('member_id' in body ? (body.member_id || null) : existing.member_id) : null,
     donorType === 'organization' ? ('organization_name' in body ? (body.organization_name?.trim() || null) : existing.organization_name) : null,
+    donorType === 'individual'   ? ('donor_name' in body ? (body.donor_name?.trim() || null) : existing.donor_name) : null,
+    // Kept for any donor type: an anonymous online donor still has a receipt email
+    'donor_email' in body ? (body.donor_email?.trim() || null) : existing.donor_email,
     donationKind,
     donationKind === 'monetary'  ? ('amount' in body ? (parseFloat(body.amount) || null) : existing.amount) : null,
     donationKind === 'item'      ? ('item_description' in body ? (body.item_description?.trim() || null) : existing.item_description) : null,

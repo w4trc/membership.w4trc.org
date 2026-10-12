@@ -466,6 +466,9 @@ textarea { resize: vertical; min-height: 80px; }
       <p style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-muted)">
         New member? <a href="/register" style="color:var(--accent)">Register or claim your account →</a>
       </p>
+      <p style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-muted)">
+        Want to support the club? <a href="/donate" style="color:var(--accent)">Donate →</a>
+      </p>
     </div>
   </div>
 
@@ -2013,11 +2016,16 @@ function donorLabel(d) {
       : escHtml(name);
   }
   if (d.donor_type === 'organization') return escHtml(d.organization_name || '—');
+  if (d.donor_type === 'individual') {
+    return escHtml(d.donor_name || '—')
+      + (d.donor_email ? \` <span style="font-size:11px;color:var(--text-muted)">\${escHtml(d.donor_email)}</span>\` : '');
+  }
   return '<span class="text-muted">Anonymous</span>';
 }
 
 function donorTypeBadge(type) {
   if (type === 'member')       return '<span class="badge badge-green">Member</span>';
+  if (type === 'individual')   return '<span class="badge badge-purple">Individual</span>';
   if (type === 'organization') return '<span class="badge badge-blue">Organization</span>';
   return '<span class="badge badge-gray">Anonymous</span>';
 }
@@ -2044,6 +2052,7 @@ async function openAddDonation(memberId, memberName) {
         <label>Donor Type</label>
         <select id="dn-donor_type" onchange="onDonorTypeChange()">
           <option value="member" \${memberId?'selected':''}>Member</option>
+          <option value="individual">Individual (non-member)</option>
           <option value="organization" \${!memberId?'selected':''}>Organization</option>
           <option value="anonymous">Anonymous</option>
         </select>
@@ -2051,6 +2060,14 @@ async function openAddDonation(memberId, memberName) {
       <div class="form-group" id="dn-member-wrap" \${memberId?'':'hidden'}>
         <label>Member</label>
         <select id="dn-member_id">\${memberOpts}</select>
+      </div>
+      <div class="form-group" id="dn-name-wrap" hidden>
+        <label>Donor Name</label>
+        <input type="text" id="dn-donor_name" maxlength="100">
+      </div>
+      <div class="form-group" id="dn-email-wrap" hidden>
+        <label>Donor Email (optional)</label>
+        <input type="email" id="dn-donor_email">
       </div>
       <div class="form-group" id="dn-org-wrap" hidden>
         <label>Organization Name</label>
@@ -2102,8 +2119,12 @@ function onDonorTypeChange() {
   const memberWrap = document.getElementById('dn-member-wrap');
   const orgWrap    = document.getElementById('dn-org-wrap');
   const methodWrap = document.getElementById('dn-method-wrap');
+  const nameWrap   = document.getElementById('dn-name-wrap');
+  const emailWrap  = document.getElementById('dn-email-wrap');
   if (memberWrap) memberWrap.hidden = type !== 'member';
   if (orgWrap)    orgWrap.hidden    = type !== 'organization';
+  if (nameWrap)   nameWrap.hidden   = type !== 'individual';
+  if (emailWrap)  emailWrap.hidden  = type !== 'individual';
   if (methodWrap) methodWrap.hidden = document.getElementById('dn-donation_kind')?.value !== 'monetary';
 }
 
@@ -2126,6 +2147,8 @@ async function saveDonation(memberId) {
     donor_type:        donorType,
     member_id:         donorType === 'member'       ? (parseInt(gv('dn-member_id')) || null) : null,
     organization_name: donorType === 'organization' ? (gv('dn-organization_name') || null) : null,
+    donor_name:        donorType === 'individual'   ? (gv('dn-donor_name') || null) : null,
+    donor_email:       donorType === 'individual'   ? (gv('dn-donor_email') || null) : null,
     donation_kind:     donationKind,
     amount:            donationKind === 'monetary'  ? (parseFloat(gv('dn-amount')) || null) : null,
     item_description:  donationKind === 'item'      ? (gv('dn-item_description') || null) : null,
@@ -2161,12 +2184,20 @@ async function openEditDonation(id, memberId) {
       <div class="form-group">
         <label>Donor Type</label>
         <select id="edn-donor_type" onchange="onEditDonorTypeChange()">
-          \${['member','organization','anonymous'].map(t => \`<option value="\${t}" \${d.donor_type===t?'selected':''}>\${t.charAt(0).toUpperCase()+t.slice(1)}</option>\`).join('')}
+          \${['member','individual','organization','anonymous'].map(t => \`<option value="\${t}" \${d.donor_type===t?'selected':''}>\${t==='individual'?'Individual (non-member)':t.charAt(0).toUpperCase()+t.slice(1)}</option>\`).join('')}
         </select>
       </div>
       <div class="form-group" id="edn-member-wrap" \${d.donor_type==='member'?'':'hidden'}>
         <label>Member</label>
         <select id="edn-member_id">\${memberOpts}</select>
+      </div>
+      <div class="form-group" id="edn-name-wrap" \${d.donor_type==='individual'?'':'hidden'}>
+        <label>Donor Name</label>
+        <input type="text" id="edn-donor_name" maxlength="100" value="\${escHtml(d.donor_name||'')}">
+      </div>
+      <div class="form-group" id="edn-email-wrap" \${d.donor_email||d.donor_type==='individual'?'':'hidden'}>
+        <label>Donor Email (optional)</label>
+        <input type="email" id="edn-donor_email" value="\${escHtml(d.donor_email||'')}">
       </div>
       <div class="form-group" id="edn-org-wrap" \${d.donor_type==='organization'?'':'hidden'}>
         <label>Organization Name</label>
@@ -2213,8 +2244,13 @@ function onEditDonorTypeChange() {
   const type = document.getElementById('edn-donor_type')?.value;
   const mw = document.getElementById('edn-member-wrap');
   const ow = document.getElementById('edn-org-wrap');
+  const nw = document.getElementById('edn-name-wrap');
+  const ew = document.getElementById('edn-email-wrap');
   if (mw) mw.hidden = type !== 'member';
   if (ow) ow.hidden = type !== 'organization';
+  if (nw) nw.hidden = type !== 'individual';
+  // An anonymous online donor still has a receipt email on file, so keep it visible
+  if (ew) ew.hidden = type !== 'individual' && !gv('edn-donor_email');
 }
 
 function onEditDonationKindChange() {
@@ -2236,6 +2272,8 @@ async function updateDonation(id, memberId) {
     donor_type:        donorType,
     member_id:         donorType === 'member'       ? (parseInt(gv('edn-member_id')) || null) : null,
     organization_name: donorType === 'organization' ? (gv('edn-organization_name') || null) : null,
+    donor_name:        donorType === 'individual'   ? (gv('edn-donor_name') || null) : null,
+    donor_email:       gv('edn-donor_email') || null,
     donation_kind:     donationKind,
     amount:            donationKind === 'monetary'  ? (parseFloat(gv('edn-amount')) || null) : null,
     item_description:  donationKind === 'item'      ? (gv('edn-item_description') || null) : null,

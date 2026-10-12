@@ -3,8 +3,9 @@ import { env } from 'cloudflare:workers';
 import { handleStripe } from '../src/routes/stripe.js';
 import {
   resetDb, addMember, addMembership, getMember, getMembership, auditActions,
-  webhookRequest, duesEvent, donationEvent,
+  webhookRequest, duesEvent, donationEvent, publicDonationEvent,
 } from './helpers.js';
+import { handleDonatePage } from '../src/routes/donate.js';
 
 const WEBHOOK = '/api/stripe/webhook';
 
@@ -283,6 +284,58 @@ describe('webhook: donation', () => {
     expect(res.status).toBe(200);
     expect(await count('donations')).toBe(0);
   });
+
+  it('records a public donation under the name given', async () => {
+    const res = await deliver(publicDonationEvent({
+      sessionId: 'cs_pub', amountTotal: 2500, name: ' Jane Smith ', note: 'Field Day', email: 'jane@example.com',
+    }));
+
+    expect(res.status).toBe(200);
+    expect(await env.DB.prepare(`SELECT * FROM donations`).first()).toMatchObject({
+      donor_type: 'individual',
+      member_id: null,
+      donor_name: 'Jane Smith',
+      donor_email: 'jane@example.com',
+      donation_kind: 'monetary',
+      amount: 25,
+      donation_date: '2026-03-15',
+      payment_method: 'stripe',
+      notes: 'Field Day',
+      stripe_session_id: 'cs_pub',
+    });
+    expect(await auditActions()).toEqual([{
+      action: 'donation.stripe_paid',
+      detail: { donor_name: 'Jane Smith', amount: 25, stripe_session_id: 'cs_pub' },
+    }]);
+  });
+
+  it('records a public donation with no name as anonymous', async () => {
+    await deliver(publicDonationEvent({ name: '   ' }));
+
+    expect(await env.DB.prepare(`SELECT * FROM donations`).first()).toMatchObject({
+      donor_type: 'anonymous', member_id: null, donor_name: null, donor_email: 'donor@example.com', amount: 25,
+    });
+  });
+
+  it('processes a redelivered public donation only once', async () => {
+    const event = publicDonationEvent({ name: 'Jane Smith' });
+
+    await deliver(event);
+    await deliver(event);
+
+    expect(await count('donations')).toBe(1);
+  });
+
+  it('skips a donation with no member that did not come from the public page', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const event = publicDonationEvent({ name: 'Jane Smith' });
+    delete event.data.object.metadata.source;
+
+    const res = await deliver(event);
+
+    expect(res.status).toBe(200);
+    expect(await count('donations')).toBe(0);
+  });
 });
 
 describe('checkout', () => {
@@ -414,5 +467,55 @@ describe('checkout', () => {
       expect((await createDonation(member, { amount })).status).toBe(400);
     }
     expect(sent).not.toHaveBeenCalled();
+  });
+
+  // The public /donate page: no logged-in user is passed in
+  const createPublicDonation = (body) =>
+    handleStripe(post('create-public-donation-checkout', body), env, '/api/stripe/create-public-donation-checkout');
+
+  it('creates a public donation checkout without a login', async () => {
+    const sent = mockStripe();
+
+    const res = await createPublicDonation({ amount: 40, name: '  Jane Smith ', note: ' Repeater ' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ url: 'https://checkout.stripe.test/session' });
+    const fields = sent();
+    expect(fields).toMatchObject({
+      submit_type: 'donate',
+      'line_items[0][price_data][unit_amount]': '4000',
+      'metadata[kind]': 'donation',
+      'metadata[source]': 'public',
+      'metadata[donor_name]': 'Jane Smith',
+      'metadata[note]': 'Repeater',
+      success_url: 'https://members.w4trc.org/donate?payment=success',
+      cancel_url: 'https://members.w4trc.org/donate?payment=cancelled',
+    });
+    expect(fields).not.toHaveProperty('metadata[member_id]');
+  });
+
+  it('refuses public donations outside $1–$5,000', async () => {
+    const sent = vi.spyOn(globalThis, 'fetch');
+
+    for (const amount of [0, 0.99, 5000.01, -5, 'abc', null]) {
+      expect((await createPublicDonation({ amount })).status).toBe(400);
+    }
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('still requires a login for the member checkout routes', async () => {
+    const res = await handleStripe(post('create-donation-checkout', { amount: 25 }), env, '/api/stripe/create-donation-checkout');
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('donate page', () => {
+  it('serves the public form', async () => {
+    const res = handleDonatePage(env);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    expect(await res.text()).toContain('/api/stripe/create-public-donation-checkout');
   });
 });

@@ -18,6 +18,7 @@ import { handleProspects }   from './routes/prospects.js';
 import { handlePrint }       from './routes/print.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
+import { handleDonatePage }  from './routes/donate.js';
 import { handleMeetings }    from './routes/meetings.js';
 import { handleInventory }   from './routes/inventory.js';
 import { serveUI }           from './ui.js';
@@ -115,6 +116,9 @@ export default Sentry.withSentry(
     if (path === '/directory') {
       return handleDirectoryPage(request, env);
     }
+    if (path === '/donate') {
+      return handleDonatePage(env);
+    }
 
     // ── Static UI (everything non-API) ──────────────────────────────────
     if (!path.startsWith('/api/')) {
@@ -144,6 +148,13 @@ export default Sentry.withSentry(
 
       // Stripe webhook — public (signature-verified inside stripe.js)
       if (path === '/api/stripe/webhook' && method === 'POST') {
+        return handleStripe(request, env, path);
+      }
+
+      // Public donation checkout (the /donate page) — no login, strictly rate-limited
+      if (path === '/api/stripe/create-public-donation-checkout' && method === 'POST') {
+        const rl = await rateLimit(request, env, 'donate');
+        if (rl) return rl;
         return handleStripe(request, env, path);
       }
 
