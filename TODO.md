@@ -32,13 +32,13 @@ What's already built is described in [README.md](README.md). This file only list
 
 ### Members & Outreach
 - [ ] **Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
-- [ ] **Google Groups setup** — the sync is built but does nothing until the service account key is added (see "Google Groups" in the README). Create next year's group each September.
+- [ ] **Google Groups** — create next year's group each September, before renewals open on October 1. `2026members@` is not synced; lower `GOOGLE_SYNC_START_YEAR` to bring it in.
 - [ ] **Prospect outreach** — the local-ham list is already synced from HamDB. Add mailing labels and a "newly licensed in the area" section in the weekly roundup.
 - [ ] **Officer and president history** — who held which position in which year, shown on the directory. The club has a full presidents history and knows some of the other officers, so the data model must allow partial years (president only) and unknown positions.
 - [ ] **Membership card / certificate** — printable PDF from the portal once dues are paid.
 
 ### Under the Hood
-- [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login, the annual cutoff, and role checks on the admin routes.
+- [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and role checks on the admin routes.
 
 
 Public donate page 

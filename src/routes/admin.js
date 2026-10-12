@@ -466,6 +466,7 @@ async function runCutoff(request, env, user) {
         OR ms.status = 'honorary'
         OR ms.status = 'waived'
         OR ms.covered_by_member_id IS NOT NULL
+        OR ms.payment_method = 'eastman'
       )
   `;
 

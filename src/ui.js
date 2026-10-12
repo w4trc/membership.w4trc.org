@@ -2919,7 +2919,7 @@ async function cutoff() {
     <div class="card" style="background:rgba(231,76,60,.05);border-color:rgba(231,76,60,.3);margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:8px;color:var(--danger)">⚠ Membership Cutoff Tool</div>
       <p style="font-size:13px;color:var(--text-muted);margin:0">
-        Sets all active members with no paid, honorary, waived, or family-covered record for the
+        Sets all active members with no paid, honorary, waived, family-covered, or Eastman record for the
         selected year to <strong style="color:var(--text)">Inactive</strong>.
         Silent Key members are never affected. Always run Preview before executing.
       </p>
