@@ -3432,6 +3432,7 @@ function googleAuditHtml(audit) {
                 </tr>\`).join('')}</tbody>
             </table></div>\` : ''}
           \${y.no_email.length ? '<p style="font-size:12px;color:var(--text-muted);margin-top:12px">No email on file, so cannot be in the group: ' + who(y.no_email) + '</p>' : ''}
+          \${y.club_addresses ? '<p style="font-size:12px;color:var(--text-muted);margin-top:12px">' + y.club_addresses + ' club address' + (y.club_addresses !== 1 ? 'es' : '') + ' (' + escHtml(y.group.slice(y.group.lastIndexOf('@'))) + ') in the group ' + (y.club_addresses !== 1 ? 'are' : 'is') + ' not listed: officers manage the group from their club email.</p>' : ''}
         </div>\`;
     }).join('')}
     <p class="text-muted" style="font-size:12px">The audit reads each group from Google and changes nothing. A missing address that the sync added earlier is not added again automatically.</p>

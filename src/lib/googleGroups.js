@@ -307,7 +307,7 @@ const person = (m) => ({ id: m.id, callsign: m.callsign, name: `${m.first_name |
 /**
  * Compare each year's group, as Google has it, with the membership list.
  * Changes nothing. Returns { configured, error, years: [{
- *   year, group, error, group_size,
+ *   year, group, error, group_size, club_addresses,
  *   expected: [{ email, members: [{ id, callsign, name }], in_group, tracked }],
  *   extra:    [{ email, role, members: [{ id, callsign, name }] }],
  *   no_email: [{ id, callsign, name }],
@@ -318,6 +318,10 @@ const person = (m) => ({ id: m.id, callsign: m.callsign, name: `${m.first_name |
  * there, so the sync will not add it again by itself. `extra` is every address
  * in the group that does not belong to a current member; `members` names
  * anyone on the membership list with that address who is not current.
+ *
+ * Addresses on the club's own domain (the group's domain) are officers' club
+ * mailboxes, there to manage the group. They are never reported as extra;
+ * `club_addresses` is how many were passed over.
  */
 export async function auditGoogleGroups(env, { now = new Date() } = {}) {
   if (!isConfigured(env)) return { configured: false, error: null, years: [] };
@@ -348,7 +352,7 @@ export async function auditGoogleGroups(env, { now = new Date() } = {}) {
     const current = results[1 + i * 2].results;
     const tracked = new Set(results[2 + i * 2].results.map(t => t.email));
     const out = {
-      year, group: groupAddress(env, year), error: null, group_size: null,
+      year, group: groupAddress(env, year), error: null, group_size: null, club_addresses: 0,
       expected: [], extra: [], no_email: current.filter(m => !m.email).map(person),
     };
     years.push(out);
@@ -384,7 +388,10 @@ export async function auditGoogleGroups(env, { now = new Date() } = {}) {
     out.expected = [...expected].map(([email, members]) => ({
       email, members, in_group: inGoogle.has(email), tracked: tracked.has(email),
     }));
-    out.extra = listed.filter(g => !expected.has(g.email)).map(g => ({
+    const clubDomain = out.group.slice(out.group.lastIndexOf('@')).toLowerCase();
+    const unexpected = listed.filter(g => !expected.has(g.email));
+    out.club_addresses = unexpected.filter(g => g.email.endsWith(clubDomain)).length;
+    out.extra = unexpected.filter(g => !g.email.endsWith(clubDomain)).map(g => ({
       email: g.email, role: g.role, members: (byEmail.get(g.email) || []).map(person),
     }));
   }

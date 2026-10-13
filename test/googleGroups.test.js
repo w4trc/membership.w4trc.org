@@ -559,8 +559,8 @@ describe('audit', () => {
     await paidMember('paid@example.com');
     const lapsed = await addMember({ email: 'lapsed@example.com', callsign: 'KT4CCC', first_name: 'Cy', last_name: 'Lapsed' });
     await addMembership(lapsed, 2025, { status: 'active', amount_paid: 20 });
-    for (const e of ['paid@example.com', 'lapsed@example.com', 'stranger@example.com', 'owner@w4trc.org']) groups.get(G2026).add(e);
-    roles.set('owner@w4trc.org', 'OWNER');
+    for (const e of ['paid@example.com', 'lapsed@example.com', 'stranger@example.com', 'owner@example.com']) groups.get(G2026).add(e);
+    roles.set('owner@example.com', 'OWNER');
 
     const { years } = await runAudit();
 
@@ -568,8 +568,30 @@ describe('audit', () => {
     expect(years[0].extra).toEqual([
       { email: 'lapsed@example.com', role: 'MEMBER', members: [{ id: lapsed, callsign: 'KT4CCC', name: 'Cy Lapsed' }] },
       { email: 'stranger@example.com', role: 'MEMBER', members: [] },
-      { email: 'owner@w4trc.org', role: 'OWNER', members: [] },
+      { email: 'owner@example.com', role: 'OWNER', members: [] },
     ]);
+  });
+
+  it('disregards club addresses, which officers use to manage the group', async () => {
+    await paidMember('paid@example.com');
+    const lapsed = await addMember({ email: 'treasurer@w4trc.org' });
+    await addMembership(lapsed, 2025, { status: 'active', amount_paid: 20 });
+    for (const e of ['paid@example.com', 'President@W4TRC.org', 'treasurer@w4trc.org', 'someone@notw4trc.org']) groups.get(G2026).add(e);
+    roles.set('President@W4TRC.org', 'MANAGER');
+
+    const { years } = await runAudit();
+
+    expect(years[0]).toMatchObject({ group_size: 4, club_addresses: 2 });
+    expect(years[0].extra).toEqual([{ email: 'someone@notw4trc.org', role: 'MEMBER', members: [] }]);
+  });
+
+  it('still expects a current member whose address on file is a club address', async () => {
+    await paidMember('secretary@w4trc.org');
+
+    const { years } = await runAudit();
+
+    expect(years[0].expected).toMatchObject([{ email: 'secretary@w4trc.org', in_group: false }]);
+    expect(years[0].club_addresses).toBe(0);
   });
 
   it('matches addresses whatever their capitalisation', async () => {

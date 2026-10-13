@@ -371,6 +371,10 @@ membership list, address by address. For each year it shows:
   lapsed member it matches and the Google role of owners and managers.
 - current members with no email on file.
 
+Addresses on the club's own domain (`@w4trc.org`) are disregarded: officers are in each group
+with their club email so they can manage it, so those are counted but never listed as not
+belonging to a current member.
+
 The audit changes nothing in Google or in the database. It covers this year's group, and next
 year's from October 1, including years before `GOOGLE_SYNC_START_YEAR` — so it can check
 `2026members@` even though the sync leaves that group alone.
