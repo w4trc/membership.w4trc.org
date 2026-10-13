@@ -8,6 +8,8 @@
  * GET    /api/members/:id/history  - membership year history
  */
 
+import { duesYear } from '../lib/duesYear.js';
+import { goodStandingYears } from '../lib/standing.js';
 import { isAdmin, isBoardOrAbove } from '../lib/auth.js';
 import { jsonResponse, jsonError }  from '../lib/response.js';
 import { audit }                    from '../lib/audit.js';
@@ -265,6 +267,10 @@ async function getMember(request, env, user, memberId) {
   delete member.memberships_json;
   delete member.notes_json;
   delete member.donations_json;
+
+  // Years a membership certificate and card can be printed for
+  const year = new Date().getUTCFullYear();
+  member.credential_years = await goodStandingYears(env, memberId, [year, duesYear()]);
 
   // Filter private notes for non-board users (future member portal)
   if (!isBoardOrAbove(user)) {

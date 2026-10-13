@@ -19,6 +19,7 @@ A Cloudflare Workers-based membership management system.
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
+- **Membership certificate and card** — printable by an officer for any member whose dues are paid
 - **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and add, move, or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
 - **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync and audit, and the annual membership cutoff
 
@@ -268,7 +269,7 @@ npm run test:watch  # re-run on change
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
 the dues-year rules, family coverage, sessions, the database backup, the treasurer
-report, the officer history, and the Google Groups sync and audit. Nothing leaves the machine: Stripe is mocked and no
+report, the officer history, the membership certificate and card, and the Google Groups sync and audit. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -490,6 +491,8 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /donate           Public donation form (no login)
 /print            Print-friendly member directory (login required)
 /print/treasurer  Print-friendly treasurer report, ?year=YYYY (board+)
+/print/certificate  Membership certificate, ?member_id=N&year=YYYY (board+)
+/print/card       Membership card, ?member_id=N&year=YYYY (board+)
 /health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
 ```
 
@@ -626,6 +629,29 @@ detail, dues list, and audit log. When the payer pays family dues online, everyo
 linked under them is marked covered for that year, and the link carries forward from
 each dependent's most recent dues record. Covered members see "Covered by a Family
 Membership" in the portal instead of a pay button.
+
+---
+
+## Membership Certificate and Card
+
+Board members and admins can print a **membership certificate** (one landscape letter page)
+and a **membership card** (credit-card size, with a dashed line to cut along) for any member in
+good standing. Both open as a page with a **Print / Save as PDF** button. Members cannot print
+their own yet.
+
+- The **Certificate** and **Card** links are under Membership in a member's detail view, one
+  pair for each year the member is paid up. During renewal season someone who has renewed has
+  them for both this year and next.
+- They are only available for a year the member is in good standing: paid, covered by a paid
+  family membership, paid for by Eastman, honorary or waived for the year, or lifetime honorary.
+  This is the same rule the Google Groups sync uses. Until then the page says dues are not yet
+  recorded.
+- The certificate has signature lines for the **President** and **Secretary**. If that year's
+  officers are in the [officer history](#officer-history), their names are printed under the
+  lines; otherwise the lines are left blank.
+- "Member since" comes from the member's joined date and is left off if there isn't one.
+
+Print the card at 100% scale, not "fit to page", so it comes out the right size.
 
 ---
 

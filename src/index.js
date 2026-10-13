@@ -15,7 +15,7 @@ import { handleAdmin, handleWeeklyRoundup } from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
-import { handlePrint, handlePrintTreasurer } from './routes/print.js';
+import { handlePrint, handlePrintTreasurer, handlePrintCredential } from './routes/print.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
 import { handleDonatePage }  from './routes/donate.js';
@@ -111,6 +111,9 @@ export default Sentry.withSentry(
     }
     if (path === '/print/treasurer') {
       return handlePrintTreasurer(request, env);
+    }
+    if (path === '/print/certificate' || path === '/print/card') {
+      return handlePrintCredential(request, env, path === '/print/card' ? 'card' : 'certificate');
     }
 
     // ── Public portal pages ─────────────────────────────────────────────

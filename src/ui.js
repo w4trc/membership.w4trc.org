@@ -1267,6 +1267,9 @@ async function viewMember(id) {
             \${dfield('Joined', m.joined_date)}
             \${dfield('ARRL Member', m.is_arrl_member ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>')}
             \${dfield('Eastman Member', m.is_eastman_member ? '<span class="badge badge-blue">Yes</span>' : '<span class="badge badge-gray">No</span>')}
+            \${(m.credential_years || []).map(y => dfield(y + ' Certificate & Card',
+              '<a href="/print/certificate?member_id=' + m.id + '&year=' + y + '" target="_blank" rel="noopener">Certificate</a> · ' +
+              '<a href="/print/card?member_id=' + m.id + '&year=' + y + '" target="_blank" rel="noopener">Card</a>')).join('')}
             \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id, curMs.payment_method) : '<span class="badge badge-yellow">No Record</span>')}
           </div>
         </div>

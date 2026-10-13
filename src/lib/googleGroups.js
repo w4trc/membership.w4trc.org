@@ -13,6 +13,7 @@
 
 import { audit } from './audit.js';
 import { duesYear } from './duesYear.js';
+import { IN_GOOD_STANDING } from './standing.js';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const API       = 'https://admin.googleapis.com/admin/directory/v1';
@@ -49,23 +50,12 @@ function alwaysAdd(env) {
   return (env.GOOGLE_GROUP_ALWAYS_ADD || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 }
 
-// Current members for a year: paid, covered by a paid family membership,
-// paid for by Eastman, honorary or waived for the year, or lifetime honorary.
-// Binds: year.
+// Current members for a year. Binds: year.
 const CURRENT_MEMBERS = `
   SELECT m.id, m.callsign, m.first_name, m.last_name, lower(trim(m.email)) AS email
   FROM members m
   LEFT JOIN memberships ms ON ms.member_id = m.id AND ms.year = ?
-  WHERE m.is_silent_key = 0
-    AND (
-      m.membership_type = 'lifetime_honorary'
-      OR ms.status IN ('honorary', 'waived')
-      OR (ms.status = 'active' AND (
-        ms.amount_paid IS NOT NULL
-        OR ms.covered_by_member_id IS NOT NULL
-        OR ms.payment_method = 'eastman'
-      ))
-    )
+  WHERE ${IN_GOOD_STANDING}
   ORDER BY m.id
 `;
 

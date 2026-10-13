@@ -27,9 +27,9 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] **Asset value report** — total and per-location value from purchase price / estimated value, for insurance.
 
 ### Members & Outreach
+- [ ] **Certificate and card for members** — officers can print a membership certificate and card from a member's detail view. Let members print their own from the portal: buttons on the dues card for each paid year, and open `/print/certificate` and `/print/card` to a member for their own record.
 - [ ] **Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
 - [ ] **Prospect outreach** — the local-ham list is already synced from HamDB. Add mailing labels and a "newly licensed in the area" section in the weekly roundup.
-- [ ] **Membership card / certificate** — printable PDF from the portal once dues are paid.
 
 ### Under the Hood
 - [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and role checks on the admin routes.
