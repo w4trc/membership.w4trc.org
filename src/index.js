@@ -20,6 +20,7 @@ import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/
 import { handleStripe }      from './routes/stripe.js';
 import { handleDonatePage }  from './routes/donate.js';
 import { handleMeetings }    from './routes/meetings.js';
+import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
@@ -196,6 +197,11 @@ export default Sentry.withSentry(
       // Meeting attendance
       if (path.startsWith('/api/meetings')) {
         return handleMeetings(request, env, path, user);
+      }
+
+      // Officer history
+      if (path.startsWith('/api/officers')) {
+        return handleOfficers(request, env, path, user);
       }
 
       // Equipment inventory

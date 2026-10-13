@@ -14,6 +14,7 @@ A Cloudflare Workers-based membership management system.
 - **Dashboard** — paid counts and revenue with year-over-year comparison, charts, "not yet renewed" list, and license expiry warnings
 - **Donations** — monetary and item donations from members, non-member individuals, organizations, or anonymous donors
 - **Treasurer report** — the money received in a year: dues and donations by payment method, every payment listed, as a page, a printout, or a CSV
+- **Officer history** — who was president, vice president, treasurer, secretary, and trustee each year, entered one at a time or pasted as a list, and shown on the public directory
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
@@ -25,7 +26,7 @@ A Cloudflare Workers-based membership management system.
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
 - **Member portal** — dues status, profile (contact info, bio, interests, emergency contact), membership history
 - **Online dues** and **online donations** through Stripe Checkout
-- **Public directory** (`/directory`) — opt-in, no login required
+- **Public directory** (`/directory`) — opt-in, no login required; also lists the club's officers year by year
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
@@ -267,7 +268,7 @@ npm run test:watch  # re-run on change
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
 the dues-year rules, family coverage, sessions, the database backup, the treasurer
-report, and the Google Groups sync and audit. Nothing leaves the machine: Stripe is mocked and no
+report, the officer history, and the Google Groups sync and audit. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -453,6 +454,7 @@ inventory_locations    → where equipment is stored
 inventory_photos       → item photo + thumbnail
 inventory_events       → item move / check-out / note history
 google_group_members   → addresses the Google Groups sync has placed in each year's group
+officers               → who held which position in which year
 ```
 
 Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migration):
@@ -475,6 +477,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `019_donation_stripe.sql` — links online donations to their Stripe Checkout session
 - `020_google_group_sync.sql` — record of addresses synced to each year's Google Group
 - `021_public_donations.sql` — `individual` donor type, `donor_name` and `donor_email` on donations
+- `022_officers.sql` — officer history
 
 ---
 
@@ -483,7 +486,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 ```
 /                 Admin / board app and member portal (single-page app)
 /register         Member self-registration (public)
-/directory        Public member directory (opt-in members only)
+/directory        Public member directory (opt-in members only) and officer history
 /donate           Public donation form (no login)
 /print            Print-friendly member directory (login required)
 /print/treasurer  Print-friendly treasurer report, ?year=YYYY (board+)
@@ -501,6 +504,12 @@ POST   /api/auth/logout               Logout
 GET    /api/auth/me                   Current session info
 POST   /api/auth/forgot-password      Email a password reset link
 POST   /api/auth/reset-password       Set a new password from a reset link
+
+GET    /api/officers                  Officer history, newest year first (board+)
+POST   /api/officers                  Add an officer (board+)
+POST   /api/officers/bulk             Add a pasted list for one position (board+)
+PUT    /api/officers/:id              Update an officer (board+)
+DELETE /api/officers/:id              Remove an officer (board+)
 
 GET    /api/members                   List/search members
 POST   /api/members                   Create member (board+)
@@ -617,6 +626,41 @@ detail, dues list, and audit log. When the payer pays family dues online, everyo
 linked under them is marked covered for that year, and the link carries forward from
 each dependent's most recent dues record. Covered members see "Covered by a Family
 Membership" in the portal instead of a pay button.
+
+---
+
+## Officer History
+
+**Officers** in the sidebar (board and admin) is a table with a row for each year and a column
+for each position: President, Vice President, Treasurer, Secretary, and Trustee. Click a name
+to change or remove it, or a **+** to fill a gap.
+
+- **A year needs only what you know.** A year with just a president is fine; unknown positions
+  stay empty.
+- **Officers do not have to be members.** Anyone can be entered by name. If the callsign matches
+  a member record, the entry is linked to it, and the name can be left blank to use the one on
+  file.
+- **Two people can share a position in a year**, for someone who took over part-way through.
+  The notes field is for details like "took over in June"; notes are not shown publicly.
+- Years run from 1900 to next year, so newly elected officers can be entered before January.
+
+**Paste a List** adds many years at once for one position, which is the quick way to enter the
+list of past presidents. Put one officer on each line: the year, the name, and the callsign if
+there is one.
+
+```
+1985 John Smith W4ABC
+1986-1988 Mary Jones, K4XYZ
+1989 Bob Brown
+```
+
+A range of years adds an entry for each year. Anyone already listed is skipped, so a list can be
+pasted again after a correction. If any line cannot be read, nothing is added and the lines at
+fault are shown.
+
+The whole history is shown at the bottom of the public directory (`/directory`), newest year
+first. Unlike the member list above it, this is not opt-in: every officer entered is public.
+To add a position, add it to `POSITIONS` in `src/lib/officers.js`.
 
 ---
 

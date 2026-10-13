@@ -20,6 +20,7 @@
  *   GET /directory — public member directory
  */
 
+import { POSITIONS, officersByYear } from '../lib/officers.js';
 import { requireAuth, hashPassword, createSession } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
@@ -956,7 +957,11 @@ export async function handleDirectoryPage(request, env) {
     ORDER BY callsign ASC
   `).all();
 
-  const html = directoryPageHtml(results);
+  const { results: officers } = await env.DB.prepare(
+    `SELECT year, position, name, callsign FROM officers ORDER BY year DESC, id`
+  ).all();
+
+  const html = directoryPageHtml(results, officersByYear(officers));
   return new Response(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -965,9 +970,16 @@ export async function handleDirectoryPage(request, env) {
   });
 }
 
-function directoryPageHtml(members) {
+function directoryPageHtml(members, officerYears = []) {
   const year = new Date().getFullYear();
   const count = members.length;
+
+  const officerRows = officerYears.map(y => `<tr>
+      <td class="year">${y.year}</td>
+      ${POSITIONS.map(p => `<td>${y[p.key].map(o =>
+        `${esc(o.name)}${o.callsign ? ` <span class="call">${esc(o.callsign)}</span>` : ''}`
+      ).join('<br>') || '<span class="none">—</span>'}</td>`).join('')}
+    </tr>`).join('');
 
   const rows = members.map(m => {
     const name      = `${esc(m.first_name)} ${esc(m.last_name)}`;
@@ -1006,6 +1018,12 @@ tr:hover td { background: #1f2438; }
 .call { font-family: 'Courier New', monospace; font-weight: bold; color: #3b7dd8; font-size: 13px; letter-spacing: .05em; }
 .interests { color: #8892aa; font-size: 12px; }
 .empty { text-align: center; padding: 40px; color: #8892aa; }
+.section { max-width: 900px; margin: 40px auto 12px; }
+.section h2 { font-size: 16px; font-weight: 600; }
+.section p { color: #8892aa; font-size: 13px; margin-top: 4px; }
+.scroll { overflow-x: auto; }
+.year { font-weight: 600; white-space: nowrap; }
+.none { color: #555f7a; }
 .footer { text-align: center; padding: 24px; color: #555f7a; font-size: 12px; }
 .opt-in-note { max-width: 900px; margin: 0 auto 24px; background: rgba(59,125,216,.08); border: 1px solid rgba(59,125,216,.25); border-radius: 8px; padding: 14px 18px; font-size: 13px; color: #8892aa; }
 .opt-in-note strong { color: #e8eaf0; }
@@ -1041,6 +1059,22 @@ ${count === 0 ? `
   </table>
 `}
 </div>
+${officerYears.length ? `
+<div class="section">
+  <h2>Club Officers</h2>
+  <p>Who has served the club, year by year.</p>
+</div>
+<div class="wrap scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Year</th>
+        ${POSITIONS.map(p => `<th>${esc(p.label)}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>${officerRows}</tbody>
+  </table>
+</div>` : ''}
 
 <div class="footer">
   Members: <a href="/" style="color:#3b7dd8">members.w4trc.org</a>

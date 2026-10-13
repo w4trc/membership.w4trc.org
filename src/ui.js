@@ -206,6 +206,8 @@ tr:last-child td { border-bottom: none; }
   display: inline-block; padding: 2px 8px; border-radius: 20px;
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
 }
+a.officer { cursor: pointer; color: inherit; text-decoration: none; }
+a.officer:hover { color: var(--accent); }
 .badge-green  { background: rgba(46,204,113,.15); color: var(--success); }
 .badge-yellow { background: rgba(243,156,18,.15);  color: var(--warn); }
 .badge-red    { background: rgba(231,76,60,.15);   color: var(--danger); }
@@ -544,6 +546,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item hidden" id="nav-inventory" onclick="nav('inventory');closeNav()" data-page="inventory">
           <span class="icon">📦</span> Inventory
         </a>
+        <a class="nav-item hidden" id="nav-officers" onclick="nav('officers');closeNav()" data-page="officers">
+          <span class="icon">🎖️</span> Officers
+        </a>
         <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
@@ -856,6 +861,7 @@ function showAdmin() {
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-treasurer')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-officers')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-inventory')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
@@ -872,7 +878,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', inventory: 'Inventory', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -882,13 +888,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory', 'treasurer']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory', 'treasurer', 'officers']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, treasurer, attendance, inventory, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, treasurer, attendance, inventory, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -3433,6 +3439,139 @@ async function exportTreasurerCSV(year) {
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) { toast('Export failed: ' + e.message, 'error'); }
+}
+
+// ── OFFICERS ──────────────────────────────────────────────────────────
+async function officers() {
+  setPage('<div class="spinner"></div>');
+  try {
+    const data = await api('GET', '/officers');
+    state.officers = data;
+    document.getElementById('topbar-actions').innerHTML =
+      '<button class="btn btn-secondary" onclick="openOfficerPaste()">Paste a List</button> ' +
+      '<button class="btn btn-primary" onclick="openOfficerForm()">+ Add Officer</button>';
+
+    const years = [...new Set(data.officers.map(o => o.year))].sort((a, b) => b - a);
+    const cell = (year, pos) => {
+      const held = data.officers.filter(o => o.year === year && o.position === pos.key);
+      return held.map(o => \`
+        <a class="officer" onclick="openOfficerForm(\${o.id})" title="\${o.notes ? escHtml(o.notes) : 'Edit'}">\${escHtml(o.name)}\${o.callsign ? ' <span class="callsign">' + escHtml(o.callsign) + '</span>' : ''}</a>\`).join('<br>')
+        || \`<a class="officer text-muted" onclick="openOfficerForm(null, \${year}, '\${pos.key}')" title="Add">+</a>\`;
+    };
+
+    setPage(\`
+      \${years.length ? \`
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Year</th>\${data.positions.map(p => '<th>' + escHtml(p.label) + '</th>').join('')}</tr></thead>
+            <tbody>\${years.map(y => \`
+              <tr><td><strong>\${y}</strong></td>\${data.positions.map(p => '<td>' + cell(y, p) + '</td>').join('')}</tr>\`).join('')}</tbody>
+          </table></div>
+        </div>\` : \`
+        <div class="card"><p class="text-muted" style="font-size:13px">No officers on record yet. Add one, or paste a list of past presidents.</p></div>\`}
+      <p class="text-muted" style="font-size:12px;margin-top:12px">Click a name to change or remove it, or a + to fill a gap. A year needs only the positions you know. This history is shown on the public <a href="/directory" target="_blank" rel="noopener">member directory</a>.</p>
+    \`);
+  } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
+}
+
+function officerPositionOptions(selected) {
+  return state.officers.positions.map(p => \`<option value="\${p.key}" \${p.key === selected ? 'selected' : ''}>\${escHtml(p.label)}</option>\`).join('');
+}
+
+function openOfficerForm(id = null, year = null, position = null) {
+  const o = id ? state.officers.officers.find(x => x.id === id) : null;
+  showModal(\`
+    <div class="form-row">
+      <div class="form-group" style="width:110px">
+        <label>Year</label>
+        <input type="number" id="of-year" min="\${state.officers.first_year}" max="\${state.officers.last_year}" value="\${o?.year ?? year ?? new Date().getFullYear()}">
+      </div>
+      <div class="form-group" style="flex:1;min-width:160px">
+        <label>Position</label>
+        <select id="of-position">\${officerPositionOptions(o?.position ?? position)}</select>
+      </div>
+    </div>
+    <div class="form-row mt-8">
+      <div class="form-group" style="width:110px">
+        <label>Callsign</label>
+        <input type="text" id="of-callsign" value="\${escHtml(o?.callsign || '')}" style="text-transform:uppercase" autocomplete="off">
+      </div>
+      <div class="form-group" style="flex:1;min-width:160px">
+        <label>Name</label>
+        <input type="text" id="of-name" value="\${escHtml(o?.name || '')}" autocomplete="off">
+      </div>
+    </div>
+    <p class="text-muted" style="font-size:12px;margin-top:6px">Enter a name, a callsign, or both. For a member, the callsign alone is enough: the name comes from their record.</p>
+    <div class="form-group mt-8">
+      <label>Notes</label>
+      <input type="text" id="of-notes" value="\${escHtml(o?.notes || '')}" placeholder="e.g. took over in June">
+    </div>
+    <p id="of-error" style="font-size:13px;color:var(--danger);margin-top:10px"></p>
+  \`, o ? 'Edit Officer' : 'Add Officer', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    ...(o ? [{ label: 'Remove', cls: 'btn-danger', fn: 'removeOfficer(' + o.id + ')' }] : []),
+    { label: 'Save', cls: 'btn-primary', fn: 'saveOfficer(' + (o ? o.id : 'null') + ')' },
+  ]);
+  document.getElementById(o ? 'of-name' : 'of-callsign').focus();
+}
+
+async function saveOfficer(id) {
+  const body = {
+    year: Number(document.getElementById('of-year').value),
+    position: document.getElementById('of-position').value,
+    callsign: document.getElementById('of-callsign').value.trim(),
+    name: document.getElementById('of-name').value.trim(),
+    notes: document.getElementById('of-notes').value.trim(),
+  };
+  try {
+    await api(id ? 'PUT' : 'POST', '/officers' + (id ? '/' + id : ''), body);
+    closeModal();
+    toast('Officer saved ✓');
+    officers();
+  } catch(e) { document.getElementById('of-error').textContent = e.data?.error || e.message; }
+}
+
+async function removeOfficer(id) {
+  try {
+    await api('DELETE', '/officers/' + id);
+    closeModal();
+    toast('Officer removed ✓');
+    officers();
+  } catch(e) { document.getElementById('of-error').textContent = e.data?.error || e.message; }
+}
+
+function openOfficerPaste() {
+  showModal(\`
+    <div class="form-group">
+      <label>Position</label>
+      <select id="op-position">\${officerPositionOptions('president')}</select>
+    </div>
+    <div class="form-group mt-8">
+      <label>One per line: the year, then the name, then the callsign if there is one</label>
+      <textarea id="op-text" rows="12" style="font-family:monospace;font-size:13px" placeholder="1985 John Smith W4ABC&#10;1986-1988 Mary Jones, K4XYZ&#10;1989 Bob Brown"></textarea>
+    </div>
+    <p class="text-muted" style="font-size:12px;margin-top:6px">A range such as 1986-1988 adds every year in it. Anyone already listed is skipped. If a line cannot be read, nothing is added.</p>
+    <div id="op-error" style="font-size:13px;color:var(--danger);margin-top:10px"></div>
+  \`, 'Paste a List of Officers', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Add', cls: 'btn-primary', fn: 'saveOfficerPaste()' },
+  ]);
+  document.getElementById('op-text').focus();
+}
+
+async function saveOfficerPaste() {
+  try {
+    const result = await api('POST', '/officers/bulk', {
+      position: document.getElementById('op-position').value,
+      text: document.getElementById('op-text').value,
+    });
+    closeModal();
+    toast('Added ' + result.added + (result.already_listed ? ', ' + result.already_listed + ' already listed' : '') + ' ✓');
+    officers();
+  } catch(e) {
+    const lines = (e.data?.details || []).map(d => '<div>' + (d.line ? 'Line ' + d.line + ': ' : '') + escHtml(d.error) + ' <span class="text-muted">' + escHtml(d.text) + '</span></div>').join('');
+    document.getElementById('op-error').innerHTML = escHtml(e.data?.error || e.message) + lines;
+  }
 }
 
 // ── GOOGLE GROUPS ─────────────────────────────────────────────────────
