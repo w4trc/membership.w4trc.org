@@ -535,6 +535,9 @@ textarea { resize: vertical; min-height: 80px; }
         <a class="nav-item" onclick="nav('donations');closeNav()" data-page="donations">
           <span class="icon">🎁</span> Donations
         </a>
+        <a class="nav-item hidden" id="nav-treasurer" onclick="nav('treasurer');closeNav()" data-page="treasurer">
+          <span class="icon">🧾</span> Treasurer Report
+        </a>
         <a class="nav-item hidden" id="nav-attendance" onclick="nav('attendance');closeNav()" data-page="attendance">
           <span class="icon">📝</span> Attendance
         </a>
@@ -852,6 +855,7 @@ function showAdmin() {
   document.getElementById('user-avatar').textContent = u.email[0].toUpperCase();
   if (u.role === 'admin') document.getElementById('nav-cutoff')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-prospects')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-treasurer')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-inventory')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
@@ -868,7 +872,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', inventory: 'Inventory', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -878,13 +882,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory', 'treasurer']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, attendance, inventory, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, treasurer, attendance, inventory, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -3328,6 +3332,107 @@ async function revokeSession(id, current) {
     toast('Session signed out ✓');
     sessions();
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+// ── TREASURER REPORT ──────────────────────────────────────────────────
+async function treasurer(year) {
+  setPage('<div class="spinner"></div>');
+  try {
+    const r = await api('GET', '/admin/treasurer-report' + (year ? '?year=' + year : ''));
+    const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+    const from = (x) => escHtml(x.name) + (x.callsign ? ' <span class="callsign">' + escHtml(x.callsign) + '</span>' : '');
+
+    document.getElementById('topbar-actions').innerHTML =
+      '<a class="btn btn-secondary" href="/print/treasurer?year=' + r.year + '" target="_blank" rel="noopener">Print</a> ' +
+      '<button class="btn btn-secondary" onclick="exportTreasurerCSV(' + r.year + ')">⬇ Export CSV</button>';
+
+    setPage(\`
+      <div class="year-row">
+        \${r.years.map(y => \`<div class="year-pill \${y === r.year ? 'active' : ''}" onclick="treasurer(\${y})">\${y}</div>\`).join('')}
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-val">\${money(r.totals.received)}</div><div class="stat-label">Received in \${r.year}</div></div>
+        <div class="stat-card"><div class="stat-val">\${money(r.totals.dues)}</div><div class="stat-label">Dues</div></div>
+        <div class="stat-card"><div class="stat-val">\${money(r.totals.donations)}</div><div class="stat-label">Donations</div></div>
+        <div class="stat-card"><div class="stat-val">\${r.totals.payments}</div><div class="stat-label">Payments</div></div>
+      </div>
+      \${r.ledger.length ? \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">By payment method</div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Method</th><th>Dues</th><th>Donations</th><th>Total</th></tr></thead>
+            <tbody>
+              \${r.by_method.map(m => \`
+                <tr>
+                  <td>\${cap(m.method)}</td>
+                  <td>\${m.dues_count ? money(m.dues) + ' <span class="text-muted" style="font-size:12px">' + m.dues_count + '</span>' : '<span class="text-muted">—</span>'}</td>
+                  <td>\${m.donation_count ? money(m.donations) + ' <span class="text-muted" style="font-size:12px">' + m.donation_count + '</span>' : '<span class="text-muted">—</span>'}</td>
+                  <td><strong>\${money(m.total)}</strong></td>
+                </tr>\`).join('')}
+              <tr><td><strong>Total</strong></td><td><strong>\${money(r.totals.dues)}</strong></td><td><strong>\${money(r.totals.donations)}</strong></td><td><strong>\${money(r.totals.received)}</strong></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        \${r.dues_by_year.length ? \`
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title">Dues by membership year</div>
+            <div class="tbl-wrap"><table>
+              <thead><tr><th>For</th><th>Payments</th><th>Amount</th></tr></thead>
+              <tbody>\${r.dues_by_year.map(d => \`
+                <tr>
+                  <td>\${d.dues_year} dues \${d.dues_year > r.year ? '<span class="badge badge-blue">Paid in advance</span>' : d.dues_year < r.year ? '<span class="badge badge-gray">Paid late</span>' : ''}</td>
+                  <td>\${d.count}</td>
+                  <td>\${money(d.amount)}</td>
+                </tr>\`).join('')}</tbody>
+            </table></div>
+          </div>\` : ''}
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Payments</div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Date</th><th>For</th><th>From</th><th>Method</th><th>Amount</th></tr></thead>
+            <tbody>\${r.ledger.map(l => \`
+              <tr>
+                <td>\${l.date ? escHtml(l.date) : '<span class="text-muted">—</span>'}</td>
+                <td>\${escHtml(l.detail)}</td>
+                <td>\${from(l)}</td>
+                <td>\${cap(l.method)}\${l.check_number && l.method !== 'stripe' ? ' <span class="text-muted">#' + escHtml(l.check_number) + '</span>' : ''}</td>
+                <td>\${money(l.amount)}</td>
+              </tr>\`).join('')}</tbody>
+          </table></div>
+        </div>\` : '<div class="card" style="margin-bottom:16px"><p class="text-muted" style="font-size:13px">No payments recorded for ' + r.year + '.</p></div>'}
+      \${r.items.length ? \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Item donations — \${money(r.items_value)} estimated, not counted as money</div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Date</th><th>Item</th><th>From</th><th>Estimated value</th></tr></thead>
+            <tbody>\${r.items.map(i => \`
+              <tr>
+                <td>\${escHtml(i.date)}</td>
+                <td>\${escHtml(i.description || 'Item')}</td>
+                <td>\${from(i)}</td>
+                <td>\${i.estimated_value != null ? money(i.estimated_value) : '<span class="text-muted">—</span>'}</td>
+              </tr>\`).join('')}</tbody>
+          </table></div>
+        </div>\` : ''}
+      \${r.eastman.members ? '<p class="text-muted" style="font-size:12px;margin-bottom:6px">Not included above: Eastman sponsors ' + r.eastman.members + ' member' + (r.eastman.members !== 1 ? 's' : '') + ' for ' + r.year + ' at $3 each, ' + money(r.eastman.amount) + ' in all.</p>' : ''}
+      \${r.undated ? '<p class="text-muted" style="font-size:12px;margin-bottom:6px">' + r.undated + ' dues payment' + (r.undated !== 1 ? 's have' : ' has') + ' no paid date and ' + (r.undated !== 1 ? 'are' : 'is') + ' counted in the year the dues are for.</p>' : ''}
+      <p class="text-muted" style="font-size:12px">Money is counted in the year it was received: dues by paid date, donations by donation date. A renewal paid in October for next year is this year's money. Online payments are shown as charged, including the $1 processing fee; Stripe's own fees are not taken off.</p>
+    \`);
+  } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
+}
+
+async function exportTreasurerCSV(year) {
+  try {
+    const resp = await fetch('/api/admin/treasurer-report?format=csv&year=' + year, { credentials: 'include' });
+    if (!resp.ok) { toast('Export failed', 'error'); return; }
+    const url = URL.createObjectURL(await resp.blob());
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = \`w4trc-treasurer-\${year}.csv\`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { toast('Export failed: ' + e.message, 'error'); }
 }
 
 // ── GOOGLE GROUPS ─────────────────────────────────────────────────────

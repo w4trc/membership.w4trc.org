@@ -13,6 +13,7 @@ A Cloudflare Workers-based membership management system.
 - **Dues** — record payments per year (amount, method, date, check number); a family payment covers everyone linked under the payer
 - **Dashboard** — paid counts and revenue with year-over-year comparison, charts, "not yet renewed" list, and license expiry warnings
 - **Donations** — monetary and item donations from members, non-member individuals, organizations, or anonymous donors
+- **Treasurer report** — the money received in a year: dues and donations by payment method, every payment listed, as a page, a printout, or a CSV
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
@@ -265,8 +266,8 @@ npm run test:watch  # re-run on change
 
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
-the dues-year rules, family coverage, sessions, the database backup, and the Google Groups
-sync and audit. Nothing leaves the machine: Stripe is mocked and no
+the dues-year rules, family coverage, sessions, the database backup, the treasurer
+report, and the Google Groups sync and audit. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -485,6 +486,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /directory        Public member directory (opt-in members only)
 /donate           Public donation form (no login)
 /print            Print-friendly member directory (login required)
+/print/treasurer  Print-friendly treasurer report, ?year=YYYY (board+)
 /health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
 ```
 
@@ -573,6 +575,7 @@ POST   /api/inventory/locations       Add a storage location
 GET    /api/admin/stats               Dashboard stats (board+)
 GET    /api/admin/charts              Dashboard chart data (board+)
 GET    /api/admin/callsigns           Active member callsign report (board+)
+GET    /api/admin/treasurer-report    Money received in a year (board+; ?year=YYYY, ?format=csv)
 POST   /api/admin/password            Change own password (any role)
 GET    /api/admin/users               List user accounts (admin)
 POST   /api/admin/users               Create user account (admin)
@@ -614,6 +617,30 @@ detail, dues list, and audit log. When the payer pays family dues online, everyo
 linked under them is marked covered for that year, and the link carries forward from
 each dependent's most recent dues record. Covered members see "Covered by a Family
 Membership" in the portal instead of a pay button.
+
+---
+
+## Treasurer Report
+
+**Treasurer Report** in the sidebar (board and admin) shows the money the club received in one
+calendar year. Pick a year at the top; **Print** opens a one-page version to print or save as a
+PDF, and **Export CSV** downloads every payment as a row.
+
+- **Money is counted in the year it arrived**, so the totals match the bank account. Dues go by
+  paid date, not by the year they are for: a 2027 renewal paid in October 2026 is 2026 money.
+  "Dues by membership year" shows how the year's dues split between this year's memberships,
+  renewals paid in advance, and late payments. Donations go by donation date.
+- **By payment method** totals dues and donations for cash, check, PayPal, Stripe, and so on.
+  A payment recorded with no method is listed as "Unspecified".
+- **Payments** lists every dues payment and money donation behind the totals, oldest first.
+- **Item donations** are listed with their estimated value but are not counted as money.
+- **Eastman** is shown as a note, not in the totals: the number of members Eastman sponsors for
+  the year, at $3 each. If you record Eastman's payment as a donation it is counted then.
+- A dues payment with no paid date is counted in the year the dues are for, and the report says
+  how many there are.
+
+Online payments are shown as charged, including the $1 processing fee; Stripe's own fees are
+not taken off. In the CSV, the reference for an online payment is its Stripe session ID.
 
 ---
 

@@ -12,9 +12,6 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
 
 ### Online donations
-- [ ] Run one donation in Stripe test mode.
-- [ ] Donation add-on at dues checkout ("add a donation to my renewal").
-- [ ] Include online donations in the weekly board roundup.
 - [ ] Run one donation from the public `/donate` page in Stripe test mode.
 
 ---
@@ -23,7 +20,6 @@ What's already built is described in [README.md](README.md). This file only list
 
 ### Money
 - [ ] **Donation receipts** — year-end emailed receipt per donor (monetary and item donations), sent via Resend.
-- [ ] **Treasurer report** — one page / CSV combining dues, donations, and payment method by year.
 
 ### Inventory
 - [ ] **Loan due dates** — items can be checked out to a member, but there is no due date or overdue reminder.

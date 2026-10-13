@@ -14,6 +14,7 @@
  * GET    /api/admin/google-sync   - what the Google Groups sync would change
  * POST   /api/admin/google-sync   - run the Google Groups sync now
  * GET    /api/admin/google-audit  - compare each group in Google with the membership list
+ * GET    /api/admin/treasurer-report - money received in a year (?year=YYYY, ?format=csv)
  */
 
 import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
@@ -24,6 +25,7 @@ import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
+import { treasurerReport, treasurerCsv, parseReportYear } from '../lib/treasurerReport.js';
 import { isConfigured as googleConfigured, planSync, syncGoogleGroups, auditGoogleGroups } from '../lib/googleGroups.js';
 
 export async function handleAdmin(request, env, path, user) {
@@ -51,6 +53,21 @@ export async function handleAdmin(request, env, path, user) {
   if (resource === 'callsigns' && method === 'GET') {
     if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
     return getCallsignReport(env);
+  }
+
+  // Treasurer report — board and admin can view
+  if (resource === 'treasurer-report' && method === 'GET') {
+    if (!isBoardOrAbove(user)) return jsonError('Forbidden', 403);
+    const year = parseReportYear(url.searchParams.get('year'));
+    if (!year) return jsonError('Invalid year', 400);
+    const report = await treasurerReport(env, year);
+    if (url.searchParams.get('format') !== 'csv') return jsonResponse(report);
+    return new Response(treasurerCsv(report), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="w4trc-treasurer-${year}.csv"`,
+      },
+    });
   }
 
   // Password change — any authenticated user can change their own password
