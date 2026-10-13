@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * KARC terminal UI — search members, equipment inventory and meeting attendance
- * from a terminal, record a new meeting's attendance, and move, check out or
- * annotate an inventory item.
+ * from a terminal, record a new meeting's attendance, and add, move, check out
+ * or annotate an inventory item.
  *
  * Usage:
  *   npm run tui                      production (https://members.w4trc.org)
@@ -13,8 +13,8 @@
  *
  * Signs in with your normal admin/board account and talks to the same API as
  * the web UI. The session id is kept in ~/.karc-tui.json so you stay signed in.
- * It writes only a new meeting, an inventory move and an inventory note;
- * everything else is read-only.
+ * It writes only a new meeting, a new inventory item, an inventory move and an
+ * inventory note; everything else is read-only.
  *
  * No dependencies. Needs Node 18.14+ (built-in fetch). Works in Windows
  * Terminal, PowerShell, and macOS/Linux terminals.
@@ -366,18 +366,26 @@ async function saveMeeting() {
 // ── Inventory actions ────────────────────────────────────────────────────────
 // Move or check out an item, or add a note to it, from its detail screen.
 
-const ACTION_FIELDS = { move: ['dest', 'date', 'note'], note: ['date', 'note'] };
+const ACTION_FIELDS = {
+  move: ['dest', 'date', 'note'],
+  note: ['date', 'note'],
+  add:  ['name', 'manufacturer', 'model', 'serial', 'dest', 'date', 'note'],
+};
+const ACTION_START = { move: 'dest', note: 'note', add: 'name' };
 let destinations = null; // every location and active member, fetched once
 
+// kind 'add' is a new item, opened from the list; it has no current place yet
 async function openItemAction(kind) {
   const action = {
-    kind, item: state.detail.data.item, field: kind === 'move' ? 'dest' : 'note',
-    query: '', sel: 0, date: today(), note: '', error: '', busy: false,
+    kind, item: kind === 'add' ? {} : state.detail.data.item, field: ACTION_START[kind],
+    name: '', manufacturer: '', model: '', serial: '',
+    query: '', sel: 0, date: today(), note: '', error: '', busy: false, confirmDiscard: false,
   };
+  if (kind === 'add') state.tab = 'inventory';
   state.action = action;
   state.view   = 'action';
   render();
-  if (kind !== 'move' || destinations) return;
+  if (kind === 'note' || destinations) return;
 
   try {
     const { data } = await api('/inventory/meta');
@@ -407,9 +415,14 @@ async function saveItemAction() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.date) || Number.isNaN(Date.parse(a.date))) return fail('date', 'Date must be YYYY-MM-DD');
 
   const body = { event_date: a.date, note: a.note };
-  const dest = a.kind === 'move' ? actionMatches(a)[a.sel] : null;
-  if (a.kind === 'move') {
-    if (!dest) return fail('dest', 'Choose where it is going');
+  const add  = a.kind === 'add';
+  if (add) {
+    if (!a.name.trim()) return fail('name', 'Type a name for the item');
+    Object.assign(body, { name: a.name, manufacturer: a.manufacturer, model: a.model, serial_number: a.serial });
+  }
+  const dest = a.kind === 'note' ? null : actionMatches(a)[a.sel];
+  if (a.kind !== 'note') {
+    if (!dest) return fail('dest', add ? 'Choose where it is kept' : 'Choose where it is going');
     body.location_id = dest.location_id;
     body.member_id   = dest.member_id;
   } else if (!a.note.trim()) {
@@ -419,11 +432,12 @@ async function saveItemAction() {
   a.busy = true; a.error = '';
   render();
   try {
-    const { data } = await api(`/inventory/${a.item.id}/${a.kind === 'move' ? 'move' : 'notes'}`, { method: 'POST', body });
+    const url = add ? '/inventory' : `/inventory/${a.item.id}/${a.kind === 'move' ? 'move' : 'notes'}`;
+    const { data } = await api(url, { method: 'POST', body });
     state.action = null;
     state.detail = { kind: 'inventory', data, error: '', scroll: 0 };
     state.view   = 'detail';
-    state.flash  = { ok: true, text: !dest ? 'Note added' : `${dest.member_id ? 'Checked out to' : 'Moved to'} ${dest.label}` };
+    state.flash  = { ok: true, text: add ? 'Item added' : !dest ? 'Note added' : `${dest.member_id ? 'Checked out to' : 'Moved to'} ${dest.label}` };
     load('inventory', { keep: true });
   } catch (err) {
     a.busy = false;
@@ -663,7 +677,7 @@ const LIST_VIEWS = {
 
 const LIST_KEYS = {
   members:   'Enter open · Tab switch · ^F filter · ^E/^L copy emails/callsigns',
-  inventory: 'Enter open · Tab switch · ^F filter · ^N new meeting · ^C quit',
+  inventory: 'Enter open · Tab switch · ^F filter · ^N new item · ^C quit',
   meetings:  'Enter open · Tab switch · ^F filter · ^N new meeting · ^C quit',
 };
 
@@ -864,7 +878,7 @@ const formInput = (f, cols, name, text, value) =>
 
 function formStatus(f) {
   if (f.busy)           return dim('Saving…');
-  if (f.confirmDiscard) return yellow('Press Esc again to discard this meeting');
+  if (f.confirmDiscard) return yellow(`Press Esc again to discard this ${f.kind === 'add' ? 'item' : 'meeting'}`);
   return f.error ? red(plain(f.error)) : '';
 }
 
@@ -918,14 +932,23 @@ function formScreen(cols, rows) {
 
 function actionScreen(cols, rows) {
   const a = state.action;
-  const move = a.kind === 'move';
-  const lines = [
+  const add  = a.kind === 'add';
+  const move = a.kind === 'move' || add; // both pick a location or member
+  const lines = add ? [
+    '',
+    `  ${bold('New inventory item')}`,
+    '',
+    formInput(a, cols, 'name', 'Name', a.name),
+    formInput(a, cols, 'manufacturer', 'Maker', a.manufacturer),
+    formInput(a, cols, 'model', 'Model', a.model),
+    formInput(a, cols, 'serial', 'Serial', a.serial),
+  ] : [
     '',
     `  ${bold(move ? 'Move or check out' : 'Add a note')}  ${plain(a.item.name)}`,
     `  ${dim(`Currently: ${place(a.item.location_name, a.item.member_callsign, a.item.member_name)}`)}`,
     '',
   ];
-  if (move) lines.push(formInput(a, cols, 'dest', 'Move to', a.query));
+  if (move) lines.push(formInput(a, cols, 'dest', add ? 'Kept at' : 'Move to', a.query));
   lines.push(formInput(a, cols, 'date', 'Date', a.date), formInput(a, cols, 'note', 'Note', a.note), '');
 
   if (move) {
@@ -950,8 +973,9 @@ function actionScreen(cols, rows) {
   while (lines.length < rows - 2) lines.push('');
   lines.length = rows - 2;
 
-  const keys = move ? 'Type to filter · ↑↓ choose · Tab next field · Ctrl+S save · Esc cancel'
-                    : '↑↓ field · Ctrl+S save · Esc cancel';
+  const keys = !move ? '↑↓ field · Ctrl+S save · Esc cancel'
+    : a.field === 'dest' ? 'Type to filter · ↑↓ choose · Tab next field · Ctrl+S save · Esc cancel'
+    : '↑↓ or Tab field · Ctrl+S save · Esc cancel';
   lines.push(`  ${formStatus(a)}`, ` ${dim(keys)}`);
   return lines;
 }
@@ -1038,7 +1062,7 @@ function listKey(str, key) {
     state.tab = names[(names.indexOf(state.tab) + (key.shift ? names.length - 1 : 1)) % names.length];
     return cur().loaded ? render() : load(state.tab);
   }
-  if (key.ctrl && key.name === 'n') return openMeetingForm();
+  if (key.ctrl && key.name === 'n') return state.tab === 'inventory' ? openItemAction('add') : openMeetingForm();
   if (key.ctrl && key.name === 'e') return copyMemberColumn('email', 'email');
   if (key.ctrl && key.name === 'l') return copyMemberColumn('callsign', 'callsign');
   if (key.ctrl && key.name === 'f') {
@@ -1104,9 +1128,15 @@ function actionKey(str, key) {
   const text = a.field === 'dest' ? 'query' : a.field; // the property being typed into
 
   if (key.name === 'escape') {
+    const dirty = a.kind === 'add' && (a.name || a.manufacturer || a.model || a.serial || a.note);
+    if (dirty && !a.confirmDiscard) { a.confirmDiscard = true; return render(); }
     state.action = null;
-    state.view   = 'detail';
-  } else if (key.ctrl && key.name === 's') {
+    state.view   = a.kind === 'add' ? 'list' : 'detail';
+    return render();
+  }
+  a.confirmDiscard = false;
+
+  if (key.ctrl && key.name === 's') {
     return saveItemAction();
   } else if (a.field === 'dest' && (key.name === 'up' || key.name === 'down')) {
     a.sel += key.name === 'up' ? -1 : 1;

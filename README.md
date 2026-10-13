@@ -17,7 +17,7 @@ A Cloudflare Workers-based membership management system.
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
-- **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and move or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
+- **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and add, move, or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
 - **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync, and the annual membership cutoff
 
 **For members**
@@ -204,7 +204,7 @@ Put local secrets in `.dev.vars`. `npm run import-members` loads members from a 
 ### Terminal UI
 
 `npm run tui` opens a terminal UI for looking up members, equipment, and meeting
-attendance. It can also record a new meeting and move, check out, or add a note to an
+attendance. It can also record a new meeting, add an inventory item, and move, check out, or add a note to an
 inventory item; those are the only things it writes. It signs in with your normal admin or board account and uses the same API as the web
 app, so there is nothing to deploy. It has no dependencies beyond Node 18.14+ and runs
 in Windows Terminal, PowerShell, and macOS or Linux terminals.
@@ -219,11 +219,15 @@ Type to search. `Tab` switches between members, inventory, and meetings, `↑` `
 `Enter` opens a record, `Ctrl+F` cycles the filter, `Esc` clears the search or goes back,
 and `Ctrl+C` quits.
 
-`Ctrl+N` starts a new meeting. The date defaults to today and the type to Monthly, so
+`Ctrl+N` starts a new meeting from the members or meetings tab. The date defaults to today and the type to Monthly, so
 you can type callsigns straight away, separated by spaces; each one is looked up
 (members, then local hams, then HamDB) and listed as you go. Guests without a callsign
 go in the Guests field, separated by commas. `Ctrl+S` saves. To edit or delete a
 meeting, use the web app.
+
+On the inventory tab, `Ctrl+N` adds a new item instead: name, maker, model, serial
+number, and where it is kept (type to filter the locations and members). `Ctrl+S` saves.
+Purchase details and photos are added in the web app.
 
 With an inventory item open, `m` moves it or checks it out (type to filter the
 locations and members, `↑` `↓` to choose) and `n` adds a dated note; `Ctrl+S` saves.
