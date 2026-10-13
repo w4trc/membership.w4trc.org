@@ -3331,12 +3331,12 @@ async function revokeSession(id, current) {
 }
 
 // ── GOOGLE GROUPS ─────────────────────────────────────────────────────
-async function googleGroups(lastRun) {
+async function googleGroups(lastRun, audit) {
   setPage('<div class="spinner"></div>');
   try {
     const data = await api('GET', '/admin/google-sync');
     document.getElementById('topbar-actions').innerHTML = data.configured
-      ? '<button class="btn btn-primary" onclick="runGoogleSync()">Sync Now</button>' : '';
+      ? '<button class="btn btn-secondary" onclick="runGoogleAudit()">Audit Groups</button> <button class="btn btn-primary" onclick="runGoogleSync()">Sync Now</button>' : '';
 
     const emailList = (label, emails) => emails.length ? \`
       <details style="margin-top:8px">
@@ -3375,8 +3375,77 @@ async function googleGroups(lastRun) {
       }).join('')}
       \${data.years.length ? '' : '<div class="card" style="margin-bottom:16px"><p style="font-size:13px;color:var(--text-muted)">No group is being synced right now. The sync starts with the year set in GOOGLE_SYNC_START_YEAR.</p></div>'}
       <p class="text-muted" style="font-size:12px">Current members are added to their year's group automatically every hour. The sync only removes addresses it added itself; anyone added to a group by hand in Google is left alone. Groups are not created automatically.</p>
+      \${audit ? googleAuditHtml(audit) : ''}
     \`);
   } catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.message) + '</p>'); }
+}
+
+// Each group as Google has it, set against the membership list
+function googleAuditHtml(audit) {
+  const who = (members) => members.length
+    ? members.map(m => escHtml(m.name) + (m.callsign ? ' <span class="callsign">' + escHtml(m.callsign) + '</span>' : '')).join(', ')
+    : '';
+  const roleBadge = (role) => role === 'MEMBER' ? '' : ' <span class="badge badge-blue">' + escHtml(role.charAt(0) + role.slice(1).toLowerCase()) + '</span>';
+
+  return \`
+    <h3 style="margin:24px 0 12px">Audit</h3>
+    \${audit.error ? \`
+      <div class="card" style="margin-bottom:16px;border-color:var(--danger)">
+        <div class="card-title" style="color:var(--danger)">Audit stopped</div>
+        <p style="font-size:13px">\${escHtml(audit.error)}</p>
+      </div>\` : ''}
+    \${audit.years.filter(y => y.error || y.group_size !== null).map(y => {
+      if (y.error) return \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">\${y.year} — \${escHtml(y.group)}</div>
+          <p style="font-size:13px;color:var(--danger)">\${escHtml(y.error)}</p>
+        </div>\`;
+      // Missing first, then by address
+      const expected = [...y.expected].sort((a, b) => (a.in_group - b.in_group) || a.email.localeCompare(b.email));
+      const missing = expected.filter(e => !e.in_group).length;
+      return \`
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">\${y.year} — \${escHtml(y.group)}</div>
+          <p style="font-size:13px">
+            \${missing ? '<span class="badge badge-red">' + missing + ' missing</span>' : '<span class="badge badge-green">Nobody missing</span>'}
+            \${y.extra.length ? '<span class="badge badge-yellow" style="margin-left:6px">' + y.extra.length + ' not current member' + (y.extra.length !== 1 ? 's' : '') + '</span>' : ''}
+            <span style="margin-left:8px">\${y.expected.length} should be in the group; Google has \${y.group_size}</span>
+          </p>
+          \${expected.length ? \`
+            <div class="tbl-wrap" style="margin-top:12px;max-height:420px"><table>
+              <thead><tr><th>Should be in the group</th><th>Member</th><th>In Google</th></tr></thead>
+              <tbody>\${expected.map(e => \`
+                <tr>
+                  <td>\${escHtml(e.email)}</td>
+                  <td>\${who(e.members) || '<span class="text-muted">Always added</span>'}</td>
+                  <td>\${e.in_group ? '<span class="badge badge-green">Yes</span>'
+                    : '<span class="badge badge-red">Missing</span>' + (e.tracked ? ' <span class="text-muted" style="font-size:12px">the sync added it earlier; it has since been removed or left</span>' : '')}</td>
+                </tr>\`).join('')}</tbody>
+            </table></div>\` : '<p class="text-muted" style="font-size:13px;margin-top:8px">No current members for this year yet.</p>'}
+          \${y.extra.length ? \`
+            <div class="tbl-wrap" style="margin-top:16px;max-height:420px"><table>
+              <thead><tr><th>In Google, not a current member</th><th>On the membership list as</th></tr></thead>
+              <tbody>\${[...y.extra].sort((a, b) => a.email.localeCompare(b.email)).map(e => \`
+                <tr>
+                  <td>\${escHtml(e.email)}\${roleBadge(e.role)}</td>
+                  <td>\${e.members.length ? who(e.members) + ' <span class="text-muted" style="font-size:12px">not current for ' + y.year + '</span>' : '<span class="text-muted">Nobody</span>'}</td>
+                </tr>\`).join('')}</tbody>
+            </table></div>\` : ''}
+          \${y.no_email.length ? '<p style="font-size:12px;color:var(--text-muted);margin-top:12px">No email on file, so cannot be in the group: ' + who(y.no_email) + '</p>' : ''}
+        </div>\`;
+    }).join('')}
+    <p class="text-muted" style="font-size:12px">The audit reads each group from Google and changes nothing. A missing address that the sync added earlier is not added again automatically.</p>
+  \`;
+}
+
+async function runGoogleAudit() {
+  setPage('<div class="spinner"></div>');
+  try {
+    googleGroups(null, await api('GET', '/admin/google-audit'));
+  } catch(e) {
+    toast(e.data?.error || e.message, 'error');
+    googleGroups();
+  }
 }
 
 async function runGoogleSync() {

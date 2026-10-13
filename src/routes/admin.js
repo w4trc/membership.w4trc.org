@@ -13,6 +13,7 @@
  * POST   /api/admin/backup        - back up the database to R2 now
  * GET    /api/admin/google-sync   - what the Google Groups sync would change
  * POST   /api/admin/google-sync   - run the Google Groups sync now
+ * GET    /api/admin/google-audit  - compare each group in Google with the membership list
  */
 
 import { isAdmin, isBoardOrAbove }    from '../lib/auth.js';
@@ -23,7 +24,7 @@ import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
-import { isConfigured as googleConfigured, planSync, syncGoogleGroups } from '../lib/googleGroups.js';
+import { isConfigured as googleConfigured, planSync, syncGoogleGroups, auditGoogleGroups } from '../lib/googleGroups.js';
 
 export async function handleAdmin(request, env, path, user) {
   const method   = request.method;
@@ -102,6 +103,11 @@ export async function handleAdmin(request, env, path, user) {
   if (resource === 'google-sync') {
     if (method === 'GET')  return googleSyncStatus(env);
     if (method === 'POST') return runGoogleSync(request, env, user);
+  }
+
+  if (resource === 'google-audit' && method === 'GET') {
+    if (!googleConfigured(env)) return jsonError('Google Groups sync is not set up', 400);
+    return jsonResponse(await auditGoogleGroups(env));
   }
 
   // ── Database backup ──────────────────────────────────────────────────────

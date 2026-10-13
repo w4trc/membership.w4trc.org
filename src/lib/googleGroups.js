@@ -22,6 +22,9 @@ const SCOPE     = 'https://www.googleapis.com/auth/admin.directory.group.member'
 // Workers free plan's 50 subrequests; the next run picks up the rest.
 export const MAX_CHANGES_PER_RUN = 35;
 
+// Reading a group is one request per 200 members
+const MAX_LIST_PAGES = 10;
+
 export function isConfigured(env) {
   return Boolean(env.GOOGLE_SERVICE_ACCOUNT_KEY);
 }
@@ -50,7 +53,7 @@ function alwaysAdd(env) {
 // paid for by Eastman, honorary or waived for the year, or lifetime honorary.
 // Binds: year.
 const CURRENT_MEMBERS = `
-  SELECT m.id, lower(trim(m.email)) AS email
+  SELECT m.id, m.callsign, m.first_name, m.last_name, lower(trim(m.email)) AS email
   FROM members m
   LEFT JOIN memberships ms ON ms.member_id = m.id AND ms.year = ?
   WHERE m.is_silent_key = 0
@@ -174,6 +177,36 @@ async function removeFromGroup(token, group, email) {
   throw new Error(message);
 }
 
+/**
+ * Everyone in a group, as Google has it: [{ email, role }]. Returns null when
+ * the group does not exist.
+ */
+async function listGroup(token, group) {
+  const members = [];
+  let pageToken = '';
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const query = new URLSearchParams({ maxResults: '200' });
+    if (pageToken) query.set('pageToken', pageToken);
+    const res = await fetch(`${API}/groups/${encodeURIComponent(group)}/members?${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const message = await googleError(res);
+      if (res.status === 401 || res.status === 403) throw new GoogleAccessError(`Google refused access (${res.status}): ${message}`);
+      throw new Error(message);
+    }
+    const body = await res.json();
+    for (const m of body.members || []) {
+      // "Everyone in the organization" entries have no address
+      if (m.email) members.push({ email: m.email.trim().toLowerCase(), role: m.role || 'MEMBER' });
+    }
+    pageToken = body.nextPageToken || '';
+    if (!pageToken) return members;
+  }
+  throw new Error(`${group} has more than ${MAX_LIST_PAGES * 200} members`);
+}
+
 // ── Sync ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -252,6 +285,108 @@ export async function syncGoogleGroups(env, { now = new Date(), userId = null, r
       detail: { year: y.year, group: y.group, added: y.added, removed: y.removed },
       request,
     });
+  }
+
+  return { configured: true, error, years };
+}
+
+// ── Audit ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The current year, plus next year once renewal season has opened. The audit
+ * only reads, so it is not held back by GOOGLE_SYNC_START_YEAR.
+ */
+export function auditYears(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const dues = duesYear(now);
+  return dues === year ? [year] : [year, dues];
+}
+
+const person = (m) => ({ id: m.id, callsign: m.callsign, name: `${m.first_name || ''} ${m.last_name || ''}`.trim() });
+
+/**
+ * Compare each year's group, as Google has it, with the membership list.
+ * Changes nothing. Returns { configured, error, years: [{
+ *   year, group, error, group_size,
+ *   expected: [{ email, members: [{ id, callsign, name }], in_group, tracked }],
+ *   extra:    [{ email, role, members: [{ id, callsign, name }] }],
+ *   no_email: [{ id, callsign, name }],
+ * }] }.
+ *
+ * `expected` is every address that should be in the group; `in_group` false
+ * means it is missing. `tracked` means the sync has a record of putting it
+ * there, so the sync will not add it again by itself. `extra` is every address
+ * in the group that does not belong to a current member; `members` names
+ * anyone on the membership list with that address who is not current.
+ */
+export async function auditGoogleGroups(env, { now = new Date() } = {}) {
+  if (!isConfigured(env)) return { configured: false, error: null, years: [] };
+
+  const yearList = auditYears(now);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT id, callsign, first_name, last_name, lower(trim(email)) AS email
+       FROM members WHERE trim(coalesce(email, '')) != '' ORDER BY id`
+    ),
+    ...yearList.flatMap(year => [
+      env.DB.prepare(CURRENT_MEMBERS).bind(year),
+      env.DB.prepare(`SELECT lower(email) AS email FROM google_group_members WHERE year = ?`).bind(year),
+    ]),
+  ]);
+
+  const byEmail = new Map();
+  for (const m of results[0].results) {
+    if (!byEmail.has(m.email)) byEmail.set(m.email, []);
+    byEmail.get(m.email).push(m);
+  }
+
+  const years = [];
+  let error = null;
+  let token = null;
+
+  for (const [i, year] of yearList.entries()) {
+    const current = results[1 + i * 2].results;
+    const tracked = new Set(results[2 + i * 2].results.map(t => t.email));
+    const out = {
+      year, group: groupAddress(env, year), error: null, group_size: null,
+      expected: [], extra: [], no_email: current.filter(m => !m.email).map(person),
+    };
+    years.push(out);
+    if (error) continue;
+
+    let listed;
+    try {
+      token ??= await accessToken(env);
+      listed = await listGroup(token, out.group);
+    } catch (err) {
+      if (err instanceof GoogleAccessError || !token) { error = err.message; continue; }
+      out.error = err.message;
+      continue;
+    }
+    if (!listed) {
+      out.error = `The group ${out.group} does not exist.`;
+      continue;
+    }
+
+    // Family members often share an address; it is one entry in the group
+    const expected = new Map();
+    for (const m of current) {
+      if (!m.email) continue;
+      if (!expected.has(m.email)) expected.set(m.email, []);
+      expected.get(m.email).push(person(m));
+    }
+    for (const email of alwaysAdd(env)) {
+      if (!expected.has(email)) expected.set(email, []);
+    }
+
+    const inGoogle = new Set(listed.map(g => g.email));
+    out.group_size = inGoogle.size;
+    out.expected = [...expected].map(([email, members]) => ({
+      email, members, in_group: inGoogle.has(email), tracked: tracked.has(email),
+    }));
+    out.extra = listed.filter(g => !expected.has(g.email)).map(g => ({
+      email: g.email, role: g.role, members: (byEmail.get(g.email) || []).map(person),
+    }));
   }
 
   return { configured: true, error, years };

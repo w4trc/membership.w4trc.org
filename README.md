@@ -18,7 +18,7 @@ A Cloudflare Workers-based membership management system.
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
 - **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and add, move, or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
-- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync, and the annual membership cutoff
+- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync and audit, and the annual membership cutoff
 
 **For members**
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
@@ -266,7 +266,7 @@ npm run test:watch  # re-run on change
 Tests live in `test/` and run with Vitest inside the Workers runtime, against a throwaway D1
 database built from the migrations in `schema/`. They cover the Stripe webhook and checkout,
 the dues-year rules, family coverage, sessions, the database backup, and the Google Groups
-sync. Nothing leaves the machine: Stripe is mocked and no
+sync and audit. Nothing leaves the machine: Stripe is mocked and no
 secrets are needed. GitHub Actions runs them, plus a build check, on every push and pull
 request (`.github/workflows/ci.yml`).
 
@@ -359,6 +359,25 @@ member. From October 1 it also fills next year's group as people renew.
 The **Google Groups** page under Admin shows what is waiting to be added or removed for each
 year, and has a **Sync Now** button. Until the key below is set, the page works as a preview
 and nothing is sent to Google.
+
+### Audit
+
+**Audit Groups** on the same page reads each group from Google and sets it against the
+membership list, address by address. For each year it shows:
+
+- everyone who should be in the group, with the member each address belongs to, and whether
+  Google has it. Anyone **missing** is flagged and listed first.
+- every address in the group that does not belong to a current member, with the name of any
+  lapsed member it matches and the Google role of owners and managers.
+- current members with no email on file.
+
+The audit changes nothing in Google or in the database. It covers this year's group, and next
+year's from October 1, including years before `GOOGLE_SYNC_START_YEAR` — so it can check
+`2026members@` even though the sync leaves that group alone.
+
+The sync works from its own record of what it has added, not from the group itself. If an
+address it added is later removed in Google, or the person leaves the group, the sync does not
+add it back; the audit is how you find those.
 
 ### Setup
 
@@ -565,6 +584,7 @@ POST   /api/admin/sync-prospects      Bulk sync local hams from HamDB (admin)
 POST   /api/admin/backup              Back up the database to R2 now (admin)
 GET    /api/admin/google-sync         What the Google Groups sync would change (admin)
 POST   /api/admin/google-sync         Run the Google Groups sync now (admin)
+GET    /api/admin/google-audit        Compare each Google Group with the membership list (admin)
 POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
 ```
 

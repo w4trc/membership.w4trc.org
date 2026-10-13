@@ -41,8 +41,6 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] **More tests** — the Stripe webhook, dues-year logic, and family coverage are covered. Next: login and role checks on the admin routes.
 
 
-Audit Google Groups vs membership list
-
 ---
 
 ## Not Doing

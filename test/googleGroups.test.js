@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { MAX_CHANGES_PER_RUN, planSync, syncGoogleGroups, syncYears } from '../src/lib/googleGroups.js';
+import { MAX_CHANGES_PER_RUN, auditGoogleGroups, auditYears, planSync, syncGoogleGroups, syncYears } from '../src/lib/googleGroups.js';
 import { handleAdmin } from '../src/routes/admin.js';
 import { resetDb, addMember, addMembership, auditActions } from './helpers.js';
 
@@ -18,6 +18,8 @@ let groups;
 let calls;
 let tokenAssertions;
 let failWith; // optional (method, group, email) => Response | undefined
+let roles;    // address → role, for anyone who is not a plain MEMBER
+let pageSize; // how many members a list request returns at a time
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -36,6 +38,21 @@ function fakeGoogle() {
     if (init.headers.Authorization !== 'Bearer test-token') return json(401, { error: { message: 'Bad token' } });
 
     const group = decodeURIComponent(match[1]);
+
+    if (method === 'GET') {
+      calls.push(`GET ${group}`);
+      const forced = failWith?.(method, group);
+      if (forced) return forced;
+      if (!groups.has(group)) return json(404, { error: { message: 'Resource Not Found: groupKey' } });
+      const all = [...groups.get(group)];
+      const start = Number(url.searchParams.get('pageToken') || 0);
+      const page = all.slice(start, start + pageSize);
+      return json(200, {
+        members: page.map(email => ({ email, role: roles.get(email) || 'MEMBER', type: 'USER' })),
+        ...(start + pageSize < all.length ? { nextPageToken: String(start + pageSize) } : {}),
+      });
+    }
+
     const email = match[2] ? decodeURIComponent(match[2]) : JSON.parse(init.body).email;
     calls.push(`${method} ${group} ${email}`);
 
@@ -97,6 +114,8 @@ beforeEach(async () => {
   calls = [];
   tokenAssertions = [];
   failWith = null;
+  roles = new Map();
+  pageSize = 200;
   fakeGoogle();
 });
 
@@ -490,10 +509,172 @@ describe('Google sign-in', () => {
   });
 });
 
+describe('audit', () => {
+  const runAudit = (now = MARCH, e = testEnv) => auditGoogleGroups(e, { now });
+
+  it('covers this year and next, whatever the sync start year', () => {
+    expect(auditYears(MARCH)).toEqual([2026]);
+    expect(auditYears(NOVEMBER)).toEqual([2026, 2027]);
+  });
+
+  it('shows who should be in the group and flags who is missing', async () => {
+    const here = await paidMember('here@example.com', 2026, { callsign: 'KT4AAA', first_name: 'Ann', last_name: 'Here' });
+    const gone = await paidMember('gone@example.com', 2026, { callsign: 'KT4BBB', first_name: 'Bob', last_name: 'Gone' });
+    groups.get(G2026).add('here@example.com');
+
+    const result = await runAudit();
+
+    expect(result).toMatchObject({ configured: true, error: null });
+    expect(result.years).toHaveLength(1);
+    expect(result.years[0]).toMatchObject({ year: 2026, group: G2026, error: null, group_size: 1, extra: [], no_email: [] });
+    expect(result.years[0].expected).toEqual([
+      { email: 'here@example.com', members: [{ id: here, callsign: 'KT4AAA', name: 'Ann Here' }], in_group: true, tracked: false },
+      { email: 'gone@example.com', members: [{ id: gone, callsign: 'KT4BBB', name: 'Bob Gone' }], in_group: false, tracked: false },
+    ]);
+  });
+
+  it('reads the group from Google and changes nothing', async () => {
+    await paidMember('missing@example.com');
+    groups.get(G2026).add('stranger@example.com');
+
+    await runAudit();
+
+    expect(calls).toEqual([`GET ${G2026}`]);
+    expect(inGroup(G2026)).toEqual(['stranger@example.com']);
+    expect(await tracked()).toEqual([]);
+    expect(await auditActions()).toEqual([]);
+  });
+
+  it('flags an address the sync added that has since left the group', async () => {
+    await paidMember('left@example.com');
+    await sync();
+    groups.get(G2026).delete('left@example.com');
+
+    const { years } = await runAudit();
+
+    expect(years[0].expected).toMatchObject([{ email: 'left@example.com', in_group: false, tracked: true }]);
+  });
+
+  it('lists addresses in the group that are not current members', async () => {
+    await paidMember('paid@example.com');
+    const lapsed = await addMember({ email: 'lapsed@example.com', callsign: 'KT4CCC', first_name: 'Cy', last_name: 'Lapsed' });
+    await addMembership(lapsed, 2025, { status: 'active', amount_paid: 20 });
+    for (const e of ['paid@example.com', 'lapsed@example.com', 'stranger@example.com', 'owner@w4trc.org']) groups.get(G2026).add(e);
+    roles.set('owner@w4trc.org', 'OWNER');
+
+    const { years } = await runAudit();
+
+    expect(years[0].group_size).toBe(4);
+    expect(years[0].extra).toEqual([
+      { email: 'lapsed@example.com', role: 'MEMBER', members: [{ id: lapsed, callsign: 'KT4CCC', name: 'Cy Lapsed' }] },
+      { email: 'stranger@example.com', role: 'MEMBER', members: [] },
+      { email: 'owner@w4trc.org', role: 'OWNER', members: [] },
+    ]);
+  });
+
+  it('matches addresses whatever their capitalisation', async () => {
+    await paidMember(' Mixed@Example.com ');
+    groups.get(G2026).add('MIXED@example.com');
+
+    const { years } = await runAudit();
+
+    expect(years[0].expected).toMatchObject([{ email: 'mixed@example.com', in_group: true }]);
+    expect(years[0].extra).toEqual([]);
+  });
+
+  it('lists a shared family address once, with everyone who uses it', async () => {
+    await paidMember('family@example.com', 2026, { first_name: 'Pat', last_name: 'One' });
+    await paidMember('family@example.com', 2026, { first_name: 'Sam', last_name: 'Two' });
+
+    const { years } = await runAudit();
+
+    expect(years[0].expected).toHaveLength(1);
+    expect(years[0].expected[0].members.map(m => m.name)).toEqual(['Pat One', 'Sam Two']);
+  });
+
+  it('names current members who have no email', async () => {
+    const id = await paidMember(null, 2026, { callsign: 'KT4DDD', first_name: 'Dee', last_name: 'Noemail' });
+
+    const { years } = await runAudit();
+
+    expect(years[0].no_email).toEqual([{ id, callsign: 'KT4DDD', name: 'Dee Noemail' }]);
+    expect(years[0].expected).toEqual([]);
+  });
+
+  it('expects the always-added addresses too', async () => {
+    const e = { ...testEnv, GOOGLE_GROUP_ALWAYS_ADD: 'automations@n4jhc.com, second@example.com' };
+    groups.get(G2026).add('automations@n4jhc.com');
+
+    const { years } = await runAudit(MARCH, e);
+
+    expect(years[0].expected).toEqual([
+      { email: 'automations@n4jhc.com', members: [], in_group: true, tracked: false },
+      { email: 'second@example.com', members: [], in_group: false, tracked: false },
+    ]);
+    expect(years[0].extra).toEqual([]);
+  });
+
+  it('audits a year the sync does not manage', async () => {
+    const from2027 = { ...testEnv, GOOGLE_SYNC_START_YEAR: '2027' };
+    await paidMember('this@example.com', 2026);
+    await paidMember('next@example.com', 2027);
+    groups.get(G2027).add('next@example.com');
+
+    const { years } = await runAudit(NOVEMBER, from2027);
+
+    expect(years.map(y => y.year)).toEqual([2026, 2027]);
+    expect(years[0].expected).toMatchObject([{ email: 'this@example.com', in_group: false }]);
+    expect(years[1].expected).toMatchObject([{ email: 'next@example.com', in_group: true }]);
+    expect(tokenAssertions).toHaveLength(1);
+  });
+
+  it('reads a large group a page at a time', async () => {
+    pageSize = 2;
+    for (const e of ['a', 'b', 'c', 'd', 'e']) {
+      await paidMember(`${e}@example.com`);
+      groups.get(G2026).add(`${e}@example.com`);
+    }
+
+    const { years } = await runAudit();
+
+    expect(calls).toEqual([`GET ${G2026}`, `GET ${G2026}`, `GET ${G2026}`]);
+    expect(years[0].group_size).toBe(5);
+    expect(years[0].expected.every(x => x.in_group)).toBe(true);
+  });
+
+  it('reports a missing group and still audits the other year', async () => {
+    groups.delete(G2026);
+    await paidMember('next@example.com', 2027);
+
+    const result = await runAudit(NOVEMBER);
+
+    expect(result.error).toBeNull();
+    expect(result.years[0]).toMatchObject({ year: 2026, error: `The group ${G2026} does not exist.`, group_size: null, expected: [] });
+    expect(result.years[1].expected).toMatchObject([{ email: 'next@example.com', in_group: false }]);
+  });
+
+  it('stops when Google refuses the service account', async () => {
+    failWith = () => json(403, { error: { message: 'Not Authorized to access this resource/api' } });
+
+    const result = await runAudit(NOVEMBER);
+
+    expect(result.error).toBe('Google refused access (403): Not Authorized to access this resource/api');
+    expect(calls).toEqual([`GET ${G2026}`]);
+    expect(result.years.map(y => y.group_size)).toEqual([null, null]);
+  });
+
+  it('does nothing when the service account key is not set', async () => {
+    const result = await runAudit(MARCH, { DB: env.DB });
+
+    expect(result).toEqual({ configured: false, error: null, years: [] });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe('/api/admin/google-sync', () => {
-  const call = (method, user, e = testEnv) => handleAdmin(
-    new Request('https://members.w4trc.org/api/admin/google-sync', { method }),
-    e, '/api/admin/google-sync', user
+  const call = (method, user, e = testEnv, resource = 'google-sync') => handleAdmin(
+    new Request(`https://members.w4trc.org/api/admin/${resource}`, { method }),
+    e, `/api/admin/${resource}`, user
   );
 
   async function addAdmin() {
@@ -540,6 +721,25 @@ describe('/api/admin/google-sync', () => {
   it('is admin only', async () => {
     expect((await call('GET', { id: 1, role: 'board' })).status).toBe(403);
     expect((await call('POST', { id: 1, role: 'board' })).status).toBe(403);
+    expect((await call('GET', { id: 1, role: 'board' }, testEnv, 'google-audit')).status).toBe(403);
     expect(calls).toEqual([]);
+  });
+
+  it('runs the audit for an admin', async () => {
+    const admin = await addAdmin();
+    const year = new Date().getUTCFullYear();
+    groups.set(`${year}members@w4trc.org`, new Set(['extra@example.com']));
+    await paidMember('missing@example.com', year);
+
+    const res = await call('GET', admin, testEnv, 'google-audit');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.years[0]).toMatchObject({
+      year,
+      expected: [{ email: 'missing@example.com', in_group: false }],
+      extra: [{ email: 'extra@example.com', role: 'MEMBER', members: [] }],
+    });
+    expect((await call('GET', admin, { DB: env.DB }, 'google-audit')).status).toBe(400);
   });
 });
