@@ -240,6 +240,18 @@ an item's serial number or a meeting's callsigns.
 The session id is saved in `~/.karc-tui.json` so you stay signed in
 until the session expires.
 
+To use it on a machine without the repo, download the one file and run it with Node.
+After that it updates itself: it shows a notice when a newer version is on GitHub, and
+`--update` replaces the file in place.
+
+```bash
+curl -O https://raw.githubusercontent.com/w4trc/membership.w4trc.org/main/scripts/tui.js
+node tui.js
+node tui.js --update      # fetch the latest version
+```
+
+Inside a checkout of this repo, `git pull` updates it instead.
+
 ### Tests
 
 ```bash

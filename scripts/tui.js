@@ -9,6 +9,7 @@
  *   npm run tui -- --local           wrangler dev (http://localhost:8787)
  *   npm run tui -- --url <base url>  anywhere else (or set KARC_URL)
  *   npm run tui -- --logout          sign out and forget the saved session
+ *   node tui.js --update             replace a standalone copy with the latest version
  *
  * Signs in with your normal admin/board account and talks to the same API as
  * the web UI. The session id is kept in ~/.karc-tui.json so you stay signed in.
@@ -63,6 +64,7 @@ const state = {
   form:    null,      // the new-meeting form, see openMeetingForm()
   action:  null,      // an inventory move or note in progress, see openItemAction()
   flash:   null,      // { text, ok } one-line result of the last action, cleared by the next key
+  updateAvailable: false, // a newer tui.js is on GitHub, see checkForUpdate()
 };
 
 async function api(apiPath, { method = 'GET', body } = {}) {
@@ -699,7 +701,8 @@ function listScreen(cols, rows) {
   else if (state.flash) status = flashText();
   else if (t.loading)   status = dim('Loading…');
   else                status = dim(t.rows.length ? `${t.sel + 1} of ${t.total}` : '0 results');
-  lines.push(` ${status}   ${dim(LIST_KEYS[state.tab])}`);
+  const update = state.updateAvailable ? `${yellow('Update available: quit and run with --update')}   ` : '';
+  lines.push(` ${status}   ${update}${dim(LIST_KEYS[state.tab])}`);
   return lines;
 }
 
@@ -1163,6 +1166,69 @@ function onKey(str, key = {}) {
   return listKey(str, key);
 }
 
+// ── Self-update ──────────────────────────────────────────────────────────────
+// A copy of this file that lives outside the repo (downloaded on its own) can
+// replace itself with the latest version from GitHub.
+
+const UPDATE_URL = 'https://raw.githubusercontent.com/w4trc/membership.w4trc.org/main/scripts/tui.js';
+
+// Inside a git checkout the file is updated with git pull, not by overwriting it
+const IN_CHECKOUT = fs.existsSync(path.join(__dirname, '..', '.git'));
+
+const normalized = text => text.replace(/\r\n/g, '\n');
+
+async function fetchLatest(timeoutMs) {
+  const res = await fetch(UPDATE_URL, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+  const text = await res.text();
+  if (!text.startsWith('#!/usr/bin/env node') || !text.includes('KARC terminal UI')) {
+    throw new Error('the download does not look like tui.js');
+  }
+  return text;
+}
+
+async function isOutdated(latest) {
+  return normalized(latest) !== normalized(fs.readFileSync(__filename, 'utf8'));
+}
+
+// Runs in the background at startup; any failure just means no notice
+async function checkForUpdate() {
+  if (IN_CHECKOUT) return;
+  try {
+    if (await isOutdated(await fetchLatest(5000))) {
+      state.updateAvailable = true;
+      render();
+    }
+  } catch {}
+}
+
+async function selfUpdate() {
+  if (IN_CHECKOUT) {
+    console.log('This copy is inside a git checkout. Run `git pull` to update it.');
+    return;
+  }
+  let latest;
+  try {
+    latest = await fetchLatest(15000);
+  } catch (err) {
+    return quit(`Update failed: ${err.message}`);
+  }
+  if (!(await isOutdated(latest))) {
+    console.log('Already up to date.');
+    return;
+  }
+  // Write beside the script and rename, so a failed download never leaves half a file
+  const temp = `${__filename}.new`;
+  try {
+    fs.writeFileSync(temp, latest, { mode: fs.statSync(__filename).mode });
+    fs.renameSync(temp, __filename);
+  } catch (err) {
+    fs.rmSync(temp, { force: true });
+    return quit(`Update failed: ${err.message}`);
+  }
+  console.log(`Updated ${__filename}`);
+}
+
 // ── Startup & shutdown ───────────────────────────────────────────────────────
 
 let screenOpen = false;
@@ -1188,6 +1254,7 @@ async function main() {
       '  --local        use wrangler dev at http://localhost:8787',
       '  --url <url>    use another base URL (or set KARC_URL)',
       '  --logout       sign out and forget the saved session',
+      '  --update       replace a standalone copy with the latest version',
       '',
       `Server:  ${BASE}`,
       `Session: ${SESSION_FILE}`,
@@ -1195,6 +1262,8 @@ async function main() {
     return;
   }
   if (typeof fetch !== 'function') return quit('This needs Node 18.14 or newer.');
+
+  if (args.includes('--update')) return selfUpdate();
 
   if (args.includes('--logout')) {
     if (state.session) await api('/auth/logout', { method: 'POST' }).catch(() => {});
@@ -1216,6 +1285,7 @@ async function main() {
   process.on('unhandledRejection', err => quit(err?.stack || String(err)));
 
   render();
+  checkForUpdate();
   if (state.session) {
     try {
       const { data } = await api('/auth/me');
