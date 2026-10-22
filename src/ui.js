@@ -403,6 +403,14 @@ textarea { resize: vertical; min-height: 80px; }
 }
 #portal-topbar h2 { font-size: 16px; font-weight: 600; }
 #portal-page { flex: 1; overflow-y: auto; padding: 24px; }
+.demo-banner {
+  background: rgba(243,156,18,.12); border-bottom: 1px solid rgba(243,156,18,.4);
+  padding: 10px 24px; font-size: 13px; line-height: 1.6; flex-shrink: 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+}
+.demo-banner strong { color: var(--warn); }
+.demo-banner code { font-family: var(--mono); }
+.demo-banner .demo-controls { display: flex; gap: 6px; flex-wrap: wrap; }
 #portal-backdrop { display: none; position: fixed; inset: 0; z-index: 199; background: rgba(0,0,0,.5); }
 #portal-backdrop.open { display: block; }
 
@@ -711,7 +719,118 @@ function closeNav() {
   document.getElementById('nav-backdrop').classList.remove('open');
 }
 
+// ── Renewal demo (/demo) ──────────────────────────────────────────────
+// Officers preview the member renewal as a made-up member. Portal data is
+// faked here in the browser; only the Stripe checkout is real, in test mode,
+// and the server never records it.
+const DEMO = location.pathname === '/demo';
+
+function demoGet(k) { try { return sessionStorage.getItem('demo-' + k); } catch { return null; } }
+function demoSet(k, v) { try { sessionStorage.setItem('demo-' + k, v); } catch {} }
+function demoReset() { ['type', 'paid'].forEach(k => { try { sessionStorage.removeItem('demo-' + k); } catch {} }); }
+
+function demoData() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const renewalYear = now.getMonth() >= 9 ? year + 1 : year; // October opens renewals
+  const type = demoGet('type') === 'family' ? 'family' : 'individual';
+  const base = type === 'family' ? 30 : 20;
+  const paidDate = demoGet('paid'); // set when Stripe sends the officer back
+  const renewing = renewalYear !== year;
+  const member = {
+    id: 0, callsign: 'N0CALL', first_name: 'Demo', last_name: 'Member',
+    email: 'demo@example.com', phone: '423-555-0100',
+    address: '123 Main St', city: 'Kingsport', state: 'TN', zip: '37660',
+    license_class: 'General', license_expiry: '2031-05-14',
+    bio: '', interests: 'HF, POTA', emergency_name: '', emergency_phone: '',
+    show_in_directory: 0, membership_type: type,
+    // In renewal season this year is already paid and the renewal is next year
+    dues_status: renewing || paidDate ? 'active' : null,
+    dues_paid_date: renewing ? year + '-01-14' : paidDate,
+    dues_amount_paid: renewing ? base : (paidDate ? base + 1 : null),
+    dues_amount_due: base,
+  };
+  const renewal = renewing && paidDate
+    ? { status: 'active', paid_date: paidDate, amount_paid: base + 1, amount_due: base }
+    : null;
+  const history = [];
+  if (paidDate) history.push({ year: renewalYear, status: 'active', membership_type: type, amount_paid: base + 1, paid_date: paidDate, payment_method: 'stripe' });
+  for (let y = renewing ? year : year - 1; y >= year - 2; y--) {
+    history.push({ year: y, status: 'active', membership_type: type, amount_paid: base, paid_date: y + '-01-14', payment_method: 'check' });
+  }
+  return {
+    ok: true, member, year, renewal_year: renewalYear, renewal,
+    covered_by: null,
+    covered_members: type === 'family' ? [{ callsign: '', first_name: 'Demo', last_name: 'Spouse' }] : [],
+    history,
+  };
+}
+
+async function demoApi(method, path) {
+  const notSaved = msg => Object.assign(new Error(msg), { status: 400, data: { error: msg } });
+  if (method === 'GET' && path === '/portal/me') return demoData();
+  if (method === 'GET' && path === '/portal/history') return { ok: true, history: demoData().history };
+  if (method === 'GET' && path === '/portal/donations') return { ok: true, donations: [] };
+  if (method === 'POST' && path === '/stripe/create-checkout') {
+    const resp = await fetch('/api/demo/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ membership_type: demoGet('type') || 'individual' }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw Object.assign(new Error(data.error || 'API error'), { status: resp.status, data });
+    return data;
+  }
+  if (path === '/stripe/create-donation-checkout') throw notSaved('Donations are not part of the renewal demo.');
+  if (path === '/auth/logout') return { ok: true };
+  throw notSaved('This is a demo, so changes are not saved.');
+}
+
+function demoSetType(type) {
+  demoSet('type', type);
+  demoSet('paid', '');
+  demoBanner();
+  pNav('portal-home');
+}
+
+function demoStartOver() {
+  demoReset();
+  demoBanner();
+  pNav('portal-home');
+}
+
+function demoBanner() {
+  let el = document.getElementById('demo-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'demo-banner';
+    el.className = 'demo-banner';
+    const content = document.getElementById('portal-content');
+    content.insertBefore(el, content.firstChild);
+  }
+  const family = demoGet('type') === 'family';
+  el.innerHTML =
+    '<div><strong>Renewal demo.</strong> Nothing here is saved and no real card is charged. ' +
+    'At checkout use card <code>4242 4242 4242 4242</code>, any future date and any CVC.</div>' +
+    '<div class="demo-controls">' +
+      '<button class="btn btn-sm ' + (family ? 'btn-secondary' : 'btn-primary') + '" data-type="individual" onclick="demoSetType(this.dataset.type)">Individual ($21)</button>' +
+      '<button class="btn btn-sm ' + (family ? 'btn-primary' : 'btn-secondary') + '" data-type="family" onclick="demoSetType(this.dataset.type)">Family ($31)</button>' +
+      '<button class="btn btn-sm btn-secondary" onclick="demoStartOver()">Start over</button>' +
+    '</div>';
+}
+
+function startDemo() {
+  document.title = 'Renewal Demo – W4TRC';
+  // Stripe sends the officer back here; a success marks the demo renewal paid
+  const payStatus = new URLSearchParams(location.search).get('payment');
+  if (payStatus === 'success') demoSet('paid', new Date().toISOString().slice(0, 10));
+  state.user = { email: 'demo@example.com', role: 'member', memberId: -1 };
+  demoBanner();
+  showPortal();
+}
+
 async function api(method, path, body) {
+  if (DEMO) return demoApi(method, path, body);
   const opts = {
     method,
     credentials: 'include',
@@ -754,6 +873,7 @@ async function doLogin() {
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
 async function doLogout() {
+  if (DEMO) { demoStartOver(); return; }
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
   sessionStorage.removeItem('view');
@@ -815,6 +935,7 @@ async function doResetPassword() {
 }
 
 async function checkSession() {
+  if (DEMO) { startDemo(); return; }
   // Show reset screen if URL has a reset token
   if (new URLSearchParams(location.search).has('token') && location.pathname === '/reset-password') {
     document.getElementById('login-screen').classList.add('hidden');
@@ -4149,7 +4270,7 @@ function showPortal() {
   document.getElementById('portal-avatar').textContent = state.user.email[0].toUpperCase();
 
   const payStatus = new URL(window.location.href).searchParams.get('payment');
-  if (payStatus) history.replaceState({}, '', '/');
+  if (payStatus) history.replaceState({}, '', DEMO ? '/demo' : '/');
   if (payStatus === 'success') toast('Payment received! Your dues record has been updated.', 'success');
   else if (payStatus === 'cancelled') toast('Payment cancelled — you can pay any time.', 'warn');
   else if (payStatus === 'donation-success') toast('Thank you! Your donation has been received.', 'success');

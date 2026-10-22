@@ -108,6 +108,7 @@ wrangler secret put ADMIN_SETUP_KEY        # one-time key for creating the first
 wrangler secret put RESEND_API_KEY         # outgoing email (verification codes, password resets, roundup)
 wrangler secret put STRIPE_SECRET_KEY      # sk_test_... or sk_live_...
 wrangler secret put STRIPE_WEBHOOK_SECRET  # whsec_... for the /api/stripe/webhook endpoint
+wrangler secret put STRIPE_TEST_SECRET_KEY # sk_test_... for the /demo renewal preview (optional)
 wrangler secret put CRON_SECRET            # bearer token for the weekly roundup endpoint
 ```
 
@@ -119,6 +120,13 @@ Non-secret settings (`CLUB_NAME`, `CLUB_CALLSIGN`, `CLUB_DOMAIN`, `FROM_EMAIL`) 
 In Stripe, point a webhook at `https://members.w4trc.org/api/stripe/webhook` for the
 `checkout.session.completed` event. Test and live mode each have their own key and
 webhook secret; switching between them is only a matter of swapping the two secrets.
+
+**Renewal demo.** `/demo` lets officers walk through a member renewal without logging in: the
+portal shows a made-up member (N0CALL), and Pay Online opens a real Stripe Checkout page in test
+mode (card `4242 4242 4242 4242`). Nothing is stored: the demo member exists only in the browser,
+and the webhook ignores demo checkouts. The demo only ever uses a test key —
+`STRIPE_TEST_SECRET_KEY`, or `STRIPE_SECRET_KEY` while that is still a test key — and is switched
+off when neither is one.
 
 ### 5. Create a `.env` file
 
@@ -570,6 +578,7 @@ POST   /api/stripe/create-checkout           Start online dues payment (member)
 POST   /api/stripe/create-donation-checkout  Start an online donation (member)
 POST   /api/stripe/create-public-donation-checkout  Start an online donation from /donate (public)
 POST   /api/stripe/webhook                   Stripe webhook (records dues and donations)
+POST   /api/demo/checkout                    Start a test-mode checkout for the /demo renewal (public, nothing stored)
 
 GET    /api/inventory                 List/search equipment (board+)
 POST   /api/inventory                 Add item (board+)

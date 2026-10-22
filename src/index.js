@@ -19,6 +19,7 @@ import { handlePrint, handlePrintTreasurer, handlePrintCredential } from './rout
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
 import { handleDonatePage }  from './routes/donate.js';
+import { handleDemoCheckout } from './routes/demo.js';
 import { handleMeetings }    from './routes/meetings.js';
 import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
@@ -163,6 +164,13 @@ export default Sentry.withSentry(
         const rl = await rateLimit(request, env, 'donate');
         if (rl) return rl;
         return handleStripe(request, env, path);
+      }
+
+      // Renewal demo checkout (/demo) — no login, Stripe test mode only, nothing stored
+      if (path === '/api/demo/checkout' && method === 'POST') {
+        const rl = await rateLimit(request, env, 'demo');
+        if (rl) return rl;
+        return handleDemoCheckout(request, env);
       }
 
       // Weekly roundup — cron-triggered, secured by CRON_SECRET (no session required)

@@ -189,11 +189,11 @@ async function createPublicDonationCheckout(request, env) {
   return createStripeSession(env, params);
 }
 
-async function createStripeSession(env, params) {
+export async function createStripeSession(env, params, secretKey = env.STRIPE_SECRET_KEY) {
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      Authorization: `Bearer ${secretKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: params,
@@ -225,6 +225,8 @@ async function stripeWebhook(request, env) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    // Demo checkouts from /demo are never recorded
+    if (session.metadata?.kind === 'demo') return new Response('ok', { status: 200 });
     if (session.metadata?.kind === 'donation') await handleDonationCompleted(session, env);
     else await handleCheckoutCompleted(session, env);
   }
