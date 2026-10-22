@@ -13,7 +13,7 @@ What's already built is described in [README.md](README.md). This file only list
 - [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
 
 ### Online donations
-- [ ] Run one donation from the public `/donate` page in Stripe test mode.
+- [X] Run one donation from the public `/donate` page in Stripe test mode.
 
 ---
 
@@ -24,8 +24,6 @@ What's already built is described in [README.md](README.md). This file only list
 
 ### Inventory
 - [ ] **Loan due dates** — items can be checked out to a member, but there is no due date or overdue reminder.
-- [ ] **QR labels** — printable label per item that opens its inventory page.
-- [ ] **Asset value report** — total and per-location value from purchase price / estimated value, for insurance.
 
 ### Members & Outreach
 - [ ] **Certificate and card for members** — officers can print a membership certificate and card from a member's detail view. Let members print their own from the portal: buttons on the dues card for each paid year, and open `/print/certificate` and `/print/card` to a member for their own record.

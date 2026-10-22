@@ -33,6 +33,7 @@ CLUB_NAME = "Kingsport Amateur Radio Club"
 CLUB_CALLSIGN = "W4TRC"
 CLUB_DOMAIN = "members.w4trc.org"
 FROM_EMAIL = "membership@w4trc.org"
+CONTACT_EMAIL = "contact@w4trc.org"  # shown to anyone who scans a found equipment label
 GOOGLE_GROUP_FORMAT = "{year}members@w4trc.org"  # each year's Google Group
 GOOGLE_SYNC_START_YEAR = "2027"  # the sync ignores groups for earlier years
 GOOGLE_GROUP_ALWAYS_ADD = "automations@n4jhc.com"  # also in every synced group (comma-separated)

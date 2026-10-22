@@ -31,6 +31,7 @@
     "wrangler": "^4.95.0"
   },
   "dependencies": {
-    "@sentry/cloudflare": "^10.53.1"
+    "@sentry/cloudflare": "^10.53.1",
+    "qrcode-generator": "2.0.4"
   }
 }

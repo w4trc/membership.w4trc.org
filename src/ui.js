@@ -960,6 +960,18 @@ function showApp() {
   // Officers with a member record land on the same portal as members, with a
   // button to the admin section. A reload keeps them in the admin section;
   // coming back from Stripe checkout always returns to the portal.
+  // A scanned equipment label (/i/:id) opens that item in the inventory
+  const itemId = location.pathname.startsWith('/i/') ? parseInt(location.pathname.slice(3), 10) : 0;
+  if (itemId) {
+    history.replaceState(null, '', '/');
+    if (officer) {
+      showAdmin('inventory');
+      openInvItem(itemId);
+      return;
+    }
+    toast('That label opens the club inventory, which is for officers.', 'warn');
+  }
+
   const fromCheckout = new URLSearchParams(location.search).has('payment');
   const lastView = sessionStorage.getItem('view');
   if (!officer || (u.memberId && (fromCheckout || lastView !== 'admin'))) {
@@ -969,7 +981,7 @@ function showApp() {
   showAdmin();
 }
 
-function showAdmin() {
+function showAdmin(page = 'dashboard') {
   const u = state.user;
   sessionStorage.setItem('view', 'admin');
   document.getElementById('login-screen').classList.add('hidden');
@@ -990,7 +1002,7 @@ function showAdmin() {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
     document.querySelectorAll('[data-page="users"],[data-page="audit"],[data-page="sessions"],[data-page="googleGroups"]').forEach(el => el.classList.add('hidden'));
   }
-  nav('dashboard');
+  nav(page);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────
@@ -2664,6 +2676,13 @@ async function deleteMeeting(id) {
 // ── INVENTORY ─────────────────────────────────────────────────────────
 let invMeta = { locations: [], members: [] };
 let invSearchTimer = null;
+let invListedIds = []; // items in the table now, for Print Labels
+
+// Labels for whatever the search and location filter currently show
+function printInvLabels() {
+  if (!invListedIds.length) { toast('No items to label', 'warn'); return; }
+  window.open('/print/labels?ids=' + invListedIds.join(','), '_blank');
+}
 
 async function loadInvMeta() {
   invMeta = await api('GET', '/inventory/meta');
@@ -2672,6 +2691,7 @@ async function loadInvMeta() {
 
 async function inventory() {
   document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary btn-sm" onclick="printInvLabels()" style="margin-right:8px">Print Labels</button>' +
     '<button class="btn btn-secondary btn-sm" onclick="addInvLocation()" style="margin-right:8px">+ Location</button>' +
     '<button class="btn btn-primary" onclick="openInvForm()">+ Add Item</button>';
 
@@ -2729,6 +2749,7 @@ async function loadInvTable() {
   if ((document.getElementById('inv-filter-location')?.value || '') !== loc) return;
 
   const list = data.items || [];
+  invListedIds = list.map(it => it.id);
   const countEl = document.getElementById('inv-count');
   if (countEl) countEl.textContent = list.length + ' item' + (list.length !== 1 ? 's' : '');
 
@@ -2778,6 +2799,7 @@ async function openInvItem(id) {
   const buttons = [
     { label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' },
     { label: 'Edit',  cls: 'btn-secondary', fn: 'editInvItem(' + id + ')' },
+    { label: 'Print Label', cls: 'btn-secondary', fn: "window.open('/print/labels?ids=" + id + "', '_blank')" },
     { label: it.assigned_member_id ? 'Return / Move' : 'Move / Check Out', cls: 'btn-primary', fn: 'openInvMove(' + id + ')' },
   ];
   if (state.user?.role === 'admin') buttons.unshift({ label: 'Delete', cls: 'btn-danger', fn: 'deleteInvItem(' + id + ')' });

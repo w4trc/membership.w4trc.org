@@ -20,6 +20,7 @@ import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/
 import { handleStripe }      from './routes/stripe.js';
 import { handleDonatePage }  from './routes/donate.js';
 import { handleDemoCheckout } from './routes/demo.js';
+import { handlePrintLabels, handleItemLink } from './routes/labels.js';
 import { handleMeetings }    from './routes/meetings.js';
 import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
@@ -113,6 +114,9 @@ export default Sentry.withSentry(
     if (path === '/print/treasurer') {
       return handlePrintTreasurer(request, env);
     }
+    if (path === '/print/labels') {
+      return handlePrintLabels(request, env);
+    }
     if (path === '/print/certificate' || path === '/print/card') {
       return handlePrintCredential(request, env, path === '/print/card' ? 'card' : 'certificate');
     }
@@ -126,6 +130,11 @@ export default Sentry.withSentry(
     }
     if (path === '/donate') {
       return handleDonatePage(env);
+    }
+
+    // ── Equipment label QR codes: the item for officers, contact info for anyone else
+    if (path.startsWith('/i/')) {
+      return handleItemLink(request, env, () => serveUI(request, env));
     }
 
     // ── Static UI (everything non-API) ──────────────────────────────────

@@ -16,7 +16,7 @@ A Cloudflare Workers-based membership management system.
 - **Treasurer report** — the money received in a year: dues and donations by payment method, every payment listed, as a page, a printout, or a CSV
 - **Officer history** — who was president, vice president, treasurer, secretary, and trustee each year, entered one at a time or pasted as a list, and shown on the public directory
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
-- **Equipment inventory** — items, storage locations, photos, purchase/donation info, and move / check-out / note history
+- **Equipment inventory** — items, storage locations, photos, purchase/donation info, move / check-out / note history, and printable QR labels (Avery 5160) that open the item when scanned
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
 - **Callsign report** — active member callsigns as a copyable list
 - **Membership certificate and card** — printable by an officer for any member whose dues are paid
@@ -115,7 +115,7 @@ wrangler secret put CRON_SECRET            # bearer token for the weekly roundup
 For `ADMIN_SETUP_KEY`, pick something memorable — you'll need it in step 8.
 For `CRON_SECRET`, use a random string: `openssl rand -hex 32`
 
-Non-secret settings (`CLUB_NAME`, `CLUB_CALLSIGN`, `CLUB_DOMAIN`, `FROM_EMAIL`) live under `[vars]` in `wrangler.toml`.
+Non-secret settings (`CLUB_NAME`, `CLUB_CALLSIGN`, `CLUB_DOMAIN`, `FROM_EMAIL`, `CONTACT_EMAIL`) live under `[vars]` in `wrangler.toml`.
 
 In Stripe, point a webhook at `https://members.w4trc.org/api/stripe/webhook` for the
 `checkout.session.completed` event. Test and live mode each have their own key and
@@ -501,6 +501,8 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /print/treasurer  Print-friendly treasurer report, ?year=YYYY (board+)
 /print/certificate  Membership certificate, ?member_id=N&year=YYYY (board+)
 /print/card       Membership card, ?member_id=N&year=YYYY (board+)
+/print/labels     Equipment QR labels for Avery 5160 sheets, ?ids=1,2,3 (default all) &skip=N (board+)
+/i/:id            Where a label's QR code points: the item in the inventory for signed-in officers, otherwise a public "found this?" page with the club's CONTACT_EMAIL
 /health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
 ```
 
