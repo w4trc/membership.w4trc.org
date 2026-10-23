@@ -823,7 +823,7 @@ function startDemo() {
   document.title = 'Renewal Demo – W4TRC';
   // Stripe sends the officer back here; a success marks the demo renewal paid
   const payStatus = new URLSearchParams(location.search).get('payment');
-  if (payStatus === 'success') demoSet('paid', new Date().toISOString().slice(0, 10));
+  if (payStatus === 'success') demoSet('paid', localToday());
   state.user = { email: 'demo@example.com', role: 'member', memberId: -1 };
   demoBanner();
   showPortal();
@@ -1042,7 +1042,7 @@ async function dashboard() {
       api('GET', '/memberships/stats?year=' + new Date().getFullYear()),
       api('GET', '/admin/charts'),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const expiring = stats.expiring_licenses || [];
 
     const yr = new Date().getFullYear();
@@ -1341,7 +1341,7 @@ async function exportMembersCSV() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = \`w4trc-members-\${new Date().toISOString().slice(0,10)}.csv\`;
+    a.download = \`w4trc-members-\${localToday()}.csv\`;
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) { toast('Export failed: ' + e.message, 'error'); }
@@ -1534,7 +1534,7 @@ function openAddMember() {
           <option value="lifetime_honorary">Lifetime Honorary (no dues)</option>
         </select>
       </div>
-      \${fi('Joined Date','f-joined_date',new Date().toISOString().slice(0,10),'date')}
+      \${fi('Joined Date','f-joined_date',localToday(),'date')}
     </div>
     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px">
       <label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer">
@@ -1557,7 +1557,7 @@ function openAddMember() {
       <div id="f-ms-fields" style="margin-top:12px" hidden>
         <div class="form-grid">
           \${fi('Amount Paid','f-amount_paid','20.00','number')}
-          \${fi('Payment Date','f-paid_date',new Date().toISOString().slice(0,10),'date')}
+          \${fi('Payment Date','f-paid_date',localToday(),'date')}
           <div class="form-group">
             <label>Payment Method</label>
             <select id="f-payment_method">
@@ -2183,7 +2183,7 @@ function donationKindBadge(kind) {
 }
 
 async function openAddDonation(memberId, memberName) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   let memberOpts = '<option value="">— Select Member —</option>';
   try {
     const data = await api('GET', '/members?status=active');
@@ -2572,7 +2572,7 @@ async function editMeeting(id) {
 }
 
 function openMeetingForm(mt = null, attendees = []) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const calls  = attendees.filter(a => a.callsign).map(a => a.callsign).join('\\n');
   const guests = attendees.filter(a => !a.callsign).map(a => a.name).join('\\n');
   const type   = mt?.meeting_type || 'monthly';
@@ -2794,7 +2794,7 @@ async function openInvItem(id) {
 
   const it = data.item;
   const events = data.events || [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
 
   const buttons = [
     { label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' },
@@ -2894,7 +2894,7 @@ async function openInvForm(it = null) {
   if (!it && !invMeta.locations.length) {
     try { await loadInvMeta(); } catch(e) { toast(e.data?.error || 'Failed to load locations', 'error'); return; }
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
 
   showModal(\`
     <div class="form-grid">
@@ -3030,7 +3030,7 @@ async function openInvMove(id) {
     [data] = await Promise.all([api('GET', '/inventory/' + id), loadInvMeta()]);
   } catch(e) { toast(e.data?.error || 'Failed to load item', 'error'); return; }
   const it = data.item;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
 
   showModal(\`
     <div style="margin-bottom:16px">
@@ -4256,17 +4256,30 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Today's date (YYYY-MM-DD) where the officer is. toISOString() is UTC, which is
+// already tomorrow after 8 PM Eastern.
+function localToday() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Regexes here use [0-9], not \\d: this script sits in a template string, which drops lone backslashes.
 function fmtDate(iso) {
   if (!iso) return '—';
-  try {
-    // D1 returns UTC datetimes as "YYYY-MM-DD HH:MM:SS" (no Z). Without a
-    // timezone indicator, browsers parse it as local time instead of UTC.
-    // Normalize to ISO 8601 UTC so the browser converts to the user's local zone.
-    const s = String(iso).replace(' ', 'T');
-    const d = new Date(/Z|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const s = String(iso).trim().replace(' ', 'T');
+
+  // A plain date (paid date, donation date) is a calendar day with no time or
+  // zone. Show it as that day; read as UTC midnight it lands a day early here.
+  if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
-  catch { return iso; }
+
+  // D1 returns UTC datetimes as "YYYY-MM-DD HH:MM:SS" (no Z). Without a zone,
+  // browsers read that as local time, so mark it UTC unless it already has one.
+  const d = new Date(/(Z|[+-][0-9]{2}:?[0-9]{2})$/.test(s) ? s : s + 'Z');
+  if (isNaN(d)) return String(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ═══════════════════════════════════════════════════════════════
