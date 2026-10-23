@@ -211,6 +211,17 @@ describe('webhook: dues payment', () => {
     expect((await getMember(member)).is_active).toBe(0);
   });
 
+  it('dates a New Year\'s Eve evening payment Dec 31, Eastern time', async () => {
+    vi.setSystemTime(new Date('2027-01-01T02:30:00Z')); // 9:30 PM Dec 31 in Kingsport
+    const member = await addMember({ is_active: 0 });
+
+    await deliver(duesEvent({ memberId: member, year: 2027 }));
+
+    expect(await getMembership(member, 2027)).toMatchObject({ status: 'active', paid_date: '2026-12-31' });
+    // Still 2026 at the club, so an advance renewal waits for January 1
+    expect((await getMember(member)).is_active).toBe(0);
+  });
+
   it('never reactivates a silent key', async () => {
     const member = await addMember({ is_active: 0, is_silent_key: 1 });
 
@@ -241,6 +252,15 @@ describe('webhook: dues payment', () => {
 });
 
 describe('webhook: donation', () => {
+  it('dates a New Year\'s Eve evening donation Dec 31, Eastern time', async () => {
+    vi.setSystemTime(new Date('2027-01-01T02:30:00Z')); // 9:30 PM Dec 31 in Kingsport
+    const member = await addMember();
+
+    await deliver(donationEvent({ memberId: member }));
+
+    expect((await env.DB.prepare(`SELECT donation_date FROM donations`).first()).donation_date).toBe('2026-12-31');
+  });
+
   it('records a donation without touching dues', async () => {
     const member = await addMember();
 

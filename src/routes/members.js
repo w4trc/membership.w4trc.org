@@ -9,6 +9,7 @@
  */
 
 import { duesYear } from '../lib/duesYear.js';
+import { clubToday, clubYear } from '../lib/clubDate.js';
 import { goodStandingYears } from '../lib/standing.js';
 import { isAdmin, isBoardOrAbove } from '../lib/auth.js';
 import { jsonResponse, jsonError }  from '../lib/response.js';
@@ -216,7 +217,7 @@ async function exportMembers(request, env, url) {
   ].map(csvCell).join(','));
 
   const csv = [headers.join(','), ...rows].join('\r\n');
-  const date = new Date().toISOString().slice(0, 10);
+  const date = clubToday();
 
   return new Response(csv, {
     headers: {
@@ -269,7 +270,7 @@ async function getMember(request, env, user, memberId) {
   delete member.donations_json;
 
   // Years a membership certificate and card can be printed for
-  const year = new Date().getUTCFullYear();
+  const year = clubYear();
   member.credential_years = await goodStandingYears(env, memberId, [year, duesYear()]);
 
   // Filter private notes for non-board users (future member portal)
@@ -325,7 +326,7 @@ async function createMember(request, env, user) {
     body.license_expiry   || null,
     body.license_status   || null,
     body.membership_type  || 'individual',
-    body.joined_date      || new Date().toISOString().slice(0,10),
+    body.joined_date      || clubToday(),
     body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1,
     body.is_arrl_member ? 1 : 0,
     body.is_eastman_member ? 1 : 0,

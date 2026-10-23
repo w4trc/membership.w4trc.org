@@ -21,6 +21,7 @@
 import { isBoardOrAbove, isAdmin } from '../lib/auth.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
+import { clubToday } from '../lib/clubDate.js';
 
 // D1 caps a row at 2 MB; the browser resizes well under this before uploading
 const MAX_IMAGE_BYTES = 1_500_000;
@@ -74,7 +75,6 @@ const ITEM_SELECT = `
   LEFT JOIN members m             ON m.id = i.assigned_member_id
 `;
 
-const today = () => new Date().toISOString().slice(0, 10);
 const clean = v => String(v ?? '').trim() || null;
 
 function itemFields(body) {
@@ -98,7 +98,7 @@ function validateItem(f) {
 }
 
 function eventDate(body) {
-  if (!body.event_date) return { date: today() };
+  if (!body.event_date) return { date: clubToday() };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(body.event_date)) return { error: 'event_date must be YYYY-MM-DD' };
   return { date: body.event_date };
 }

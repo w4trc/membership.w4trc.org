@@ -21,6 +21,7 @@
  */
 
 import { POSITIONS, officersByYear } from '../lib/officers.js';
+import { clubToday } from '../lib/clubDate.js';
 import { requireAuth, hashPassword, createSession } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
@@ -273,7 +274,7 @@ async function portalRegister(request, env) {
     } catch { /* HamDB unavailable — proceed without */ }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clubToday();
 
   const memberResult = await env.DB.prepare(`
     INSERT INTO members

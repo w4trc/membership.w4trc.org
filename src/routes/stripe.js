@@ -12,6 +12,7 @@ import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { duesYear } from '../lib/duesYear.js';
 import { familyPayer, coverFamilyDependents } from '../lib/family.js';
+import { clubToday, clubYear } from '../lib/clubDate.js';
 
 export async function handleStripe(request, env, path, user = null) {
   const sub = path.replace('/api/stripe', '').replace(/^\//, '');
@@ -262,7 +263,7 @@ async function handleCheckoutCompleted(session, env) {
   ).bind(memberId, year).first();
 
   const amountPaid = (session.amount_total || 0) / 100;
-  const paidDate   = new Date().toISOString().slice(0, 10);
+  const paidDate   = clubToday();
 
   if (existing && ['active', 'honorary', 'waived'].includes(existing.status)) {
     // Already paid via another method — just stamp the session ID
@@ -294,7 +295,7 @@ async function handleCheckoutCompleted(session, env) {
 
   // A lapsed member paying for the current year is active again now. Advance
   // renewals (Oct–Dec) take effect Jan 1 via activateRenewedMembers().
-  if (year <= new Date().getUTCFullYear()) {
+  if (year <= clubYear()) {
     for (const id of [memberId, ...coveredIds]) {
       await env.DB.prepare(
         `UPDATE members SET is_active = 1, updated_at = datetime('now') WHERE id = ? AND is_active = 0 AND is_silent_key = 0`
@@ -329,7 +330,7 @@ async function handleDonationCompleted(session, env) {
   ).bind(sessionId).first();
   if (bySession) return;
 
-  const donationDate = new Date().toISOString().slice(0, 10);
+  const donationDate = clubToday();
   const note = session.metadata?.note?.trim() || null;
 
   // Public donors who leave the name blank are recorded as anonymous
