@@ -729,10 +729,15 @@ function demoGet(k) { try { return sessionStorage.getItem('demo-' + k); } catch 
 function demoSet(k, v) { try { sessionStorage.setItem('demo-' + k, v); } catch {} }
 function demoReset() { ['type', 'paid'].forEach(k => { try { sessionStorage.removeItem('demo-' + k); } catch {} }); }
 
+// Year that online renewals pay for: October opens renewals for next year.
+function duesYear(now = new Date()) {
+  return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
 function demoData() {
   const now = new Date();
   const year = now.getFullYear();
-  const renewalYear = now.getMonth() >= 9 ? year + 1 : year; // October opens renewals
+  const renewalYear = duesYear(now);
   const type = demoGet('type') === 'family' ? 'family' : 'individual';
   const base = type === 'family' ? 30 : 20;
   const paidDate = demoGet('paid'); // set when Stripe sends the officer back
@@ -1353,6 +1358,8 @@ async function viewMember(id) {
     const m = await api('GET', '/members/' + id);
     const currentYear = new Date().getFullYear();
     const curMs = (m.memberships || []).find(ms => ms.year === currentYear);
+    const renewalYear = duesYear();
+    const renewalMs = (m.memberships || []).find(ms => ms.year === renewalYear);
 
     document.querySelector('.modal-body').innerHTML = \`
       \${m.callsign_mismatch ? mismatchWarning(m) : ''}
@@ -1404,6 +1411,7 @@ async function viewMember(id) {
               '<a href="/print/certificate?member_id=' + m.id + '&year=' + y + '" target="_blank" rel="noopener">Certificate</a> · ' +
               '<a href="/print/card?member_id=' + m.id + '&year=' + y + '" target="_blank" rel="noopener">Card</a>')).join('')}
             \${dfield(currentYear + ' Dues', curMs ? duesBadge(curMs.status, curMs.amount_paid, curMs.covered_by_member_id, curMs.payment_method) : '<span class="badge badge-yellow">No Record</span>')}
+            \${renewalYear !== currentYear ? dfield(renewalYear + ' Dues', renewalMs ? duesBadge(renewalMs.status, renewalMs.amount_paid, renewalMs.covered_by_member_id, renewalMs.payment_method) : '<span class="badge badge-gray">Not Renewed</span>') : ''}
           </div>
         </div>
         \${m.emergency_name ? \`<div class="detail-section"><h4>Emergency Contact</h4><div class="detail-grid">\${dfield('Name', m.emergency_name)}\${dfield('Phone', m.emergency_phone)}</div></div>\` : ''}
@@ -1806,6 +1814,7 @@ async function memberships() {
   setPage('<div class="spinner"></div>');
   const yr = new Date().getFullYear();
   const years = [yr, yr-1, yr-2, yr-3];
+  if (duesYear() > yr) years.unshift(yr + 1); // renewal season: next year's dues are coming in
 
   setPage(\`
     <div class="year-row">
