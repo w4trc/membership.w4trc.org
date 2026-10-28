@@ -644,8 +644,8 @@ async function getCallsignReport(env) {
 }
 
 // POST /api/admin/weekly-roundup (no session — secured by CRON_SECRET)
+// Sends the roundup on demand; the Sunday cron sends it on its own.
 export async function handleWeeklyRoundup(request, env, now = new Date()) {
-  // Verify CRON_SECRET
   const secret = env.CRON_SECRET;
   if (!secret) return jsonError('CRON_SECRET not configured', 500);
 
@@ -653,6 +653,11 @@ export async function handleWeeklyRoundup(request, env, now = new Date()) {
   const provided   = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!provided || provided !== secret) return jsonError('Unauthorized', 401);
 
+  return jsonResponse(await sendWeeklyRoundupEmail(env, now));
+}
+
+/** Email the board this week's dues payments and member counts. */
+export async function sendWeeklyRoundupEmail(env, now = new Date()) {
   // Memberships with amount_paid recorded in the last 7 days, for any dues
   // year: during renewal season most payments are for next year.
   const { results: newPayments } = await env.DB.prepare(`
@@ -666,7 +671,7 @@ export async function handleWeeklyRoundup(request, env, now = new Date()) {
   `).all();
 
   if (newPayments.length === 0) {
-    return jsonResponse({ sent: false, reason: 'no_new_payments' });
+    return { sent: false, reason: 'no_new_payments' };
   }
 
   // Members in good standing for this year, and for next year once renewal
@@ -681,13 +686,13 @@ export async function handleWeeklyRoundup(request, env, now = new Date()) {
   `).bind(year)));
   const memberCounts = years.map((year, i) => ({ year, count: counts[i].results[0]?.count ?? 0 }));
 
-  const boardEmails = ['n4jhc@w4trc.org'];
+  const boardEmails = [env.CONTACT_EMAIL || 'contact@w4trc.org'];
 
   const weekOf = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
   await sendWeeklyRoundup(env, { boardEmails, newPayments, memberCounts, weekOf });
 
-  return jsonResponse({ sent: true, recipients: boardEmails.length, new_payments: newPayments.length });
+  return { sent: true, recipients: boardEmails.length, new_payments: newPayments.length };
 }
 
 // POST /api/admin/sync-prospects

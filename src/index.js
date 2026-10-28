@@ -11,7 +11,7 @@ import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
 import { handleDonations }   from './routes/donations.js';
 import { handleNotes }       from './routes/notes.js';
-import { handleAdmin, handleWeeklyRoundup } from './routes/admin.js';
+import { handleAdmin, handleWeeklyRoundup, sendWeeklyRoundupEmail } from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
@@ -265,6 +265,16 @@ export default Sentry.withSentry(
         syncGoogleGroups(env)
           .then(r => { if (r.error) console.error('syncGoogleGroups failed:', r.error); })
           .catch(err => console.error('syncGoogleGroups failed:', err))
+      );
+      return;
+    }
+
+    // Sunday evening: weekly roundup email to the board
+    if (controller.cron === '0 23 * * 0') {
+      ctx.waitUntil(
+        sendWeeklyRoundupEmail(env, new Date(controller.scheduledTime))
+          .then(r => console.log('Weekly roundup:', JSON.stringify(r)))
+          .catch(err => console.error('sendWeeklyRoundupEmail failed:', err))
       );
       return;
     }

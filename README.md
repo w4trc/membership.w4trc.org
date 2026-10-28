@@ -31,7 +31,7 @@ A Cloudflare Workers-based membership management system.
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
-- Weekly email roundup of new dues payments to the board
+- Weekly email roundup of new dues payments to the board (Sunday evening cron)
 - Daily cron: expired session cleanup, and January reactivation of members who renewed in advance
 - `/health` endpoint for uptime monitoring
 - Dark / light theme, mobile sidebar, keyboard shortcuts (`/` search, `N` add member, `Esc` close)
@@ -179,18 +179,19 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 - Add a CNAME record: `members` → your worker (wrangler handles this via the route in `wrangler.toml`)
 - Or let wrangler set it up automatically when you deploy with the route configured.
 
-### 10. Schedule the weekly roundup
+### 10. The weekly roundup
 
-The daily cleanup and backup cron and the hourly Google Groups sync run inside the Worker
-(`[triggers]` in `wrangler.toml`). The weekly
-roundup email does not — an outside scheduler has to call it:
+The daily cleanup and backup, the hourly Google Groups sync and the weekly roundup email
+all run inside the Worker (`[triggers]` in `wrangler.toml`). The roundup goes out Sunday at
+23:00 UTC (7 PM Eastern in summer, 6 PM in winter) and covers the 7 days before it. It sends
+nothing if no dues were recorded that week.
+
+To send it on demand:
 
 ```bash
 curl -X POST https://members.w4trc.org/api/admin/weekly-roundup \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
-
-It sends nothing if no dues were recorded in the last 7 days.
 
 ---
 

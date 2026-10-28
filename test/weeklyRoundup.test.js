@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from 'cloudflare:workers';
+import worker from '../src/index.js';
 import { handleWeeklyRoundup } from '../src/routes/admin.js';
 import { resetDb, addMember, addMembership } from './helpers.js';
 
@@ -26,7 +27,8 @@ beforeEach(async () => {
   await resetDb();
   emails = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
-    emails.push(JSON.parse(init.body));
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.startsWith('https://api.resend.com/')) emails.push(JSON.parse(init.body));
     return new Response('{"id":"email_1"}', { status: 200 });
   });
 });
@@ -80,5 +82,25 @@ describe('weekly roundup', () => {
 
     expect(await (await roundup(RENEWAL_SEASON)).json()).toEqual({ sent: false, reason: 'no_new_payments' });
     expect(emails).toHaveLength(0);
+  });
+});
+
+describe('Sunday cron', () => {
+  it('sends the roundup on its own', async () => {
+    await paid(await addMember({ callsign: 'W4CCC' }), 2027);
+
+    const pending = [];
+    const ctx = { waitUntil: p => pending.push(p), passThroughOnException() {} };
+    await worker.scheduled(
+      { cron: '0 23 * * 0', scheduledTime: RENEWAL_SEASON.getTime() },
+      testEnv,
+      ctx,
+    );
+    await Promise.all(pending);
+
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toEqual(['contact@w4trc.org']);
+    expect(emails[0].html).toContain('W4CCC');
+    expect(emails[0].html).toContain('2027 members');
   });
 });
