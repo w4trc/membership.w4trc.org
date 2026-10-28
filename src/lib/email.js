@@ -75,10 +75,19 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
   });
 }
 
-export async function sendWeeklyRoundup(env, { boardEmails, newPayments, totalActiveMembers, weekOf }) {
+// memberCounts: [{ year, count }] members in good standing, one entry per year
+// (this year, plus next year during renewal season)
+export async function sendWeeklyRoundup(env, { boardEmails, newPayments, memberCounts, weekOf }) {
   const club   = env.CLUB_NAME   || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   const count  = newPayments.length;
+  const showYear = memberCounts.length > 1;
+
+  const tiles = memberCounts.map(({ year, count: n }) => `
+    <td style="background:#f0f4ff;border-radius:8px;padding:16px 20px;width:${Math.floor(100 / memberCounts.length)}%">
+      <div style="font-size:28px;font-weight:bold;color:#1a1a2e">${n}</div>
+      <div style="color:#555;font-size:14px">${year} members</div>
+    </td>`).join('<td style="width:12px"></td>');
 
   const rows = newPayments.map(p => {
     const name    = escHtml(`${p.first_name} ${p.last_name}`);
@@ -89,6 +98,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, totalAc
     return `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-weight:600">${call}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee">${name}</td>
+      ${showYear ? `<td style="padding:8px 12px;border-bottom:1px solid #eee">${Number(p.year)}</td>` : ''}
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${type}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${method}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${amount}</td>
@@ -108,10 +118,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, totalAc
   <h2 style="margin:0 0 4px">Weekly Membership Update</h2>
   <p style="color:#777;margin:0 0 24px;font-size:14px">Week of ${escHtml(weekOf)}</p>
 
-  <div style="background:#f0f4ff;border-radius:8px;padding:16px 20px;margin-bottom:24px;display:inline-block;width:100%;box-sizing:border-box">
-    <span style="font-size:28px;font-weight:bold;color:#1a1a2e">${totalActiveMembers}</span>
-    <span style="color:#555;margin-left:8px">total active members</span>
-  </div>
+  <table style="width:100%;border-collapse:separate;margin-bottom:24px"><tr>${tiles}</tr></table>
 
   <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
   <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -119,6 +126,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, totalAc
       <tr style="background:#f5f5f5">
         <th style="padding:8px 12px;text-align:left;font-weight:600">Callsign</th>
         <th style="padding:8px 12px;text-align:left;font-weight:600">Name</th>
+        ${showYear ? '<th style="padding:8px 12px;text-align:left;font-weight:600">Year</th>' : ''}
         <th style="padding:8px 12px;text-align:left;font-weight:600">Type</th>
         <th style="padding:8px 12px;text-align:left;font-weight:600">Method</th>
         <th style="padding:8px 12px;text-align:right;font-weight:600">Amount</th>

@@ -25,6 +25,9 @@ import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
+import { clubToday }                  from '../lib/clubDate.js';
+import { duesYear }                   from '../lib/duesYear.js';
+import { IN_GOOD_STANDING }           from '../lib/standing.js';
 import { treasurerReport, treasurerCsv, parseReportYear } from '../lib/treasurerReport.js';
 import { isConfigured as googleConfigured, planSync, syncGoogleGroups, auditGoogleGroups } from '../lib/googleGroups.js';
 
@@ -641,7 +644,7 @@ async function getCallsignReport(env) {
 }
 
 // POST /api/admin/weekly-roundup (no session — secured by CRON_SECRET)
-export async function handleWeeklyRoundup(request, env) {
+export async function handleWeeklyRoundup(request, env, now = new Date()) {
   // Verify CRON_SECRET
   const secret = env.CRON_SECRET;
   if (!secret) return jsonError('CRON_SECRET not configured', 500);
@@ -666,17 +669,23 @@ export async function handleWeeklyRoundup(request, env) {
     return jsonResponse({ sent: false, reason: 'no_new_payments' });
   }
 
-  // Total active members
-  const totRow = await env.DB.prepare(
-    `SELECT COUNT(*) as count FROM members WHERE is_active = 1`
-  ).first();
-  const totalActiveMembers = totRow?.count ?? 0;
+  // Members in good standing for this year, and for next year once renewal
+  // season opens in October
+  const today    = clubToday(now);
+  const thisYear = Number(today.slice(0, 4));
+  const years    = [...new Set([thisYear, duesYear(new Date(`${today}T12:00:00Z`))])];
+  const counts   = await env.DB.batch(years.map(year => env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM members m
+    LEFT JOIN memberships ms ON ms.member_id = m.id AND ms.year = ?
+    WHERE ${IN_GOOD_STANDING}
+  `).bind(year)));
+  const memberCounts = years.map((year, i) => ({ year, count: counts[i].results[0]?.count ?? 0 }));
 
   const boardEmails = ['n4jhc@w4trc.org'];
 
-  const weekOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const weekOf = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
-  await sendWeeklyRoundup(env, { boardEmails, newPayments, totalActiveMembers, weekOf });
+  await sendWeeklyRoundup(env, { boardEmails, newPayments, memberCounts, weekOf });
 
   return jsonResponse({ sent: true, recipients: boardEmails.length, new_payments: newPayments.length });
 }
