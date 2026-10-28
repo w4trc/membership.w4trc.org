@@ -56,5 +56,5 @@ fallthrough = true
 crons = [
   "0 8 * * *",   # 8:00 UTC daily (3-4am Eastern): session cleanup and database backup
   "15 * * * *",  # hourly: Google Groups sync
-  "0 23 * * 0",  # Sunday 23:00 UTC (7pm EDT / 6pm EST): weekly roundup email
+  "0 23 * * SUN",  # Sunday 23:00 UTC (7pm EDT / 6pm EST): weekly roundup email
 ]

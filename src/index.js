@@ -270,7 +270,7 @@ export default Sentry.withSentry(
     }
 
     // Sunday evening: weekly roundup email to the board
-    if (controller.cron === '0 23 * * 0') {
+    if (controller.cron === '0 23 * * SUN') {
       ctx.waitUntil(
         sendWeeklyRoundupEmail(env, new Date(controller.scheduledTime))
           .then(r => console.log('Weekly roundup:', JSON.stringify(r)))

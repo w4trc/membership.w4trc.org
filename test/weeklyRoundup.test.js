@@ -92,7 +92,7 @@ describe('Sunday cron', () => {
     const pending = [];
     const ctx = { waitUntil: p => pending.push(p), passThroughOnException() {} };
     await worker.scheduled(
-      { cron: '0 23 * * 0', scheduledTime: RENEWAL_SEASON.getTime() },
+      { cron: '0 23 * * SUN', scheduledTime: RENEWAL_SEASON.getTime() },
       testEnv,
       ctx,
     );
