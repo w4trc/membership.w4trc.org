@@ -650,19 +650,17 @@ export async function handleWeeklyRoundup(request, env) {
   const provided   = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!provided || provided !== secret) return jsonError('Unauthorized', 401);
 
-  const year = new Date().getFullYear();
-
-  // Memberships with amount_paid recorded in the last 7 days
+  // Memberships with amount_paid recorded in the last 7 days, for any dues
+  // year: during renewal season most payments are for next year.
   const { results: newPayments } = await env.DB.prepare(`
-    SELECT ms.id, ms.membership_type, ms.amount_paid, ms.payment_method, ms.paid_date,
+    SELECT ms.id, ms.year, ms.membership_type, ms.amount_paid, ms.payment_method, ms.paid_date,
            m.callsign, m.first_name, m.last_name
     FROM memberships ms
     JOIN members m ON m.id = ms.member_id
     WHERE ms.amount_paid IS NOT NULL
       AND ms.created_at >= datetime('now', '-7 days')
-      AND ms.year = ?
     ORDER BY ms.created_at DESC
-  `).bind(year).all();
+  `).all();
 
   if (newPayments.length === 0) {
     return jsonResponse({ sent: false, reason: 'no_new_payments' });
