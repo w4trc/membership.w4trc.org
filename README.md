@@ -212,6 +212,25 @@ tile and the *New this week / 30 / 90 days* filter show the new ones, and an adm
 **Check FCC now** to read the whole past week. The cities are set by `AREA_CITIES` in
 `src/lib/fccLicensees.js`.
 
+The daily files only show licenses that changed recently. To catch up on everyone already
+licensed in the area, run the backfill from your computer (Node 22.12+). It downloads the
+FCC's full database (about 200 MB) and writes `scripts/prospects-backfill.sql`:
+
+```bash
+npm run db:backfill:prospects
+```
+
+Then add them to the live database:
+
+```bash
+npm run db:backfill:prospects:apply
+```
+
+Only hams who are neither on the list nor members are added, so it is safe to run again
+later. They show on Local Hams as *Caught up from FCC* (filter *All added from FCC*) and are
+left out of the weekly roundup. If the download is slow, download `l_amat.zip` from the FCC
+yourself and pass it in with `npm run db:backfill:prospects -- --zip path/to/l_amat.zip`.
+
 ---
 
 ## Local Development

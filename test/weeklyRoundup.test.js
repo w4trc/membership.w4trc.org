@@ -102,6 +102,15 @@ describe('weekly roundup', () => {
     expect(emails[0].html).toContain('New license');
     expect(emails[0].html).toContain('No new dues payments this week.');
   });
+
+  it('leaves out hams added by a catch-up run', async () => {
+    await env.DB.prepare(`
+      INSERT INTO prospects (callsign, city, source, added_reason, auto_added_at)
+      VALUES ('KR4BAK', 'Kingsport', 'fcc_backfill', 'backfill', datetime('now', '-1 day'))
+    `).run();
+
+    expect(await (await roundup(RENEWAL_SEASON)).json()).toEqual({ sent: false, reason: 'nothing_new' });
+  });
 });
 
 describe('Sunday cron', () => {

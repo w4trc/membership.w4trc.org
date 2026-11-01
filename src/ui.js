@@ -4103,7 +4103,7 @@ function showNewProspects(added) {
 }
 
 function prospectReasonLabel(reason) {
-  return { new_license: 'New license', new_callsign: 'New callsign', new_to_list: 'New to the area' }[reason] || 'Added from FCC';
+  return { new_license: 'New license', new_callsign: 'New callsign', new_to_list: 'New to the area', backfill: 'Caught up from FCC' }[reason] || 'Added from FCC';
 }
 
 // Added from the FCC in the last 30 days

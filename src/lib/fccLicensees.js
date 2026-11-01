@@ -87,7 +87,7 @@ function lineAt(text, pos) {
   const start = text.lastIndexOf('\n', pos) + 1;
   let end = text.indexOf('\n', pos);
   if (end < 0) end = text.length;
-  return { start, fields: text.slice(start, end).replace(/\r$/, '').split('|') };
+  return { fields: text.slice(start, end).replace(/\r$/, '').split('|') };
 }
 
 // Every line starting with prefix (e.g. "HD|12345|"). Records always start a line.
@@ -116,6 +116,50 @@ function isoDate(s) {
 }
 
 /**
+ * An EN (name and address) record, split on "|", as a candidate licensee if
+ * it is an individual in one of the area cities. Otherwise null.
+ */
+export function areaCandidate(f) {
+  if (f[0] !== 'EN' || f[5] !== 'L' || f[17] !== AREA_STATE) return null;
+  const city = AREA_BY_KEY.get(cityKey(f[16]));
+  if (!city) return null;
+  // Individuals only: clubs, RACES and military stations are applicant types B, R, M
+  if (f[23] ? f[23] !== 'I' : !f[8]) return null;
+  if (!f[4]) return null;
+
+  return {
+    usi:        f[1],
+    callsign:   f[4].toUpperCase(),
+    first_name: normalizeName(f[8] || '') || null,
+    last_name:  normalizeName(f[10] || '') || null,
+    email:      (f[14] || '').toLowerCase() || null,
+    address:    f[15] || null,
+    city,
+    state:      AREA_STATE,
+    zip:        f[18] ? (f[18].length === 9 ? `${f[18].slice(0, 5)}-${f[18].slice(5)}` : f[18]) : null,
+  };
+}
+
+/**
+ * A candidate with its HD (status, dates) and AM (class, previous callsign)
+ * records and HS history codes, as a licensee. Null unless the license is an
+ * active amateur one (HA, or HV for vanity).
+ */
+export function toLicensee(candidate, hd, am, hsCodes = []) {
+  if (hd && (hd[5] !== 'A' || !['HA', 'HV'].includes(hd[6]))) return null;
+  const { usi, ...rest } = candidate;
+  return {
+    ...rest,
+    license_class:     am ? (CLASS_MAP[am[5]] || am[5] || null) : null,
+    license_status:    hd ? hd[5] : null,
+    license_granted:   hd ? isoDate(hd[7]) : null,
+    license_expiry:    hd ? isoDate(hd[8]) : null,
+    previous_callsign: am && am[15] ? am[15].toUpperCase() : null,
+    new_license:       hsCodes.includes('LIISS'),
+  };
+}
+
+/**
  * Pick the area licensees out of one daily file.
  * Returns [{ callsign, first_name, last_name, address, city, state, zip, email,
  *            license_class, license_status, license_granted, license_expiry,
@@ -130,28 +174,10 @@ export async function findAreaLicensees(files) {
   const needle = `|${AREA_STATE}|`;
   let pos = 0;
   while ((pos = enText.indexOf(needle, pos)) >= 0) {
-    const { start, fields: f } = lineAt(enText, pos);
+    const c = areaCandidate(lineAt(enText, pos).fields);
+    if (c) candidates.set(c.usi, c);
     pos = enText.indexOf('\n', pos);
     if (pos < 0) pos = enText.length;
-
-    if (f[0] !== 'EN' || f[5] !== 'L' || f[17] !== AREA_STATE) continue;
-    const city = AREA_BY_KEY.get(cityKey(f[16]));
-    if (!city) continue;
-    // Individuals only: clubs, RACES and military stations are applicant types B, R, M
-    if (f[23] ? f[23] !== 'I' : !f[8]) continue;
-
-    candidates.set(f[1], {
-      usi:        f[1],
-      callsign:   (f[4] || '').toUpperCase(),
-      first_name: normalizeName(f[8] || '') || null,
-      last_name:  normalizeName(f[10] || '') || null,
-      email:      (f[14] || '').toLowerCase() || null,
-      address:    f[15] || null,
-      city,
-      state:      AREA_STATE,
-      zip:        f[18] ? (f[18].length === 9 ? `${f[18].slice(0, 5)}-${f[18].slice(5)}` : f[18]) : null,
-      _line:      start,
-    });
   }
   if (!candidates.size) return [];
 
@@ -161,24 +187,11 @@ export async function findAreaLicensees(files) {
 
   const out = [];
   for (const c of candidates.values()) {
-    const hd = linesStarting(hdText, `HD|${c.usi}|`).pop();
-    const am = linesStarting(amText, `AM|${c.usi}|`).pop();
-    const hs = linesStarting(hsText, `HS|${c.usi}|`);
-
-    // Only active amateur licenses (HA, or HV for vanity)
-    if (hd && (hd[5] !== 'A' || !['HA', 'HV'].includes(hd[6]))) continue;
-    if (!c.callsign) continue;
-
-    const { usi, _line, ...rest } = c;
-    out.push({
-      ...rest,
-      license_class:     am ? (CLASS_MAP[am[5]] || am[5] || null) : null,
-      license_status:    hd ? hd[5] : null,
-      license_granted:   hd ? isoDate(hd[7]) : null,
-      license_expiry:    hd ? isoDate(hd[8]) : null,
-      previous_callsign: am && am[15] ? am[15].toUpperCase() : null,
-      new_license:       hs.some(h => h[5] === 'LIISS'),
-    });
+    const l = toLicensee(c,
+      linesStarting(hdText, `HD|${c.usi}|`).pop(),
+      linesStarting(amText, `AM|${c.usi}|`).pop(),
+      linesStarting(hsText, `HS|${c.usi}|`).map(h => h[5]));
+    if (l) out.push(l);
   }
   return out;
 }

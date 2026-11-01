@@ -670,12 +670,14 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     ORDER BY ms.created_at DESC
   `).all();
 
-  // Local hams the daily FCC check added this week
+  // Local hams the daily FCC check added this week (not a catch-up run,
+  // which can add dozens at once)
   const { results: newProspects } = await env.DB.prepare(`
     SELECT p.callsign, p.first_name, p.last_name, p.city, p.license_class, p.added_reason
     FROM prospects p
     LEFT JOIN members m ON UPPER(m.callsign) = UPPER(p.callsign)
     WHERE p.auto_added_at >= datetime('now', '-7 days') AND m.id IS NULL
+      AND COALESCE(p.source, '') != 'fcc_backfill'
     ORDER BY p.auto_added_at DESC
   `).all();
 
