@@ -3427,7 +3427,7 @@ async function audit(opts = {}) {
               const _t = auditTarget(r), _d = auditDetail(r);
               return \`<tr>
               <td style="color:var(--text-muted);white-space:nowrap">\${fmtDate(r.created_at)}</td>
-              <td style="font-size:12px">\${escHtml(r.user_email||'—')}</td>
+              <td style="font-size:12px">\${escHtml(auditUser(r))}</td>
               <td><code style="font-size:11px;color:var(--accent)">\${escHtml(r.action)}</code></td>
               <td style="font-size:12px">\${escHtml(_t)}</td>
               <td style="font-size:12px;color:var(--text-muted)">\${escHtml(_d)}</td>
@@ -3883,9 +3883,23 @@ function auditTarget(r) {
     if (name) return \`\${year ? year + ' dues — ' : ''}\${name}\${call}\`;
     return \`membership #\${r.target_id}\`;
   }
+  if (r.target_type === 'donation') {
+    const name = r.target_name || d?.donor_name || '';
+    const call = r.target_callsign ? \` (\${r.target_callsign})\` : '';
+    if (name) return 'Donation — ' + name + call;
+    if (d?.member_id) return \`Donation — member #\${d.member_id}\`;
+    return r.action === 'donation.stripe_paid' ? 'Donation — anonymous' : \`donation #\${r.target_id}\`;
+  }
   if (r.target_type === 'user') return d?.email || \`user #\${r.target_id}\`;
   if (r.target_type === 'inventory_item' || r.target_type === 'inventory_location') return d?.name || \`item #\${r.target_id}\`;
   if (r.target_type === 'note') return d?.member_id ? \`note for member #\${d.member_id}\` : \`note #\${r.target_id}\`;
+  return '—';
+}
+
+// Stripe webhook entries have no signed-in user behind them
+function auditUser(r) {
+  if (r.user_email) return r.user_email;
+  if (r.action?.endsWith('.stripe_paid')) return 'Stripe (online)';
   return '—';
 }
 
@@ -3915,6 +3929,12 @@ function auditDetail(r) {
     case 'inventory.update':   return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
     case 'inventory.move':     return [d.event_type === 'checked_out' ? 'checked out' : 'moved', d.event_date].filter(Boolean).join(' — ');
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
+    case 'membership.stripe_paid': {
+      const covered = d.covered_member_ids?.length || 0;
+      return 'Paid $' + d.amount_paid + ' online for ' + d.year + ' dues'
+        + (covered ? ', covers ' + covered + ' family member' + (covered !== 1 ? 's' : '') : '');
+    }
+    case 'donation.stripe_paid': return 'Donated $' + d.amount + ' online';
     case 'member.renewal_activated': return d?.activated_count != null ? d.activated_count + ' renewed member' + (d.activated_count !== 1 ? 's' : '') + ' activated for ' + d.year : '';
     case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';
     case 'login.failed':       return [d.email, d.reason?.replace(/_/g, ' ')].filter(Boolean).join(' — ');

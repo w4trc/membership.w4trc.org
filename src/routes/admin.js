@@ -311,8 +311,10 @@ async function getAuditLog(env, url) {
       (al.target_type = 'member'     AND al.target_id IN (SELECT id FROM members WHERE callsign = ?))
       OR
       (al.target_type = 'membership' AND al.target_id IN (SELECT ms.id FROM memberships ms JOIN members m ON m.id = ms.member_id WHERE m.callsign = ?))
+      OR
+      (al.target_type = 'donation'   AND al.target_id IN (SELECT d.id FROM donations d JOIN members m ON m.id = d.member_id WHERE m.callsign = ?))
     )`);
-    params.push(callsign, callsign);
+    params.push(callsign, callsign, callsign);
   }
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   params.push(limit, offset);
@@ -326,6 +328,11 @@ async function getAuditLog(env, url) {
           FROM memberships ms JOIN members m ON m.id = ms.member_id
           WHERE ms.id = al.target_id
         )
+        WHEN 'donation' THEN (
+          SELECT COALESCE(m.first_name || ' ' || m.last_name, d.donor_name)
+          FROM donations d LEFT JOIN members m ON m.id = d.member_id
+          WHERE d.id = al.target_id
+        )
       END as target_name,
       CASE al.target_type
         WHEN 'member' THEN (SELECT callsign FROM members WHERE id = al.target_id)
@@ -333,6 +340,11 @@ async function getAuditLog(env, url) {
           SELECT m.callsign
           FROM memberships ms JOIN members m ON m.id = ms.member_id
           WHERE ms.id = al.target_id
+        )
+        WHEN 'donation' THEN (
+          SELECT m.callsign
+          FROM donations d JOIN members m ON m.id = d.member_id
+          WHERE d.id = al.target_id
         )
       END as target_callsign,
       CASE al.target_type
