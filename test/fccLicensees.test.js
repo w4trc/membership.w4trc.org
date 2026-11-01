@@ -130,16 +130,15 @@ describe('reading the FCC daily file', () => {
 });
 
 describe('importing new licensees', () => {
-  it('adds new area hams to the prospects list, and skips members', async () => {
+  it('adds new area hams to the prospects list, members included', async () => {
     await addMember({ callsign: 'KR4MEM' });
     mockFcc();
 
     const r = await importFccDay(env, 'wed');
 
     expect(requests[0].url).toBe('https://data.fcc.gov/download/pub/uls/daily/l_am_wed.zip');
-    expect(r.added.sort()).toEqual(['KR4CHL', 'KR4MTC', 'KR4NEW', 'W4VAN']);
-    expect(r.members).toBe(1);
-    expect(await prospect('KR4MEM')).toBeNull();
+    expect(r.added.sort()).toEqual(['KR4CHL', 'KR4MEM', 'KR4MTC', 'KR4NEW', 'W4VAN']);
+    expect(await prospect('KR4MEM')).toMatchObject({ source: 'fcc', city: 'Kingsport' });
 
     expect(await prospect('KR4NEW')).toMatchObject({
       source: 'fcc', added_reason: 'new_license', outreach_status: 'not_contacted', city: 'Kingsport',

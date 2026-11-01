@@ -5,8 +5,8 @@
  * The daily check (src/lib/fccLicensees.js) only sees licenses that changed
  * in the last few days. This reads the whole database, picks out active
  * individual licensees in the area cities, and writes a SQL file that adds
- * the ones not already on the list. Hams already on the list and members are
- * left alone, so it is safe to run again whenever you want to catch up.
+ * the ones not already on the list (members included). Hams already on the
+ * list are left alone, so it is safe to run again whenever you want to catch up.
  *
  * Usage:
  *   npm run db:backfill:prospects                    # download and write the SQL
@@ -136,8 +136,7 @@ function insertFor(l) {
   return `INSERT OR IGNORE INTO prospects (callsign, first_name, last_name, address, city, state, zip, email,
   license_class, license_status, license_granted, license_expiry, source, added_reason, auto_added_at)
 SELECT ${cols}, 'fcc_backfill', 'backfill', datetime('now')
-WHERE NOT EXISTS (SELECT 1 FROM members WHERE UPPER(callsign) = ${call})
-  AND NOT EXISTS (SELECT 1 FROM prospects WHERE UPPER(callsign) = ${call});`;
+WHERE NOT EXISTS (SELECT 1 FROM prospects WHERE UPPER(callsign) = ${call});`;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -172,14 +171,14 @@ async function main() {
   fs.writeFileSync(out, [
     `-- Local Hams catch-up from the FCC full database, ${today}`,
     `-- ${licensees.length} active licensees in ${AREA_CITIES.join(', ')}.`,
-    `-- Hams already on the list and members are skipped.`,
+    `-- Hams already on the list are skipped.`,
     ...licensees.map(insertFor),
     '',
   ].join('\n'));
 
   const counts = AREA_CITIES.map(city => `${city} ${licensees.filter(l => l.city === city).length}`);
   console.log(`\nFound ${licensees.length} active licensees (${counts.join(', ')}).`);
-  console.log(`Wrote ${path.relative(process.cwd(), out)}. Hams already on the list or already members are skipped when it runs.`);
+  console.log(`Wrote ${path.relative(process.cwd(), out)}. Hams already on the list are skipped when it runs.`);
   console.log(`\nTo add them:  npm run db:backfill:prospects:apply`);
 }
 

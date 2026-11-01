@@ -205,7 +205,7 @@ in Church Hill, Kingsport, or Mount Carmel, TN is handled like this:
   *New callsign*, or *New to the area*
 - **Already on the list** — address and license details refreshed; outreach status and notes are kept
 - **New callsign for someone on the list** — their row moves to the new callsign
-- **Already a member** — skipped
+- **Already a member** — added or refreshed the same way, and shown as a member
 
 Each file is read once; the FCC replaces it weekly. On the Local Hams page, the *New (30 days)*
 tile and the *New this week / 30 / 90 days* filter show the new ones, and an admin can press
@@ -226,8 +226,8 @@ Then add them to the live database:
 npm run db:backfill:prospects:apply
 ```
 
-Only hams who are neither on the list nor members are added, so it is safe to run again
-later. They show on Local Hams as *Caught up from FCC* (filter *All added from FCC*) and are
+Only hams not already on the list are added (members included), so it is safe to run
+again later. They show on Local Hams as *Caught up from FCC* (filter *All added from FCC*) and are
 left out of the weekly roundup. If the download is slow, download `l_amat.zip` from the FCC
 yourself and pass it in with `npm run db:backfill:prospects -- --zip path/to/l_amat.zip`.
 

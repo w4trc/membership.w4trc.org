@@ -199,18 +199,14 @@ export async function findAreaLicensees(files) {
 // ── Saving ───────────────────────────────────────────────────────────────────
 
 /**
- * Add or update prospects from the area licensees. Members are skipped.
- * Returns { added: [...callsigns], updated: [...callsigns], members: n }
+ * Add or update prospects from the area licensees. Members are added too:
+ * Local Hams lists every area ham and marks the ones who are members.
+ * Returns { added: [...callsigns], updated: [...callsigns] }
  */
 export async function saveLicensees(env, licensees) {
-  const result = { added: [], updated: [], members: 0 };
+  const result = { added: [], updated: [] };
 
   for (const l of licensees) {
-    const member = await env.DB.prepare(
-      `SELECT id FROM members WHERE UPPER(callsign) IN (?, ?) LIMIT 1`
-    ).bind(l.callsign, l.previous_callsign || l.callsign).first();
-    if (member) { result.members++; continue; }
-
     const existing = await env.DB.prepare(
       `SELECT id FROM prospects WHERE UPPER(callsign) = ?`
     ).bind(l.callsign).first();
