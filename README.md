@@ -17,7 +17,7 @@ A Cloudflare Workers-based membership management system.
 - **Officer history** — who was president, vice president, treasurer, secretary, and trustee each year, entered one at a time or pasted as a list, and shown on the public directory
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, move / check-out / note history, and printable QR labels (Avery 5160) that open the item when scanned
-- **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB
+- **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB; new Church Hill, Kingsport, and Mount Carmel licensees are added automatically from the FCC, with a "New" badge and filter
 - **Callsign report** — active member callsigns as a copyable list
 - **Membership certificate and card** — printable by an officer for any member whose dues are paid
 - **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and add, move, or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
@@ -31,7 +31,8 @@ A Cloudflare Workers-based membership management system.
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
-- Weekly email roundup of new dues payments to the board (Sunday evening cron)
+- Weekly email roundup of new dues payments and newly added local hams to the board (Sunday evening cron)
+- Daily check of the FCC's license files for new local licensees, added to Local Hams (see [New local licensees](#11-new-local-licensees))
 - Daily cron: expired session cleanup, and January reactivation of members who renewed in advance
 - `/health` endpoint for uptime monitoring
 - Dark / light theme, mobile sidebar, keyboard shortcuts (`/` search, `N` add member, `Esc` close)
@@ -183,8 +184,8 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 
 The daily cleanup and backup, the hourly Google Groups sync and the weekly roundup email
 all run inside the Worker (`[triggers]` in `wrangler.toml`). The roundup goes out Sunday at
-23:00 UTC (7 PM Eastern in summer, 6 PM in winter) and covers the 7 days before it. It sends
-nothing if no dues were recorded that week.
+23:00 UTC (7 PM Eastern in summer, 6 PM in winter) and covers the 7 days before it. It also lists
+local hams the FCC check added that week, and sends nothing if there is neither.
 
 To send it on demand:
 
@@ -192,6 +193,24 @@ To send it on demand:
 curl -X POST https://members.w4trc.org/api/admin/weekly-roundup \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
+
+### 11. New local licensees
+
+Once a day (14:15 UTC, from the hourly cron) the Worker downloads the FCC's daily amateur
+license files for the previous two days (`l_am_mon.zip` ... `l_am_sun.zip` from
+`data.fcc.gov/download/pub/uls/daily/`). Any individual with an active license and an address
+in Church Hill, Kingsport, or Mount Carmel, TN is handled like this:
+
+- **Not on the list** — added to Local Hams as *Not Contacted*, marked *New license*,
+  *New callsign*, or *New to the area*
+- **Already on the list** — address and license details refreshed; outreach status and notes are kept
+- **New callsign for someone on the list** — their row moves to the new callsign
+- **Already a member** — skipped
+
+Each file is read once; the FCC replaces it weekly. On the Local Hams page, the *New (30 days)*
+tile and the *New this week / 30 / 90 days* filter show the new ones, and an admin can press
+**Check FCC now** to read the whole past week. The cities are set by `AREA_CITIES` in
+`src/lib/fccLicensees.js`.
 
 ---
 
@@ -488,6 +507,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `020_google_group_sync.sql` — record of addresses synced to each year's Google Group
 - `021_public_donations.sql` — `individual` donor type, `donor_name` and `donor_email` on donations
 - `022_officers.sql` — officer history
+- `023_prospects_fcc.sql` — FCC auto-add fields on prospects, `fcc_daily_imports` table
 
 ---
 
@@ -564,6 +584,8 @@ DELETE /api/meetings/:id              Delete a meeting (admin only)
 GET    /api/prospects                 List local hams with member cross-reference (board+)
 GET    /api/prospects/stats           Outreach summary counts
 PUT    /api/prospects/:id             Update outreach status / postcard / notes
+GET    /api/prospects/fcc             When each FCC daily file was last checked
+POST   /api/prospects/fcc?day=mon     Check one FCC daily file now (admin; ?force=1 re-reads it)
 
 POST   /api/portal/lookup             Find a member record to claim (public)
 POST   /api/portal/request-token      Email a verification code (public)

@@ -670,8 +670,17 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     ORDER BY ms.created_at DESC
   `).all();
 
-  if (newPayments.length === 0) {
-    return { sent: false, reason: 'no_new_payments' };
+  // Local hams the daily FCC check added this week
+  const { results: newProspects } = await env.DB.prepare(`
+    SELECT p.callsign, p.first_name, p.last_name, p.city, p.license_class, p.added_reason
+    FROM prospects p
+    LEFT JOIN members m ON UPPER(m.callsign) = UPPER(p.callsign)
+    WHERE p.auto_added_at >= datetime('now', '-7 days') AND m.id IS NULL
+    ORDER BY p.auto_added_at DESC
+  `).all();
+
+  if (newPayments.length === 0 && newProspects.length === 0) {
+    return { sent: false, reason: 'nothing_new' };
   }
 
   // Members in good standing for this year, and for next year once renewal
@@ -690,9 +699,9 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
 
   const weekOf = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
-  await sendWeeklyRoundup(env, { boardEmails, newPayments, memberCounts, weekOf });
+  await sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects, memberCounts, weekOf });
 
-  return { sent: true, recipients: boardEmails.length, new_payments: newPayments.length };
+  return { sent: true, recipients: boardEmails.length, new_payments: newPayments.length, new_prospects: newProspects.length };
 }
 
 // POST /api/admin/sync-prospects

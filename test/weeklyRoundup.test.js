@@ -25,6 +25,7 @@ const paid = (member, year) => addMembership(member, year, { status: 'active', a
 let emails;
 beforeEach(async () => {
   await resetDb();
+  await env.DB.prepare('DELETE FROM prospects').run();
   emails = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
@@ -75,13 +76,31 @@ describe('weekly roundup', () => {
     expect(html).not.toContain('>Year</th>');
   });
 
-  it('sends nothing when no dues were recorded this week', async () => {
+  it('sends nothing when no dues were recorded and no local hams were added this week', async () => {
     await addMembership(await addMember(), 2027, {
       status: 'active', amount_paid: 20, created_at: '2020-01-01 00:00:00',
     });
+    await env.DB.prepare(
+      `INSERT INTO prospects (callsign, city, auto_added_at) VALUES ('KR4OLD', 'Kingsport', '2020-01-01 00:00:00')`
+    ).run();
 
-    expect(await (await roundup(RENEWAL_SEASON)).json()).toEqual({ sent: false, reason: 'no_new_payments' });
+    expect(await (await roundup(RENEWAL_SEASON)).json()).toEqual({ sent: false, reason: 'nothing_new' });
     expect(emails).toHaveLength(0);
+  });
+
+  it('lists local hams added from the FCC this week', async () => {
+    await env.DB.prepare(`
+      INSERT INTO prospects (callsign, first_name, last_name, city, license_class, added_reason, auto_added_at)
+      VALUES ('KR4NEW', 'Jane', 'Doe', 'Church Hill', 'Technician', 'new_license', datetime('now', '-1 day'))
+    `).run();
+
+    const body = await (await roundup(RENEWAL_SEASON)).json();
+
+    expect(body).toMatchObject({ sent: true, new_payments: 0, new_prospects: 1 });
+    expect(emails[0].html).toContain('New local hams this week (1)');
+    expect(emails[0].html).toContain('KR4NEW');
+    expect(emails[0].html).toContain('New license');
+    expect(emails[0].html).toContain('No new dues payments this week.');
   });
 });
 

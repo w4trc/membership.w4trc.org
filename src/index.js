@@ -31,6 +31,9 @@ import { rateLimit }         from './lib/rateLimit.js';
 import { activateRenewedMembers } from './lib/duesYear.js';
 import { backupDatabase, backupStatus } from './lib/backup.js';
 import { syncGoogleGroups } from './lib/googleGroups.js';
+import { checkFccLicensees } from './lib/fccLicensees.js';
+
+const FCC_CHECK_HOUR_UTC = 14;
 
 // ── Health check ────────────────────────────────────────────────────────
 // Public, unauthenticated endpoint for uptime monitors. Verifies the worker
@@ -266,6 +269,16 @@ export default Sentry.withSentry(
           .then(r => { if (r.error) console.error('syncGoogleGroups failed:', r.error); })
           .catch(err => console.error('syncGoogleGroups failed:', err))
       );
+      // Once a day (14:15 UTC, mid-morning Eastern, after the FCC posts its
+      // daily files): add new area licensees to the prospects list. Kept off
+      // the 08:00 run so it doesn't share CPU time with the backup.
+      if (new Date(controller.scheduledTime).getUTCHours() === FCC_CHECK_HOUR_UTC) {
+        ctx.waitUntil(
+          checkFccLicensees(env, new Date(controller.scheduledTime))
+            .then(r => console.log('FCC licensee check:', JSON.stringify(r)))
+            .catch(err => console.error('checkFccLicensees failed:', err))
+        );
+      }
       return;
     }
 
