@@ -7,13 +7,8 @@ What's already built is described in [README.md](README.md). This file only list
 ## Finish What's Started
 
 ### Online dues payment (Stripe)
-- [ ] **Go live** — built and tested in sandbox (test mode). Swap both secrets for the live versions (`sk_live_...` + live webhook signing secret); no code changes needed. Until then, use the test key (`sk_test_...`) and test card `4242 4242 4242 4242`.
 - [ ] Run one family checkout end-to-end in Stripe test mode before relying on it.
-- [ ] Before going live, add `STRIPE_TEST_SECRET_KEY` (the current `sk_test_...` key) so the `/demo` renewal keeps working on sandbox.
 - [ ] Clean up existing covered records (some 2026 ones show $20 due / "individual" type from the old form bug).
-
-### Online donations
-- [X] Run one donation from the public `/donate` page in Stripe test mode.
 
 ---
 
