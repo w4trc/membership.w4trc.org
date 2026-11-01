@@ -5,3 +5,4 @@ node_modules/
 .env*
 .claude
 bruno/members.w4trc.org/environments/Production.bru
+scripts/prospects-backfill.sql

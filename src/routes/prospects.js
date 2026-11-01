@@ -3,10 +3,13 @@
  * GET  /api/prospects        - list with member cross-reference
  * GET  /api/prospects/stats  - summary counts
  * PUT  /api/prospects/:id    - update outreach status / postcard / notes
+ * GET  /api/prospects/fcc    - when each FCC daily file was last checked
+ * POST /api/prospects/fcc?day=mon - check one FCC daily file now (admin, ?force=1)
  */
 
-import { isBoardOrAbove }           from '../lib/auth.js';
+import { isAdmin, isBoardOrAbove }  from '../lib/auth.js';
 import { jsonResponse, jsonError }  from '../lib/response.js';
+import { DAYS, importFccDay }       from '../lib/fccLicensees.js';
 
 export async function handleProspects(request, env, path, user) {
   if (!isBoardOrAbove(user)) return jsonError('Board access required', 403);
@@ -25,6 +28,15 @@ export async function handleProspects(request, env, path, user) {
     return jsonError('Method not allowed', 405);
   }
 
+  if (sub === 'fcc') {
+    if (method === 'GET')  return getFccStatus(env);
+    if (method === 'POST') {
+      if (!isAdmin(user)) return jsonError('Admin access required', 403);
+      return runFccImport(request, env);
+    }
+    return jsonError('Method not allowed', 405);
+  }
+
   const id = parseInt(sub, 10);
   if (isNaN(id)) return jsonError('Invalid id', 400);
 
@@ -40,6 +52,7 @@ async function listProspects(request, env) {
   const status     = url.searchParams.get('status')     || 'all';
   const postcard   = url.searchParams.get('postcard')   || 'all';
   const licenseAge = url.searchParams.get('license_age')|| 'all';
+  const added      = url.searchParams.get('added')      || 'all';
   const page       = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   const pageSize = 75;
   const offset   = (page - 1) * pageSize;
@@ -85,6 +98,18 @@ async function listProspects(request, env) {
     where.push(`p.license_expiry <= date('now', '+5 years')`);
   }
 
+  // Added automatically from the FCC daily files: 'auto' for all of them,
+  // or a number of days
+  if (added === 'auto') {
+    where.push(`p.auto_added_at IS NOT NULL`);
+  } else if (/^\d+$/.test(added)) {
+    where.push(`p.auto_added_at >= datetime('now', ?)`);
+    params.push(`-${Math.min(3650, parseInt(added, 10))} days`);
+  }
+  const orderSQL = added === 'all'
+    ? 'p.city, p.last_name, p.first_name'
+    : 'p.auto_added_at DESC, p.callsign';
+
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
   const countSQL = `
@@ -100,12 +125,13 @@ async function listProspects(request, env) {
       p.email, p.outreach_status, p.postcard_sent, p.postcard_sent_date, p.notes,
       p.license_class, p.license_expiry, p.license_status, p.hamdb_synced_at,
       p.created_at, p.updated_at,
+      p.source, p.added_reason, p.license_granted, p.auto_added_at,
       m.id       AS member_id,
       m.is_active AS member_active
     FROM prospects p
     LEFT JOIN members m ON UPPER(m.callsign) = UPPER(p.callsign)
     ${whereSQL}
-    ORDER BY p.city, p.last_name, p.first_name
+    ORDER BY ${orderSQL}
     LIMIT ? OFFSET ?
   `;
 
@@ -133,7 +159,8 @@ async function getStats(env) {
       SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'contacted'       THEN 1 ELSE 0 END) AS contacted,
       SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'interested'      THEN 1 ELSE 0 END) AS interested,
       SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'not_interested'  THEN 1 ELSE 0 END) AS not_interested,
-      SUM(p.postcard_sent)                                          AS postcard_sent
+      SUM(p.postcard_sent)                                          AS postcard_sent,
+      SUM(CASE WHEN p.auto_added_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS new_30
     FROM prospects p
     LEFT JOIN members m ON UPPER(m.callsign) = UPPER(p.callsign)
   `).first();
@@ -189,3 +216,25 @@ async function updateProspect(request, env, id) {
   return jsonResponse({ prospect: updated });
 }
 
+
+// ── GET /api/prospects/fcc ───────────────────────────────────────────────────
+async function getFccStatus(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT file, last_modified, checked_at, matched, added, updated FROM fcc_daily_imports ORDER BY checked_at DESC`
+  ).all();
+  return jsonResponse({ imports: results, days: DAYS });
+}
+
+// ── POST /api/prospects/fcc?day=mon ──────────────────────────────────────────
+// One file per request keeps each run small; the page calls it once per day.
+async function runFccImport(request, env) {
+  const url   = new URL(request.url);
+  const day   = (url.searchParams.get('day') || '').toLowerCase();
+  const force = url.searchParams.get('force') === '1';
+  if (!DAYS.includes(day)) return jsonError(`day must be one of ${DAYS.join(', ')}`, 400);
+  try {
+    return jsonResponse(await importFccDay(env, day, { force }));
+  } catch (err) {
+    return jsonError(`FCC check failed: ${err.message}`, 502);
+  }
+}

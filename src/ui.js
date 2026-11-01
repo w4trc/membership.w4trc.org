@@ -4038,12 +4038,13 @@ function roleBadge(role) {
 }
 
 // ── LOCAL HAMS (PROSPECTS) ────────────────────────────────────────────
-let prospectsState = { q:'', city:'all', status:'all', postcard:'all', page:1, data:null, stats:null };
+let prospectsState = { q:'', city:'all', status:'all', postcard:'all', license_age:'all', added:'all', page:1, data:null, stats:null };
 
 async function prospects() {
-  prospectsState = { q:'', city:'all', status:'all', postcard:'all', license_age:'all', page:1, data:null, stats:null };
+  prospectsState = { q:'', city:'all', status:'all', postcard:'all', license_age:'all', added:'all', page:1, data:null, stats:null };
   setPage(\`
     <div id="prospects-stats" class="stat-grid" style="margin-bottom:16px"></div>
+    <div id="prospects-fcc" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;font-size:12px;color:var(--text-muted)"></div>
     <div class="search-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
       <input type="text" id="prospect-search" placeholder="Search callsign or name…"
         oninput="prospectsState.q=this.value;prospectsState.page=1;loadProspects()" style="max-width:260px">
@@ -4073,6 +4074,13 @@ async function prospects() {
         <option value="recent">Recent (3–5 yrs)</option>
         <option value="established">Established (5+ yrs)</option>
       </select>
+      <select id="prospect-added" onchange="prospectsState.added=this.value;prospectsState.page=1;loadProspects()" style="width:170px">
+        <option value="all">All Hams</option>
+        <option value="7">New this week</option>
+        <option value="30">New in last 30 days</option>
+        <option value="90">New in last 90 days</option>
+        <option value="auto">All added from FCC</option>
+      </select>
       <span id="prospect-count" style="margin-left:auto;color:var(--text-muted);font-size:12px"></span>
     </div>
     <div class="card" style="padding:0">
@@ -4081,12 +4089,66 @@ async function prospects() {
     </div>
     <div id="prospect-modal-wrap"></div>
   \`);
+  loadFccStatus();
   await loadProspects();
+}
+
+// Show only the hams added from the FCC in the last N days (or 'all')
+function showNewProspects(added) {
+  prospectsState.added = added;
+  prospectsState.page = 1;
+  const sel = document.getElementById('prospect-added');
+  if (sel) sel.value = added;
+  loadProspects();
+}
+
+function prospectReasonLabel(reason) {
+  return { new_license: 'New license', new_callsign: 'New callsign', new_to_list: 'New to the area', backfill: 'Caught up from FCC' }[reason] || 'Added from FCC';
+}
+
+// Added from the FCC in the last 30 days
+function isNewProspect(p) {
+  if (!p.auto_added_at) return false;
+  const t = Date.parse(String(p.auto_added_at).replace(' ', 'T') + 'Z');
+  return Date.now() - t < 30 * 86400000;
+}
+
+async function loadFccStatus() {
+  const el = document.getElementById('prospects-fcc');
+  if (!el) return;
+  try {
+    const { imports } = await api('GET', '/prospects/fcc');
+    const last = imports[0];
+    el.innerHTML = \`
+      <span>New Church Hill, Kingsport, and Mount Carmel licensees are added daily from the FCC.
+        \${last ? 'Last checked ' + escHtml(fmtDate(last.checked_at)) + '.' : 'Not checked yet.'}</span>
+      \${state.user?.role === 'admin' ? '<button class="btn btn-sm btn-secondary" id="fcc-check-btn" onclick="runFccCheck()">Check FCC now</button>' : ''}
+    \`;
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// Check every FCC daily file from the past week, one request per file
+async function runFccCheck() {
+  const btn = document.getElementById('fcc-check-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  let added = 0, updated = 0, errors = 0;
+  for (const day of ['mon','tue','wed','thu','fri','sat','sun']) {
+    try {
+      const r = await api('POST', \`/prospects/fcc?day=\${day}\`);
+      if (r.error) errors++;
+      added   += r.added?.length   || 0;
+      updated += r.updated?.length || 0;
+    } catch(e) { errors++; }
+  }
+  toast(\`FCC check: \${added} new, \${updated} updated\${errors ? ', ' + errors + ' file(s) failed' : ''}\`, errors ? 'error' : undefined);
+  prospectsState.stats = null;
+  loadFccStatus();
+  loadProspects();
 }
 
 async function loadProspects() {
   const s = prospectsState;
-  const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, license_age: s.license_age, page: s.page });
+  const params = new URLSearchParams({ q: s.q, city: s.city, status: s.status, postcard: s.postcard, license_age: s.license_age, added: s.added, page: s.page });
   const resultsEl = document.getElementById('prospects-results');
   if (!resultsEl) return;
   resultsEl.innerHTML = '<div class="spinner"></div>';
@@ -4117,6 +4179,7 @@ function renderProspects() {
     <div class="stat-card"><div class="stat-val">\${stats?.contacted ?? '—'}</div><div class="stat-label">Contacted</div></div>
     <div class="stat-card"><div class="stat-val">\${stats?.interested ?? '—'}</div><div class="stat-label">Interested</div></div>
     <div class="stat-card"><div class="stat-val">\${stats?.postcard_sent ?? '—'}</div><div class="stat-label">Postcards Sent</div></div>
+    <div class="stat-card" style="cursor:pointer" title="Show hams added from the FCC in the last 30 days" onclick="showNewProspects('30')"><div class="stat-val">\${stats?.new_30 ?? '—'}</div><div class="stat-label">New (30 days)</div></div>
   \`;
 
   const countEl = document.getElementById('prospect-count');
@@ -4135,7 +4198,7 @@ function renderProspects() {
           \${ps.length === 0 ? '<tr><td colspan="9" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>' :
             ps.map(p => \`
               <tr>
-                <td><span class="callsign">\${escHtml(p.callsign)}</span></td>
+                <td><span class="callsign">\${escHtml(p.callsign)}</span>\${isNewProspect(p) ? \` <span class="badge badge-purple" title="\${escHtml(prospectReasonLabel(p.added_reason) + ', added ' + fmtDate(p.auto_added_at))}">New</span>\` : ''}</td>
                 <td>\${escHtml((p.first_name||'') + ' ' + (p.last_name||''))}</td>
                 <td>\${escHtml(p.city||'')}</td>
                 <td style="color:var(--text-muted);font-size:12px">\${escHtml(p.zip||'')}</td>
@@ -4193,7 +4256,9 @@ function openProspectModal(p) {
             <div class="detail-field"><label>State</label><div class="val">\${escHtml(p.state||'—')}</div></div>
             \${p.email ? \`<div class="detail-field"><label>Email</label><div class="val">\${escHtml(p.email)}</div></div>\` : ''}
             \${p.license_class ? \`<div class="detail-field"><label>License Class</label><div class="val">\${escHtml(p.license_class)}</div></div>\` : ''}
+            \${p.license_granted ? \`<div class="detail-field"><label>Granted</label><div class="val">\${escHtml(fmtDate(p.license_granted))}</div></div>\` : ''}
             \${p.license_expiry ? \`<div class="detail-field"><label>Expires</label><div class="val">\${escHtml(p.license_expiry)}</div></div>\` : ''}
+            \${p.auto_added_at ? \`<div class="detail-field" style="grid-column:1/-1"><label>Added from FCC</label><div class="val">\${escHtml(prospectReasonLabel(p.added_reason))} — \${escHtml(fmtDate(p.auto_added_at))}</div></div>\` : ''}
           </div>
 
           \${p.member_id ? \`

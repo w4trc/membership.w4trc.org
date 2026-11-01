@@ -77,7 +77,13 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
 
 // memberCounts: [{ year, count }] members in good standing, one entry per year
 // (this year, plus next year during renewal season)
-export async function sendWeeklyRoundup(env, { boardEmails, newPayments, memberCounts, weekOf }) {
+const PROSPECT_REASONS = {
+  new_license:  'New license',
+  new_callsign: 'New callsign',
+  new_to_list:  'New to the area',
+};
+
+export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects = [], memberCounts, weekOf }) {
   const club   = env.CLUB_NAME   || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   const count  = newPayments.length;
@@ -105,6 +111,43 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, memberC
     </tr>`;
   }).join('');
 
+  const cell = 'padding:8px 12px;border-bottom:1px solid #eee';
+  const prospectRows = newProspects.map(p => `<tr>
+      <td style="${cell};font-family:monospace;font-weight:600">${escHtml(p.callsign)}</td>
+      <td style="${cell}">${escHtml([p.first_name, p.last_name].filter(Boolean).join(' '))}</td>
+      <td style="${cell}">${escHtml(p.city || '')}</td>
+      <td style="${cell}">${escHtml(p.license_class || '')}</td>
+      <td style="${cell}">${escHtml(PROSPECT_REASONS[p.added_reason] || '')}</td>
+    </tr>`).join('');
+
+  const th = 'padding:8px 12px;text-align:left;font-weight:600';
+  const prospectsSection = newProspects.length ? `
+  <h3 style="margin:28px 0 12px">New local hams this week (${newProspects.length})</h3>
+  <p style="color:#777;margin:0 0 12px;font-size:14px">Added to Local Hams from the FCC's daily license files.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead><tr style="background:#f5f5f5">
+      <th style="${th}">Callsign</th><th style="${th}">Name</th><th style="${th}">City</th><th style="${th}">Class</th><th style="${th}">Why</th>
+    </tr></thead>
+    <tbody>${prospectRows}</tbody>
+  </table>` : '';
+
+  const paymentsSection = count ? `
+  <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="background:#f5f5f5">
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Callsign</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Name</th>
+        ${showYear ? '<th style="padding:8px 12px;text-align:left;font-weight:600">Year</th>' : ''}
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Method</th>
+        <th style="padding:8px 12px;text-align:right;font-weight:600">Amount</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>` : `
+  <p style="color:#777;margin:0;font-size:14px">No new dues payments this week.</p>`;
+
   await sendEmail(env, {
     to: boardEmails,
     subject: `${club} Weekly Membership Update — ${weekOf}`,
@@ -119,21 +162,8 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, memberC
   <p style="color:#777;margin:0 0 24px;font-size:14px">Week of ${escHtml(weekOf)}</p>
 
   <table style="width:100%;border-collapse:separate;margin-bottom:24px"><tr>${tiles}</tr></table>
-
-  <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
-  <table style="width:100%;border-collapse:collapse;font-size:14px">
-    <thead>
-      <tr style="background:#f5f5f5">
-        <th style="padding:8px 12px;text-align:left;font-weight:600">Callsign</th>
-        <th style="padding:8px 12px;text-align:left;font-weight:600">Name</th>
-        ${showYear ? '<th style="padding:8px 12px;text-align:left;font-weight:600">Year</th>' : ''}
-        <th style="padding:8px 12px;text-align:left;font-weight:600">Type</th>
-        <th style="padding:8px 12px;text-align:left;font-weight:600">Method</th>
-        <th style="padding:8px 12px;text-align:right;font-weight:600">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
+${paymentsSection}
+${prospectsSection}
 
   <hr style="border:none;border-top:1px solid #eee;margin:28px 0">
   <p style="color:#aaa;font-size:12px">${escHtml(club)} &mdash; <a href="https://${domain}" style="color:#3b7dd8">${domain}</a></p>
