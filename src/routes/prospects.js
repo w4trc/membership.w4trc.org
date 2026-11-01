@@ -71,13 +71,17 @@ async function listProspects(request, env) {
     params.push(city);
   }
 
+  // Hams the FCC says moved away or let their license lapse (fcc_gone) are
+  // left out of the outreach filters and shown on their own
   if (status === 'members') {
     where.push(`m.id IS NOT NULL`);
   } else if (status === 'non_members') {
-    where.push(`m.id IS NULL`);
+    where.push(`m.id IS NULL AND p.fcc_gone IS NULL`);
+  } else if (status === 'gone') {
+    where.push(`m.id IS NULL AND p.fcc_gone IS NOT NULL`);
   } else if (['not_contacted','contacted','interested','not_interested'].includes(status)) {
     where.push(`p.outreach_status = ?`);
-    where.push(`m.id IS NULL`); // outreach statuses only apply to non-members
+    where.push(`m.id IS NULL AND p.fcc_gone IS NULL`); // outreach statuses only apply to local non-members
     params.push(status);
   }
 
@@ -126,6 +130,7 @@ async function listProspects(request, env) {
       p.license_class, p.license_expiry, p.license_status, p.hamdb_synced_at,
       p.created_at, p.updated_at,
       p.source, p.added_reason, p.license_granted, p.auto_added_at,
+      p.fcc_gone, p.fcc_gone_at,
       m.id       AS member_id,
       m.is_active AS member_active
     FROM prospects p
@@ -154,11 +159,12 @@ async function getStats(env) {
     SELECT
       COUNT(*)                                                      AS total,
       COUNT(m.id)                                                   AS member_count,
-      COUNT(*) - COUNT(m.id)                                        AS non_member_count,
-      SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'not_contacted'  THEN 1 ELSE 0 END) AS not_contacted,
-      SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'contacted'       THEN 1 ELSE 0 END) AS contacted,
-      SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'interested'      THEN 1 ELSE 0 END) AS interested,
-      SUM(CASE WHEN m.id IS NULL AND p.outreach_status = 'not_interested'  THEN 1 ELSE 0 END) AS not_interested,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NULL     THEN 1 ELSE 0 END) AS non_member_count,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NOT NULL THEN 1 ELSE 0 END) AS gone_count,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NULL AND p.outreach_status = 'not_contacted'  THEN 1 ELSE 0 END) AS not_contacted,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NULL AND p.outreach_status = 'contacted'      THEN 1 ELSE 0 END) AS contacted,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NULL AND p.outreach_status = 'interested'     THEN 1 ELSE 0 END) AS interested,
+      SUM(CASE WHEN m.id IS NULL AND p.fcc_gone IS NULL AND p.outreach_status = 'not_interested' THEN 1 ELSE 0 END) AS not_interested,
       SUM(p.postcard_sent)                                          AS postcard_sent,
       SUM(CASE WHEN p.auto_added_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS new_30
     FROM prospects p

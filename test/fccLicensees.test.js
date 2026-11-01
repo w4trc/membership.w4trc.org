@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from 'cloudflare:workers';
-import { checkFccLicensees, importFccDay, readZip, findAreaLicensees } from '../src/lib/fccLicensees.js';
+import { checkFccLicensees, importFccDay, readZip, findAreaLicensees, findGone } from '../src/lib/fccLicensees.js';
 import { handleProspects } from '../src/routes/prospects.js';
 import { resetDb, addMember } from './helpers.js';
 
@@ -73,12 +73,14 @@ async function sampleZip() {
       en({ usi: 7, call: 'KR4MEM', first: 'MEM', last: 'BER', city: 'KINGSPORT', zip: '37664' }),
       en({ usi: 8, call: 'W4VAN', first: 'VAN', last: 'ITY', city: 'KINGSPORT', zip: '37663' }),
       en({ usi: 9, call: 'KR4VA', first: 'OTHER', last: 'STATE', city: 'KINGSPORT', state: 'VA', zip: '24201' }),
+      en({ usi: 10, call: 'KR4EXP', first: 'EX', last: 'PIRED', city: 'KINGSPORT', zip: '37660' }),
     ]),
     'HD.dat': dat([
       hd({ usi: 1, call: 'KR4NEW' }), hd({ usi: 2, call: 'KR4CHL' }), hd({ usi: 3, call: 'KR4MTC' }),
       hd({ usi: 4, call: 'KR4FAR' }), hd({ usi: 5, call: 'W4CLB' }),
       hd({ usi: 6, call: 'KR4CAN', status: 'C' }), hd({ usi: 7, call: 'KR4MEM' }),
       hd({ usi: 8, call: 'W4VAN', service: 'HV' }),
+      hd({ usi: 10, call: 'KR4EXP', grant: '01/01/2014', expires: '01/01/2024' }),
     ]),
     'AM.dat': dat([
       am({ usi: 1, call: 'KR4NEW' }), am({ usi: 2, call: 'KR4CHL', cls: 'G' }),
@@ -129,6 +131,19 @@ describe('reading the FCC daily file', () => {
   });
 });
 
+describe('finding hams who are no longer local', () => {
+  it('reports moves out of the area and lapsed licenses, only for hams on the list', async () => {
+    const tracked = new Set(['KR4FAR', 'KR4CAN', 'KR4EXP', 'KR4NEW', 'KR4VA']);
+    const gone = await findGone(readZip(await sampleZip()), tracked, new Set(['KR4NEW']), '2026-11-01');
+    expect(gone.sort((a, b) => a.callsign.localeCompare(b.callsign))).toEqual([
+      { callsign: 'KR4CAN', reason: 'cancelled' },
+      { callsign: 'KR4EXP', reason: 'expired' },
+      { callsign: 'KR4FAR', reason: 'moved' },
+      { callsign: 'KR4VA',  reason: 'moved' },
+    ]);
+  });
+});
+
 describe('importing new licensees', () => {
   it('adds new area hams to the prospects list, members included', async () => {
     await addMember({ callsign: 'KR4MEM' });
@@ -161,6 +176,52 @@ describe('importing new licensees', () => {
     expect(await prospect('KR4CHL')).toMatchObject({
       outreach_status: 'contacted', notes: 'met at hamfest', license_class: 'General', auto_added_at: null,
     });
+  });
+
+  it('marks hams on the list who are no longer local, and clears it when they are back', async () => {
+    await env.DB.batch(['KR4FAR', 'KR4CAN', 'KR4EXP'].map(c =>
+      env.DB.prepare(`INSERT INTO prospects (callsign, city, state) VALUES (?, 'Kingsport', 'TN')`).bind(c)));
+    await env.DB.prepare(
+      `INSERT INTO prospects (callsign, city, state, fcc_gone, fcc_gone_at) VALUES ('KR4CHL', 'Church Hill', 'TN', 'moved', '2026-01-01')`
+    ).run();
+    mockFcc();
+
+    const r = await importFccDay(env, 'wed');
+
+    expect(r.gone.sort()).toEqual(['KR4CAN', 'KR4EXP', 'KR4FAR']);
+    expect(await prospect('KR4FAR')).toMatchObject({ fcc_gone: 'moved' });
+    expect(await prospect('KR4CAN')).toMatchObject({ fcc_gone: 'cancelled' });
+    expect((await prospect('KR4EXP')).fcc_gone_at).toBeTruthy();
+    expect(await prospect('KR4CHL')).toMatchObject({ fcc_gone: null, fcc_gone_at: null });
+  });
+
+  it('gives a member their new callsign when the last names match', async () => {
+    const id = await addMember({ callsign: 'KQ4OLD', last_name: 'Ity' });
+    mockFcc();
+
+    const r = await importFccDay(env, 'wed');
+
+    expect(r.renamed).toEqual([{ from: 'KQ4OLD', to: 'W4VAN' }]);
+    const member = await env.DB.prepare(`SELECT callsign FROM members WHERE id = ?`).bind(id).first();
+    expect(member.callsign).toBe('W4VAN');
+    const log = await env.DB.prepare(`SELECT detail FROM audit_log WHERE action = 'member.callsign_changed'`).first();
+    expect(JSON.parse(log.detail)).toMatchObject({ from: 'KQ4OLD', to: 'W4VAN', source: 'fcc' });
+  });
+
+  it('leaves a member alone when the old callsign belongs to someone else now', async () => {
+    const id = await addMember({ callsign: 'KQ4OLD', last_name: 'Different' });
+    await env.DB.prepare(
+      `INSERT INTO prospects (callsign, last_name, city, state) VALUES ('KQ4OLD', 'Different', 'Kingsport', 'TN')`
+    ).run();
+    mockFcc();
+
+    const r = await importFccDay(env, 'wed');
+
+    expect(r.renamed).toEqual([]);
+    const member = await env.DB.prepare(`SELECT callsign FROM members WHERE id = ?`).bind(id).first();
+    expect(member.callsign).toBe('KQ4OLD');
+    expect(await prospect('KQ4OLD')).toBeTruthy();
+    expect(await prospect('W4VAN')).toMatchObject({ added_reason: 'new_callsign' });
   });
 
   it('moves a prospect to their new callsign', async () => {
@@ -218,6 +279,23 @@ describe('Local Hams page', () => {
 
     const status = await (await call('GET', '/api/prospects/fcc')).json();
     expect(status.imports[0]).toMatchObject({ file: 'l_am_wed.zip', added: 5 });
+  });
+
+  it('keeps hams who are no longer local out of the outreach counts and filters', async () => {
+    await env.DB.prepare(`
+      INSERT INTO prospects (callsign, city, state, fcc_gone) VALUES
+        ('W4HERE', 'Kingsport', 'TN', NULL), ('W4GONE', 'Kingsport', 'TN', 'moved')
+    `).run();
+
+    const { stats } = await (await call('GET', '/api/prospects/stats')).json();
+    expect(stats).toMatchObject({ total: 2, non_member_count: 1, gone_count: 1, not_contacted: 1 });
+
+    const callsigns = async status =>
+      (await (await call('GET', `/api/prospects?status=${status}`)).json()).prospects.map(p => p.callsign);
+    expect(await callsigns('non_members')).toEqual(['W4HERE']);
+    expect(await callsigns('not_contacted')).toEqual(['W4HERE']);
+    expect(await callsigns('gone')).toEqual(['W4GONE']);
+    expect((await callsigns('all')).sort()).toEqual(['W4GONE', 'W4HERE']);
   });
 
   it('only lets admins run the FCC check', async () => {

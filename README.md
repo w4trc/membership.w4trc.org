@@ -206,6 +206,13 @@ in Church Hill, Kingsport, or Mount Carmel, TN is handled like this:
 - **Already on the list** — address and license details refreshed; outreach status and notes are kept
 - **New callsign for someone on the list** — their row moves to the new callsign
 - **Already a member** — added or refreshed the same way, and shown as a member
+- **Member with a new callsign** — their member record gets the new callsign (only when the
+  last name matches, since old callsigns get reissued), logged in the audit log
+
+Hams on the list whose address moves out of the area, or whose license here expires or is
+cancelled, are marked *Moved away*, *License expired*, or *License cancelled*. They are left out of
+the outreach counts and filters and shown under *No Longer Local*. The mark clears if they show
+up active in the area again.
 
 Each file is read once; the FCC replaces it weekly. On the Local Hams page, the *New (30 days)*
 tile and the *New this week / 30 / 90 days* filter show the new ones, and an admin can press
@@ -220,14 +227,17 @@ FCC's full database (about 200 MB) and writes `scripts/prospects-backfill.sql`:
 npm run db:backfill:prospects
 ```
 
-Then add them to the live database:
+Then add them to the live database (run `npm run db:migrate` first if you haven't since
+migration 024):
 
 ```bash
 npm run db:backfill:prospects:apply
 ```
 
-Only hams not already on the list are added (members included), so it is safe to run
-again later. They show on Local Hams as *Caught up from FCC* (filter *All added from FCC*) and are
+It gives members and hams on the list their new callsign if they changed it, adds hams not
+already on the list (members included), and marks hams on the list who are no longer local —
+anyone not active in the area cities. Outreach details are kept, so it is safe to run again
+later to catch up. They show on Local Hams as *Caught up from FCC* (filter *All added from FCC*) and are
 left out of the weekly roundup. If the download is slow, download `l_amat.zip` from the FCC
 yourself and pass it in with `npm run db:backfill:prospects -- --zip path/to/l_amat.zip`.
 

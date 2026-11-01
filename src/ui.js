@@ -3929,6 +3929,7 @@ function auditDetail(r) {
     case 'inventory.update':   return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
     case 'inventory.move':     return [d.event_type === 'checked_out' ? 'checked out' : 'moved', d.event_date].filter(Boolean).join(' — ');
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';
+    case 'member.callsign_changed': return d.from && d.to ? 'Callsign ' + d.from + ' → ' + d.to + ' (from the FCC)' : '';
     case 'membership.stripe_paid': {
       const covered = d.covered_member_ids?.length || 0;
       return 'Paid $' + d.amount_paid + ' online for ' + d.year + ' dues'
@@ -4082,6 +4083,7 @@ async function prospects() {
         <option value="interested">Interested</option>
         <option value="not_interested">Not Interested</option>
         <option value="members">Already Members</option>
+        <option value="gone">No Longer Local</option>
       </select>
       <select id="prospect-postcard" onchange="prospectsState.postcard=this.value;prospectsState.page=1;loadProspects()" style="width:160px">
         <option value="all">All Postcards</option>
@@ -4126,6 +4128,20 @@ function prospectReasonLabel(reason) {
   return { new_license: 'New license', new_callsign: 'New callsign', new_to_list: 'New to the area', backfill: 'Caught up from FCC' }[reason] || 'Added from FCC';
 }
 
+// Why the FCC says a ham is no longer local
+function prospectGoneLabel(gone) {
+  return { moved: 'Moved away', expired: 'License expired', cancelled: 'License cancelled' }[gone] || '';
+}
+
+// Show only the hams the FCC says are no longer local
+function showGoneProspects() {
+  prospectsState.status = 'gone';
+  prospectsState.page = 1;
+  const sel = document.getElementById('prospect-status');
+  if (sel) sel.value = 'gone';
+  loadProspects();
+}
+
 // Added from the FCC in the last 30 days
 function isNewProspect(p) {
   if (!p.auto_added_at) return false;
@@ -4151,16 +4167,18 @@ async function loadFccStatus() {
 async function runFccCheck() {
   const btn = document.getElementById('fcc-check-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-  let added = 0, updated = 0, errors = 0;
+  let added = 0, updated = 0, gone = 0, renamed = 0, errors = 0;
   for (const day of ['mon','tue','wed','thu','fri','sat','sun']) {
     try {
       const r = await api('POST', \`/prospects/fcc?day=\${day}\`);
       if (r.error) errors++;
       added   += r.added?.length   || 0;
       updated += r.updated?.length || 0;
+      gone    += r.gone?.length    || 0;
+      renamed += r.renamed?.length || 0;
     } catch(e) { errors++; }
   }
-  toast(\`FCC check: \${added} new, \${updated} updated\${errors ? ', ' + errors + ' file(s) failed' : ''}\`, errors ? 'error' : undefined);
+  toast(\`FCC check: \${added} new, \${updated} updated\${gone ? ', ' + gone + ' no longer local' : ''}\${renamed ? ', ' + renamed + ' member callsign(s) changed' : ''}\${errors ? ', ' + errors + ' file(s) failed' : ''}\`, errors ? 'error' : undefined);
   prospectsState.stats = null;
   loadFccStatus();
   loadProspects();
@@ -4200,6 +4218,7 @@ function renderProspects() {
     <div class="stat-card"><div class="stat-val">\${stats?.interested ?? '—'}</div><div class="stat-label">Interested</div></div>
     <div class="stat-card"><div class="stat-val">\${stats?.postcard_sent ?? '—'}</div><div class="stat-label">Postcards Sent</div></div>
     <div class="stat-card" style="cursor:pointer" title="Show hams added from the FCC in the last 30 days" onclick="showNewProspects('30')"><div class="stat-val">\${stats?.new_30 ?? '—'}</div><div class="stat-label">New (30 days)</div></div>
+    <div class="stat-card" style="cursor:pointer" title="Show non-members who moved away or whose license expired or was cancelled" onclick="showGoneProspects()"><div class="stat-val">\${stats?.gone_count ?? '—'}</div><div class="stat-label">No Longer Local</div></div>
   \`;
 
   const countEl = document.getElementById('prospect-count');
@@ -4218,7 +4237,7 @@ function renderProspects() {
           \${ps.length === 0 ? '<tr><td colspan="9" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>' :
             ps.map(p => \`
               <tr>
-                <td><span class="callsign">\${escHtml(p.callsign)}</span>\${isNewProspect(p) ? \` <span class="badge badge-purple" title="\${escHtml(prospectReasonLabel(p.added_reason) + ', added ' + fmtDate(p.auto_added_at))}">New</span>\` : ''}</td>
+                <td><span class="callsign">\${escHtml(p.callsign)}</span>\${isNewProspect(p) ? \` <span class="badge badge-purple" title="\${escHtml(prospectReasonLabel(p.added_reason) + ', added ' + fmtDate(p.auto_added_at))}">New</span>\` : ''}\${p.fcc_gone ? \` <span class="badge badge-gray" title="\${escHtml('From the FCC, ' + fmtDate(p.fcc_gone_at))}">\${escHtml(prospectGoneLabel(p.fcc_gone))}</span>\` : ''}</td>
                 <td>\${escHtml((p.first_name||'') + ' ' + (p.last_name||''))}</td>
                 <td>\${escHtml(p.city||'')}</td>
                 <td style="color:var(--text-muted);font-size:12px">\${escHtml(p.zip||'')}</td>
@@ -4278,6 +4297,7 @@ function openProspectModal(p) {
             \${p.license_class ? \`<div class="detail-field"><label>License Class</label><div class="val">\${escHtml(p.license_class)}</div></div>\` : ''}
             \${p.license_granted ? \`<div class="detail-field"><label>Granted</label><div class="val">\${escHtml(fmtDate(p.license_granted))}</div></div>\` : ''}
             \${p.license_expiry ? \`<div class="detail-field"><label>Expires</label><div class="val">\${escHtml(p.license_expiry)}</div></div>\` : ''}
+            \${p.fcc_gone ? \`<div class="detail-field" style="grid-column:1/-1"><label>No longer local</label><div class="val">\${escHtml(prospectGoneLabel(p.fcc_gone))} — from the FCC, \${escHtml(fmtDate(p.fcc_gone_at))}</div></div>\` : ''}
             \${p.auto_added_at ? \`<div class="detail-field" style="grid-column:1/-1"><label>Added from FCC</label><div class="val">\${escHtml(prospectReasonLabel(p.added_reason))} — \${escHtml(fmtDate(p.auto_added_at))}</div></div>\` : ''}
           </div>
 

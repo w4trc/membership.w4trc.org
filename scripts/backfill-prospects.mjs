@@ -4,9 +4,13 @@
  *
  * The daily check (src/lib/fccLicensees.js) only sees licenses that changed
  * in the last few days. This reads the whole database, picks out active
- * individual licensees in the area cities, and writes a SQL file that adds
- * the ones not already on the list (members included). Hams already on the
- * list are left alone, so it is safe to run again whenever you want to catch up.
+ * individual licensees in the area cities, and writes a SQL file that:
+ *   - gives members and hams on the list their new callsign, if they changed it
+ *   - adds the ones not already on the list (members included)
+ *   - marks hams on the list who moved away or whose license expired or was
+ *     cancelled, and clears that mark for anyone active here again
+ * Hams already on the list keep their outreach details, so it is safe to run
+ * again whenever you want to catch up.
  *
  * Usage:
  *   npm run db:backfill:prospects                    # download and write the SQL
@@ -27,7 +31,7 @@ import readline from 'node:readline';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { areaCandidate, toLicensee, AREA_CITIES, AREA_STATE } from '../src/lib/fccLicensees.js';
+import { areaCandidate, toLicensee, inactiveReason, AREA_CITIES, AREA_STATE } from '../src/lib/fccLicensees.js';
 
 const FULL_URL = 'https://data.fcc.gov/download/pub/uls/complete/l_amat.zip';
 const ROOT     = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -125,7 +129,40 @@ async function eachLine(files, name, quick, onLine) {
 
 // ── Writing the SQL ──────────────────────────────────────────────────────────
 
-const sql = v => v == null || v === '' ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`;
+const sql  = v => v == null || v === '' ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`;
+const list = calls => calls.length ? calls.map(sql).join(', ') : "''";
+
+// A ham who changed callsign: follow it on their member record and their
+// row on the list. The FCC's previous callsign can be years old and given
+// to someone else since, so only when the last names match.
+function renameFor(l) {
+  const to = sql(l.callsign), from = sql(l.previous_callsign), last = sql(l.last_name.toUpperCase());
+  const member = `UPPER(callsign) = ${from} AND UPPER(TRIM(last_name)) = ${last}
+  AND NOT EXISTS (SELECT 1 FROM members WHERE UPPER(callsign) = ${to})`;
+  return `INSERT INTO audit_log (action, target_type, target_id, detail)
+SELECT 'member.callsign_changed', 'member', id,
+  json_object('from', callsign, 'to', ${to}, 'name', first_name || ' ' || last_name, 'source', 'fcc_backfill')
+FROM members WHERE ${member};
+UPDATE members SET callsign = ${to}, updated_at = datetime('now') WHERE ${member};
+UPDATE prospects SET callsign = ${to}, updated_at = datetime('now')
+WHERE UPPER(callsign) = ${from} AND (last_name IS NULL OR UPPER(TRIM(last_name)) = ${last})
+  AND NOT EXISTS (SELECT 1 FROM prospects WHERE UPPER(callsign) = ${to});`;
+}
+
+// Mark hams on the list who are no longer local, and clear the mark for
+// anyone active here again. Anyone not in the area at all has moved away.
+function goneFor(active, lapsed) {
+  const set = reason => `fcc_gone = '${reason}', fcc_gone_at = datetime('now'), updated_at = datetime('now')`;
+  const byReason = reason => [...lapsed].filter(([, r]) => r === reason).map(([c]) => c);
+  return [
+    `UPDATE prospects SET fcc_gone = NULL, fcc_gone_at = NULL, updated_at = datetime('now')
+WHERE fcc_gone IS NOT NULL AND UPPER(callsign) IN (${list(active)});`,
+    ...['expired', 'cancelled'].map(reason => `UPDATE prospects SET ${set(reason)}
+WHERE fcc_gone IS NOT '${reason}' AND UPPER(callsign) IN (${list(byReason(reason))});`),
+    `UPDATE prospects SET ${set('moved')}
+WHERE fcc_gone IS NOT 'moved' AND UPPER(callsign) NOT IN (${list([...active, ...lapsed.keys()])});`,
+  ];
+}
 
 function insertFor(l) {
   const call = sql(l.callsign);
@@ -157,28 +194,43 @@ async function main() {
   await eachLine(files, 'AM.DAT', line => line.startsWith('AM|'), f => { if (candidates.has(f[1])) am.set(f[1], f); });
 
   const today = new Date().toISOString().slice(0, 10);
-  const byCall = new Map();
+  // The full database has every license: active ones go on the list, and
+  // expired or cancelled ones mark hams already on it
+  const byCall = new Map(), lapsed = new Map();
   for (const c of candidates.values()) {
-    // The full database has every license; keep only active, unexpired ones
-    const l = toLicensee(c, hd.get(c.usi), am.get(c.usi));
-    if (!l || !hd.has(c.usi) || (l.license_expiry && l.license_expiry < today)) continue;
-    byCall.set(l.callsign, l);
+    const h = hd.get(c.usi);
+    if (!h) continue;
+    const reason = inactiveReason(h, today);
+    const l = reason ? null : toLicensee(c, h, am.get(c.usi));
+    if (l) byCall.set(l.callsign, l);
+    else if (reason) lapsed.set(c.callsign, reason);
   }
+  for (const call of byCall.keys()) lapsed.delete(call);  // a callsign given to someone new
+  if (!byCall.size) throw new Error('No active licensees found. Is the FCC file complete?');
+
   const licensees = [...byCall.values()].sort((a, b) =>
     a.city.localeCompare(b.city) || (a.last_name || '').localeCompare(b.last_name || ''));
+  const renames = licensees.filter(l => l.previous_callsign && l.previous_callsign !== l.callsign && l.last_name);
 
   const out = arg('out') || OUT;
   fs.writeFileSync(out, [
     `-- Local Hams catch-up from the FCC full database, ${today}`,
     `-- ${licensees.length} active licensees in ${AREA_CITIES.join(', ')}.`,
-    `-- Hams already on the list are skipped.`,
+    '',
+    `-- New callsigns (${renames.length} hams have a previous one; most are already up to date)`,
+    ...renames.map(renameFor),
+    '',
+    `-- Add hams not already on the list`,
     ...licensees.map(insertFor),
+    '',
+    `-- No longer local: ${lapsed.size} expired or cancelled here, and anyone not in the area at all`,
+    ...goneFor([...byCall.keys()], lapsed),
     '',
   ].join('\n'));
 
   const counts = AREA_CITIES.map(city => `${city} ${licensees.filter(l => l.city === city).length}`);
-  console.log(`\nFound ${licensees.length} active licensees (${counts.join(', ')}).`);
-  console.log(`Wrote ${path.relative(process.cwd(), out)}. Hams already on the list are skipped when it runs.`);
+  console.log(`\nFound ${licensees.length} active licensees (${counts.join(', ')}), and ${lapsed.size} expired or cancelled.`);
+  console.log(`Wrote ${path.relative(process.cwd(), out)}. Hams already on the list keep their outreach details.`);
   console.log(`\nTo add them:  npm run db:backfill:prospects:apply`);
 }
 
