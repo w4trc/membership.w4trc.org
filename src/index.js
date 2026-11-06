@@ -24,6 +24,7 @@ import { handlePrintLabels, handleItemLink } from './routes/labels.js';
 import { handleMeetings }    from './routes/meetings.js';
 import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
+import { handleMcp }         from './routes/mcp.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
 import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
@@ -138,6 +139,11 @@ export default Sentry.withSentry(
     // ── Equipment label QR codes: the item for officers, contact info for anyone else
     if (path.startsWith('/i/')) {
       return handleItemLink(request, env, () => serveUI(request, env));
+    }
+
+    // ── MCP server for AI agents (bearer token, see src/routes/mcp.js) ──
+    if (path === '/mcp') {
+      return handleMcp(request, env);
     }
 
     // ── Static UI (everything non-API) ──────────────────────────────────

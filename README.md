@@ -111,6 +111,7 @@ wrangler secret put STRIPE_SECRET_KEY      # sk_test_... or sk_live_...
 wrangler secret put STRIPE_WEBHOOK_SECRET  # whsec_... for the /api/stripe/webhook endpoint
 wrangler secret put STRIPE_TEST_SECRET_KEY # sk_test_... for the /demo renewal preview (optional)
 wrangler secret put CRON_SECRET            # bearer token for the weekly roundup endpoint
+wrangler secret put MCP_TOKEN              # bearer token for the /mcp endpoint used by AI agents (optional)
 ```
 
 For `ADMIN_SETUP_KEY`, pick something memorable — you'll need it in step 8.
@@ -668,6 +669,7 @@ GET    /api/admin/google-sync         What the Google Groups sync would change (
 POST   /api/admin/google-sync         Run the Google Groups sync now (admin)
 GET    /api/admin/google-audit        Compare each Google Group with the membership list (admin)
 POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
+POST   /mcp                           MCP server for AI agents (MCP_TOKEN, no session; see below)
 ```
 
 ---
@@ -789,6 +791,47 @@ re-synced in the background if data is older than 7 days.
 
 ---
 
+## AI Agent Access (MCP)
+
+`POST /mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI
+agent (such as Hermes) can look up club data and do a few board tasks. It uses the Streamable
+HTTP transport, stateless, with plain JSON responses.
+
+**What the agent can do.** Read members, dues, donations, the treasurer report, dashboard stats,
+meetings, officers, inventory, and local hams; look up callsigns. It can also add notes to a
+member and record meeting attendance (`add_note`, `record_meeting`, `add_meeting_attendees`).
+It cannot edit or delete members, dues, donations, or inventory, or manage users. The tool list
+is in `src/routes/mcp.js`.
+
+**How it's secured.** Requests need `Authorization: Bearer <MCP_TOKEN>`. Each call runs as the
+login account in `MCP_USER_EMAIL` (`wrangler.toml`), always with board permissions even if
+that account is an admin, and goes through the same API handlers as the web app. Notes show
+that account as the author, and every write lands in the audit log with a `mcp (...)` user agent.
+
+### Setup
+
+1. In **Admin → Users**, create a login account with the email in `MCP_USER_EMAIL`
+   (`hermes@w4trc.org` by default) and the **board** role. Give it a long random password;
+   nobody logs in with it.
+2. Create the token and deploy:
+   ```powershell
+   wrangler secret put MCP_TOKEN    # paste a random string, e.g. from: openssl rand -hex 32
+   npm run deploy
+   ```
+3. Point the agent at it. For Hermes, in `~/.hermes/config.yaml`:
+   ```yaml
+   mcp_servers:
+     w4trc:
+       url: "https://members.w4trc.org/mcp"
+       headers:
+         Authorization: "Bearer <MCP_TOKEN>"
+   ```
+   Then run `/reload-mcp` in Hermes (or restart it) to pick up the tools.
+
+To cut the agent off, deactivate that login account or change `MCP_TOKEN`.
+
+---
+
 ## Security Notes
 
 - Passwords hashed with PBKDF2 (100,000 iterations, SHA-256)
@@ -799,6 +842,7 @@ re-synced in the background if data is older than 7 days.
 - CORS locked to `members.w4trc.org` only
 - `HttpOnly`, `Secure`, `SameSite=Strict` session cookies
 - Stripe webhook requests are signature-verified
+- The `/mcp` agent endpoint needs a bearer token and is capped at board permissions with a fixed set of tools
 
 ---
 

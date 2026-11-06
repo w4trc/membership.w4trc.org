@@ -37,6 +37,7 @@ CONTACT_EMAIL = "contact@w4trc.org"  # shown to anyone who scans a found equipme
 GOOGLE_GROUP_FORMAT = "{year}members@w4trc.org"  # each year's Google Group
 GOOGLE_SYNC_START_YEAR = "2027"  # the sync ignores groups for earlier years
 GOOGLE_GROUP_ALWAYS_ADD = "automations@n4jhc.com"  # also in every synced group (comma-separated)
+MCP_USER_EMAIL = "joshuabot@w4trc.org"  # login account the /mcp endpoint acts as (board or admin; capped at board)
 
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # JWT_SECRET              - random 64-char string for signing sessions
@@ -44,6 +45,7 @@ GOOGLE_GROUP_ALWAYS_ADD = "automations@n4jhc.com"  # also in every synced group 
 # STRIPE_SECRET_KEY       - Stripe secret key (sk_live_... or sk_test_...)
 # STRIPE_WEBHOOK_SECRET   - Stripe webhook signing secret (whsec_...)
 # GOOGLE_SERVICE_ACCOUNT_KEY - service account JSON key for the Google Groups sync (optional)
+# MCP_TOKEN               - bearer token for the /mcp endpoint used by AI agents (optional)
 
 # Bundle binary assets (logo, etc.) as Data modules
 [[rules]]
