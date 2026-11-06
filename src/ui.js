@@ -370,14 +370,21 @@ textarea { resize: vertical; min-height: 80px; }
 .year-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
 
 /* ── Mobile ──────────────────────────────────────────────────────────── */
-#menu-toggle { display: none; }
+/* The menu button shows at every width. On wide screens it collapses the
+   sidebar (remembered per browser); on narrow ones it opens a slide-out drawer. */
+#menu-toggle, #portal-menu-toggle {
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; color: var(--text); cursor: pointer;
+  font-size: 20px; padding: 4px 8px; margin-right: 8px; flex-shrink: 0;
+}
+@media (min-width: 769px) {
+  html.nav-collapsed #sidebar { display: none; }
+}
+@media (min-width: 641px) {
+  html.nav-collapsed #portal-sidebar { display: none; }
+}
 
 @media (max-width: 768px) {
-  #menu-toggle {
-    display: flex; align-items: center; justify-content: center;
-    background: none; border: none; color: var(--text); cursor: pointer;
-    font-size: 20px; padding: 4px 8px; margin-right: 8px; flex-shrink: 0;
-  }
   #sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 200;
     width: 260px; transform: translateX(-100%);
@@ -462,7 +469,6 @@ textarea { resize: vertical; min-height: 80px; }
     transition: left .25s; width: 220px;
   }
   #portal-sidebar.open { left: 0; box-shadow: 4px 0 40px rgba(0,0,0,.7); }
-  #portal-menu-toggle { display: block !important; }
   #portal-page { padding: 16px; }
   #portal-topbar { padding: 0 12px; }
 }
@@ -682,7 +688,7 @@ textarea { resize: vertical; min-height: 80px; }
     </aside>
     <div id="portal-content">
       <div id="portal-topbar">
-        <button id="portal-menu-toggle" onclick="togglePortalNav()" aria-label="Menu" style="display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;padding:4px 8px">&#9776;</button>
+        <button id="portal-menu-toggle" onclick="togglePortalNav()" aria-label="Menu">&#9776;</button>
         <h2 id="portal-page-title">My Dashboard</h2>
       </div>
       <div id="portal-page">
@@ -717,6 +723,7 @@ function initTheme() {
   const saved = localStorage.getItem('theme') || 'dark';
   document.documentElement.classList.toggle('light', saved === 'light');
   updateThemeToggle();
+  initNavCollapsed();
 }
 
 function toggleTheme() {
@@ -733,7 +740,19 @@ function updateThemeToggle() {
 }
 
 // ── API ───────────────────────────────────────────────────────────────
+// On wide screens the menu button hides/shows the sidebar and remembers it.
+function initNavCollapsed() {
+  let collapsed = false;
+  try { collapsed = localStorage.getItem('navCollapsed') === '1'; } catch {}
+  document.documentElement.classList.toggle('nav-collapsed', collapsed);
+}
+function toggleNavCollapsed() {
+  const collapsed = document.documentElement.classList.toggle('nav-collapsed');
+  try { localStorage.setItem('navCollapsed', collapsed ? '1' : '0'); } catch {}
+}
+
 function toggleNav() {
+  if (!matchMedia('(max-width: 768px)').matches) return toggleNavCollapsed();
   const open = document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('nav-backdrop').classList.toggle('open', open);
 }
@@ -4949,6 +4968,7 @@ function fmtDate(iso) {
 
 // ── Portal shell navigation ───────────────────────────────────────────
 function togglePortalNav() {
+  if (!matchMedia('(max-width: 640px)').matches) return toggleNavCollapsed();
   const open = document.getElementById('portal-sidebar').classList.toggle('open');
   document.getElementById('portal-backdrop').classList.toggle('open', open);
 }
