@@ -2881,10 +2881,22 @@ function agPageHtml(data) {
               ? \`<strong>\${att.total}</strong> present <span class="text-muted">(\${att.members} member\${att.members !== 1 ? 's' : ''}, \${att.visitors} visiting, \${att.guests} non-ham\${att.guests !== 1 ? 's' : ''})</span>\`
               : '<span class="text-muted">No attendance recorded yet — use Edit Meeting / Attendance.</span>'}</span>
           </div>
+          <div style="font-size:13px">\${agQuorumHtml(data.quorum)}</div>
         </div>
       </div>
     </div>\`;
   return head + data.template.sections.map(sec => agSectionHtml(sec, data, checks)).join('');
+}
+
+// Voting members are active, licensed, and not honorary
+function agQuorumHtml(q) {
+  if (!q) return '';
+  const base = \`Quorum is <strong>\${q.needed}</strong> — \${q.percent}% of \${q.voting_members} voting member\${q.voting_members !== 1 ? 's' : ''}\${q.fixed ? ' when the meeting adjourned' : ''}\`;
+  if (q.met === null) return '<span class="text-muted">' + base + '.</span>';
+  const present = q.present + ' voting member' + (q.present !== 1 ? 's' : '') + ' present';
+  return '<span class="text-muted">' + base + ':</span> ' + (q.met
+    ? '<span class="badge badge-green">Met — ' + present + '</span>'
+    : '<span class="badge badge-red">Not met — ' + present + '</span>');
 }
 
 function agInput(label, field, val, type = 'text', placeholder = '') {

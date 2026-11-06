@@ -24,7 +24,7 @@ const SECTIONS = [
       step('welcome', 'Welcome members, guests, and visitors; ask guests to introduce themselves', { general: true }),
       step('pledge', 'Pledge of Allegiance', { general: true, field: 'pledge_by', fieldLabel: 'Led by' }),
       step('prayer', 'Opening prayer', { general: true, field: 'prayer_by', fieldLabel: 'Led by' }),
-      step('quorum', 'Quorum confirmed by Secretary', { hint: 'Per club bylaws.' }),
+      step('quorum', 'Quorum confirmed by Secretary', { hint: 'Per club bylaws: 30% of voting members (active, licensed, not honorary).' }),
     ],
   },
   {
@@ -149,6 +149,53 @@ export function cleanAgendaFields(body) {
     values[field] = text || null;
   }
   return { values };
+}
+
+// Quorum is 30% of the voting members, rounded up
+export const QUORUM_PERCENT = 30;
+export const quorumNeeded = (votingMembers) => Math.ceil((votingMembers * QUORUM_PERCENT) / 100);
+
+// A voting member: active, licensed (has a callsign), and not honorary, either
+// lifetime or for the meeting's dues year. For a query with `m` (members);
+// binds the meeting year.
+const VOTING_MEMBER = `
+  m.is_active = 1 AND m.is_silent_key = 0
+  AND m.membership_type != 'lifetime_honorary'
+  AND m.callsign IS NOT NULL AND trim(m.callsign) != ''
+  AND NOT EXISTS (SELECT 1 FROM memberships h WHERE h.member_id = m.id AND h.year = ? AND h.status = 'honorary')
+`;
+
+/** How many voting members the club has now, for a meeting in `year`. */
+export async function countVotingMembers(env, year) {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM members m WHERE ${VOTING_MEMBER}`).bind(year).first();
+  return row.n;
+}
+
+/**
+ * The quorum for an agenda's meeting: { percent, voting_members, needed,
+ * present, met, fixed }. `present` counts voting members on the attendance
+ * list. `voting_members` is the count saved when the meeting adjourned
+ * (`fixed`), or today's count before then. `met` is null until attendance is taken.
+ */
+export async function agendaQuorum(env, agenda) {
+  const year = Number(agenda.meeting_date.slice(0, 4));
+  const [members, present] = await Promise.all([
+    agenda.voting_members ?? countVotingMembers(env, year),
+    env.DB.prepare(`
+      SELECT COUNT(DISTINCT a.member_id) AS n, (SELECT COUNT(*) FROM meeting_attendees WHERE meeting_id = ?) AS total
+      FROM meeting_attendees a JOIN members m ON m.id = a.member_id
+      WHERE a.meeting_id = ? AND ${VOTING_MEMBER}
+    `).bind(agenda.meeting_id, agenda.meeting_id, year).first(),
+  ]);
+  const needed = quorumNeeded(members);
+  return {
+    percent: QUORUM_PERCENT,
+    voting_members: members,
+    needed,
+    present: present.n,
+    met: present.total ? present.n >= needed : null,
+    fixed: agenda.voting_members != null,
+  };
 }
 
 /** "Name CALL" for an officer row, for the presiding/secretary defaults. */

@@ -134,6 +134,7 @@ export function agendaHtml(data) {
     </section>`;
   }).join('');
 
+  const q      = data.quorum;
   const type   = MEETING_TYPE_LABELS[a.meeting_type] || 'Meeting';
   const quorum = a.quorum === 1 ? 'Quorum: Yes' : a.quorum === 0 ? 'Quorum: No' : '';
   const count  = data.attendance.total ? `${data.attendance.total} present` : '';
@@ -170,6 +171,7 @@ section { margin-top: 10px; }
 .filled { padding: 2px 0; border-bottom: 0.6pt solid #9AA5B1; }
 .report { break-inside: avoid; margin-top: 2px; }
 .income { font-size: 8.5pt; margin-top: 4px; color: #333; }
+.quorum { font-size: 8.5pt; color: #333; margin-top: 4px; padding: 0 4px; }
 .ann { padding: 1px 0; }
 table.motions { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9pt; }
 .motions th { background: #E8EEF5; color: #1F3A5F; text-align: left; font-size: 8.5pt; padding: 2px 4px; border: 0.6pt solid #9AA5B1; }
@@ -193,11 +195,12 @@ footer { margin-top: 16px; border-top: 0.6pt solid #9AA5B1; padding-top: 4px; fo
 <body>
 <header>
   <h1>Kingsport Amateur Radio Club</h1>
-  <div class="subtitle">W4TRC &nbsp;&bull;&nbsp; Meeting Agenda &amp; Checklist &nbsp;&bull;&nbsp; Robert's Rules of Order</div>
+  <div class="subtitle">W4TRC &nbsp;&bull;&nbsp; Meeting Agenda &amp; Checklist</div>
   <div class="meeting">${esc(type)}${a.title ? ' — ' + esc(a.title) : ''}</div>
 </header>
 ${fill([['DATE', longDate(a.meeting_date), 1.4], ['LOCATION', a.location, 1.2], ['TIME CALLED TO ORDER', called], ['TIME ADJOURNED', clock(a.adjourned_at)]])}
 ${fill([['PRESIDING', a.presiding], ['SECRETARY (RECORDING)', a.secretary], ['ATTENDANCE COUNT / QUORUM Y / N', [count, quorum].filter(Boolean).join(' · ')]])}
+${q ? `<div class="quorum">Quorum is <b>${q.needed}</b> — ${q.percent}% of ${q.voting_members} voting members (active, licensed, not honorary)${q.met === null ? '' : `; ${q.present} present, <b>${q.met ? 'met' : 'not met'}</b>`}.</div>` : ''}
 ${sections}
 <footer><span>KARC / W4TRC &nbsp;|&nbsp; Meeting Agenda &amp; Checklist</span><span>Printed ${esc(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }))}</span></footer>
 <div class="no-print">

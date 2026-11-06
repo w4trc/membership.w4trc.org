@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import { handleAgendas } from '../src/routes/agendas.js';
 import { handleMeetings } from '../src/routes/meetings.js';
 import { agendaHtml } from '../src/routes/printAgenda.js';
-import { agendaTemplate, cleanAgendaFields } from '../src/lib/agenda.js';
+import { agendaTemplate, cleanAgendaFields, quorumNeeded } from '../src/lib/agenda.js';
 import { resetDb, addMember, addMembership, auditActions } from './helpers.js';
 
 const board = { id: null, role: 'board' };
@@ -249,6 +249,59 @@ describe('treasurer numbers', () => {
   });
 });
 
+describe('quorum', () => {
+  it('is 30% of voting members, rounded up', () => {
+    expect([0, 1, 10, 11, 37, 40].map(quorumNeeded)).toEqual([0, 1, 3, 4, 12, 12]);
+  });
+
+  it('counts active licensed members who are not honorary, and who of them is present', async () => {
+    const voting = [];
+    for (let i = 0; i < 10; i++) voting.push(await addMember({ callsign: `W4Q${String.fromCharCode(65 + i)}` }));
+    const lifetime = await addMember({ callsign: 'W4LIF', membership_type: 'lifetime_honorary' });
+    const honorary = await addMember({ callsign: 'W4HON' });
+    await addMembership(honorary, 2026, { status: 'honorary' });
+    await addMember({ callsign: null });                        // not licensed
+    await addMember({ callsign: 'W4OFF', is_active: 0 });      // lapsed
+    await addMember({ callsign: 'W4SK', is_silent_key: 1 });   // silent key
+
+    const data = await create({ meeting_date: '2026-11-03' });
+    expect(data.quorum).toEqual({ percent: 30, voting_members: 10, needed: 3, present: 0, met: null, fixed: false });
+
+    // Two voting members and the two honorary members: not enough
+    const take = (callsigns) => meeting('PUT', `/${data.agenda.meeting_id}`, {
+      meeting_type: 'monthly', meeting_date: '2026-11-03', callsigns, guests: ['Jane Guest'],
+    });
+    await take(['W4QA', 'W4QB', 'W4LIF', 'W4HON']);
+    expect((await get(data.agenda.id)).quorum).toMatchObject({ present: 2, met: false });
+
+    await take(['W4QA', 'W4QB', 'W4QC', 'W4LIF', 'W4HON']);
+    expect((await get(data.agenda.id)).quorum).toMatchObject({ present: 3, met: true });
+    expect(voting).toHaveLength(10);
+    expect(lifetime).toBeTruthy();
+  });
+
+  it('keeps the member count from when the meeting adjourned', async () => {
+    for (let i = 0; i < 10; i++) await addMember({ callsign: `K4Q${String.fromCharCode(65 + i)}` });
+    const id = (await create()).agenda.id;
+    await call('PATCH', `/${id}`, { adjourned_at: '20:30' });
+    for (let i = 0; i < 5; i++) await addMember({ callsign: `N4Q${String.fromCharCode(65 + i)}` });
+
+    expect((await get(id)).quorum).toMatchObject({ voting_members: 10, needed: 3, fixed: true });
+    // A later edit to the adjourn time keeps the first count
+    await call('PATCH', `/${id}`, { adjourned_at: '20:45' });
+    expect((await get(id)).quorum.voting_members).toBe(10);
+
+    const later = (await create({ meeting_date: '2026-12-01' })).quorum;
+    expect(later).toMatchObject({ voting_members: 15, needed: 5, fixed: false });
+  });
+
+  it('prints the quorum', async () => {
+    for (let i = 0; i < 4; i++) await addMember({ callsign: `W4P${String.fromCharCode(65 + i)}` });
+    const html = agendaHtml(await create());
+    expect(html).toContain('Quorum is <b>2</b> — 30% of 4 voting members');
+  });
+});
+
 describe('deleting', () => {
   it('lets only an admin delete an agenda, and keeps the meeting', async () => {
     const data = await create();
@@ -295,6 +348,7 @@ describe('printed agenda', () => {
     expect(html).toContain('Pledge of Allegiance');
     expect(html).toContain('box on');
     expect(html).toContain('8.&nbsp; Presentation');
+    expect(html).not.toContain('Robert');
   });
 
   it('prints a board agenda without the general-meeting parts', async () => {

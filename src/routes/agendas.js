@@ -26,7 +26,7 @@ import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import {
   agendaTemplate, stepKeys, REPORT_SLOTS, isReportKey, ITEM_SECTIONS, ITEM_STATUSES, MOTION_RESULTS, MAX_TEXT,
-  cleanAgendaFields, officerLabel, previousAgenda, carryOpenItems, incomeSinceLastMeeting,
+  cleanAgendaFields, officerLabel, previousAgenda, carryOpenItems, incomeSinceLastMeeting, agendaQuorum, countVotingMembers,
 } from '../lib/agenda.js';
 
 const MEETING_TYPES = ['monthly', 'board', 've_session', 'field_day', 'special', 'other'];
@@ -237,9 +237,10 @@ export async function agendaData(env, id) {
       .bind(Number(agenda.meeting_date.slice(0, 4))),
   ]);
 
-  const [previous, income] = await Promise.all([
+  const [previous, income, quorum] = await Promise.all([
     previousAgenda(env, agenda),
     incomeSinceLastMeeting(env, agenda),
+    agendaQuorum(env, agenda),
   ]);
 
   const a = attendance.results[0] || {};
@@ -256,6 +257,7 @@ export async function agendaData(env, id) {
     motions: motions.results,
     attendance: { total: a.total || 0, members: a.members || 0, visitors: a.visitors || 0, guests: a.guests || 0 },
     income,
+    quorum,
     previous: previous ? { id: previous.id, meeting_date: previous.meeting_date } : null,
   };
 }
@@ -266,7 +268,12 @@ async function updateAgenda({ env, agenda, body }) {
   const { values, error } = cleanAgendaFields(body);
   if (error) return jsonError(error, 400);
   if (!Object.keys(values).length) return jsonError('Nothing to change', 400);
-  await updateStatement(env, 'agendas', values, 'id = ?', [agenda.id]).run();
+  // Adjourning fixes the member count the quorum was based on
+  const save = { ...values };
+  if (values.adjourned_at && agenda.voting_members == null) {
+    save.voting_members = await countVotingMembers(env, Number(agenda.meeting_date.slice(0, 4)));
+  }
+  await updateStatement(env, 'agendas', save, 'id = ?', [agenda.id]).run();
   return jsonResponse({ ok: true, ...values });
 }
 
