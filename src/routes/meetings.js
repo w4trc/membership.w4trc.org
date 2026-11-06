@@ -5,7 +5,7 @@
  * POST   /api/meetings/resolve      - look up callsigns (members → local hams → HamDB) without saving
  * POST   /api/meetings              - record a meeting and its attendees
  * PUT    /api/meetings/:id          - update a meeting; replaces its attendee list
- * DELETE /api/meetings/:id          - delete a meeting (admin only)
+ * DELETE /api/meetings/:id          - delete a meeting and its agenda (admin only)
  *
  * Attendee input: { callsigns: "W4TRC, KN4ABC\nKQ4XYZ" | [..], guests: ["Jane Doe", ..] }
  */
@@ -14,6 +14,7 @@ import { isBoardOrAbove, isAdmin } from '../lib/auth.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { fetchHamDB } from './lookup.js';
+import { agendaDeleteStatements } from './agendas.js';
 
 const MEETING_TYPES = ['monthly', 'board', 've_session', 'field_day', 'special', 'other'];
 const MAX_HAMDB_LOOKUPS = 25;
@@ -128,7 +129,9 @@ async function listMeetings(env, url) {
 }
 
 async function getMeeting(env, id) {
-  const meeting = await env.DB.prepare(`SELECT * FROM meetings WHERE id = ?`).bind(id).first();
+  const meeting = await env.DB.prepare(`
+    SELECT mt.*, (SELECT a.id FROM agendas a WHERE a.meeting_id = mt.id) AS agenda_id FROM meetings mt WHERE mt.id = ?
+  `).bind(id).first();
   if (!meeting) return jsonError('Not found', 404);
 
   const { results } = await env.DB.prepare(`
@@ -220,6 +223,7 @@ async function deleteMeeting(request, env, user, id) {
   if (!existing) return jsonError('Not found', 404);
 
   await env.DB.batch([
+    ...agendaDeleteStatements(env, 'SELECT id FROM agendas WHERE meeting_id = ?', [id]),
     env.DB.prepare(`DELETE FROM meeting_attendees WHERE meeting_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM meetings WHERE id = ?`).bind(id),
   ]);

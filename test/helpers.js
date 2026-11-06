@@ -7,6 +7,12 @@ import { env } from 'cloudflare:workers';
 export async function resetDb() {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM audit_log'),
+    env.DB.prepare('DELETE FROM agenda_checks'),
+    env.DB.prepare('DELETE FROM agenda_reports'),
+    env.DB.prepare('DELETE FROM agenda_motions'),
+    env.DB.prepare('UPDATE agenda_items SET carried_from_id = NULL'),
+    env.DB.prepare('DELETE FROM agenda_items'),
+    env.DB.prepare('DELETE FROM agendas'),
     env.DB.prepare('DELETE FROM donations'),
     env.DB.prepare('DELETE FROM memberships'),
     env.DB.prepare('DELETE FROM google_group_members'),

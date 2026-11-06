@@ -206,6 +206,26 @@ tr:last-child td { border-bottom: none; }
   display: inline-block; padding: 2px 8px; border-radius: 20px;
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
 }
+/* Agendas */
+.ag-bar { background: #1F3A5F; color: #fff; font-weight: 600; padding: 6px 12px; border-radius: var(--radius); margin-bottom: 8px; }
+.ag-note { font-size: 12px; font-style: italic; color: var(--text-muted); margin: 4px 0 8px; }
+.ag-step { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.ag-step:last-child { border-bottom: none; }
+.ag-step-main { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 240px; cursor: pointer; font-size: 13px; color: var(--text); font-weight: normal; }
+.ag-step-main input[type=checkbox] { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: var(--accent); cursor: pointer; }
+.ag-step-field { max-width: 240px; }
+.ag-by { font-size: 11px; color: var(--text-muted); }
+.ag-indent { padding-left: 28px; }
+.ag-report { padding: 2px 0 10px; border-bottom: 1px solid var(--border); }
+.ag-report:last-child { border-bottom: none; }
+.ag-report .ag-step { border-bottom: none; }
+.ag-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ag-item.done .ag-title { text-decoration: line-through; color: var(--text-muted); }
+.ag-status { width: 110px; flex: none; padding: 4px 8px; }
+.ag-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.ag-add input { flex: 1; min-width: 160px; }
+.ag-income { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
+@media (max-width: 600px) { .ag-indent { padding-left: 0; } .ag-step-field { max-width: none; } }
 a.officer { cursor: pointer; color: inherit; text-decoration: none; }
 a.officer:hover { color: var(--accent); }
 .badge-green  { background: rgba(46,204,113,.15); color: var(--success); }
@@ -550,6 +570,9 @@ textarea { resize: vertical; min-height: 80px; }
         </a>
         <a class="nav-item hidden" id="nav-attendance" onclick="nav('attendance');closeNav()" data-page="attendance">
           <span class="icon">📝</span> Attendance
+        </a>
+        <a class="nav-item hidden" id="nav-agendas" onclick="nav('agendas');closeNav()" data-page="agendas">
+          <span class="icon">🗒️</span> Agendas
         </a>
         <a class="nav-item hidden" id="nav-inventory" onclick="nav('inventory');closeNav()" data-page="inventory">
           <span class="icon">📦</span> Inventory
@@ -1001,6 +1024,7 @@ function showAdmin(page = 'dashboard') {
   if (['board','admin'].includes(u.role)) document.getElementById('nav-treasurer')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-officers')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-agendas')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-inventory')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
@@ -1016,7 +1040,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', inventory: 'Inventory', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -1026,13 +1050,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'inventory', 'treasurer', 'officers']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'agendas', 'inventory', 'treasurer', 'officers']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, treasurer, attendance, inventory, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, treasurer, attendance, agendas, inventory, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -2560,6 +2584,7 @@ async function openMeeting(id) {
     { label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' },
     { label: 'Edit',  cls: 'btn-primary',   fn: 'editMeeting(' + id + ')' },
   ];
+  if (mt.agenda_id) buttons.splice(1, 0, { label: 'Open Agenda', cls: 'btn-secondary', fn: 'closeModal();openAgenda(' + mt.agenda_id + ')' });
   if (state.user?.role === 'admin') buttons.unshift({ label: 'Delete', cls: 'btn-danger', fn: 'deleteMeeting(' + id + ')' });
 
   showModal(\`
@@ -2669,18 +2694,521 @@ async function saveMeeting(id) {
     toast(\`Meeting saved — \${n} attendee\${n !== 1 ? 's' : ''} ✓\`);
     closeModal();
     if (state.currentPage === 'attendance') loadMeetingsTable();
+    if (state.currentPage === 'agenda') reloadAgenda();
   } catch(e) { toast(e.data?.error || 'Failed to save meeting', 'error'); }
 }
 
 async function deleteMeeting(id) {
-  if (!confirm('Delete this meeting and its attendance list? This cannot be undone.')) return;
+  if (!confirm('Delete this meeting, its attendance list, and its agenda if it has one? This cannot be undone.')) return;
   try {
     await api('DELETE', '/meetings/' + id);
     toast('Meeting deleted');
     closeModal();
     if (state.currentPage === 'attendance') loadMeetingsTable();
+    if (state.currentPage === 'agenda') nav('agendas');
   } catch(e) { toast(e.data?.error || 'Failed to delete meeting', 'error'); }
 }
+
+// ── AGENDAS ───────────────────────────────────────────────────────────
+// One agenda per meeting. Every field saves on its own when it changes, so
+// officers filling in different parts at the same time do not overwrite
+// each other. Refresh (or coming back to the tab) shows everyone's changes.
+const AG_STATUS  = { open: 'Open', resolved: 'Resolved', tabled: 'Tabled' };
+const AG_RESULTS = { passed: 'Passed', failed: 'Failed', tabled: 'Tabled', withdrawn: 'Withdrawn' };
+let agPending = []; // saves still in flight, so a reload waits for them
+
+function agClock(hhmm) {
+  const m = /^(\\d{2}):(\\d{2})$/.exec(hhmm || '');
+  if (!m) return '';
+  const h = Number(m[1]);
+  return (h % 12 || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+
+function agMoney(n) { return '$' + Number(n || 0).toFixed(2); }
+
+function agStatusBadge(a, today) {
+  if (a.adjourned_at || a.meeting_date < today) return '<span class="badge badge-gray">Held</span>';
+  if (a.meeting_date === today) return '<span class="badge badge-green">Today</span>';
+  return '<span class="badge badge-blue">Upcoming</span>';
+}
+
+async function agendas() {
+  document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="openNewAgenda()">+ New Agenda</button>';
+  setPage(\`
+    <div class="card" style="padding:0"><div id="ag-table"><div class="spinner"></div></div></div>
+    <p class="text-muted" style="font-size:12px">Officers fill in their reports and business ahead of time, and the presiding officer checks things off during the meeting. Business still open carries over to the next agenda of the same kind.</p>
+  \`);
+  let data;
+  try { data = await api('GET', '/agendas'); }
+  catch(e) {
+    const el = document.getElementById('ag-table');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:24px;text-align:center">Failed to load agendas.</p>';
+    toast(e.data?.error || e.message || 'Failed to load agendas', 'error');
+    return;
+  }
+  const el = document.getElementById('ag-table');
+  if (!el) return;
+  const today = localToday();
+  const list = data.agendas || [];
+  // Upcoming meetings soonest first, then past meetings newest first
+  const upcoming = list.filter(a => a.meeting_date >= today).reverse();
+  const past = list.filter(a => a.meeting_date < today);
+  const none = '<span class="text-muted">—</span>';
+  const row = a => \`<tr style="cursor:pointer" onclick="openAgenda(\${a.id})">
+      <td style="color:var(--text-muted);white-space:nowrap">\${escHtml(fmtDay(a.meeting_date))}</td>
+      <td>\${meetingLabel(a)}</td>
+      <td>\${a.business_count ? a.business_count + (a.open_count ? ' <span class="text-muted">(' + a.open_count + ' open)</span>' : '') : none}</td>
+      <td>\${a.motion_count || none}</td>
+      <td>\${a.attendee_count || none}</td>
+      <td>\${agStatusBadge(a, today)}</td>
+    </tr>\`;
+  el.innerHTML = list.length === 0
+    ? '<p class="text-muted" style="padding:24px;text-align:center">No agendas yet. Start one for the next meeting.</p>'
+    : \`<div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Meeting</th><th>Business</th><th>Motions</th><th>Attendance</th><th></th></tr></thead>
+        <tbody>\${upcoming.map(row).join('')}\${past.map(row).join('')}</tbody>
+      </table></div>\`;
+}
+
+function openNewAgenda() {
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Meeting *</label>
+        <select id="ag-type">\${Object.entries(MEETING_TYPES).map(([k, v]) => \`<option value="\${k}">\${v}</option>\`).join('')}</select>
+      </div>
+      \${fi('Date', 'ag-date', localToday(), 'date', '', true)}
+      \${fi('Start time', 'ag-start', '', 'time')}
+      \${fi('Location', 'ag-location', '')}
+      <div class="form-group full">
+        <label>Title (optional)</label>
+        <input type="text" id="ag-title" placeholder="e.g. Christmas Party, Annual Elections">
+      </div>
+    </div>
+    <p class="form-hint" style="margin-top:12px">Board meetings get a shorter checklist, without the pledge, prayer, and presentation. Business still open on the last agenda of the same kind is carried over. If the meeting is already recorded under Attendance, the agenda is added to it.</p>
+  \`, 'New Agenda', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Create', cls: 'btn-primary',   fn: 'createAgenda()' },
+  ]);
+}
+
+async function createAgenda() {
+  const body = {
+    meeting_type: gv('ag-type'), meeting_date: gv('ag-date'), start_time: gv('ag-start'),
+    location: gv('ag-location'), title: gv('ag-title'),
+  };
+  if (!body.meeting_date) { toast('Date is required', 'error'); return; }
+  try {
+    const data = await api('POST', '/agendas', body);
+    closeModal();
+    const carried = data.items.filter(i => i.carried_from_id).length;
+    toast('Agenda created' + (carried ? ' — ' + carried + ' item' + (carried !== 1 ? 's' : '') + ' carried over' : '') + ' ✓');
+    showAgenda(data);
+  } catch(e) {
+    if (e.status === 409 && e.data?.agenda_id) {
+      closeModal();
+      toast('That meeting already has an agenda', 'warn');
+      openAgenda(e.data.agenda_id);
+      return;
+    }
+    toast(e.data?.error || 'Failed to create agenda', 'error');
+  }
+}
+
+async function openAgenda(id) {
+  state.currentPage = 'agenda';
+  document.getElementById('topbar-actions').innerHTML = '';
+  setPage('<div class="spinner"></div>');
+  try { showAgenda(await api('GET', '/agendas/' + id)); }
+  catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
+}
+
+async function reloadAgenda() {
+  if (state.currentPage !== 'agenda' || !state.agenda) return;
+  await Promise.allSettled(agPending);
+  try { showAgenda(await api('GET', '/agendas/' + state.agenda.agenda.id)); }
+  catch(e) { toast(e.data?.error || 'Failed to reload the agenda', 'error'); }
+}
+
+function showAgenda(data) {
+  state.currentPage = 'agenda';
+  state.agenda = data;
+  const a = data.agenda;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'agendas'));
+  document.getElementById('page-title').textContent = (MEETING_TYPES[a.meeting_type] || 'Meeting') + ' Agenda';
+  document.getElementById('topbar-actions').innerHTML = \`
+    <span id="ag-saved" class="text-muted" style="font-size:12px"></span>
+    <button class="btn btn-secondary" onclick="nav('agendas')">← All Agendas</button>
+    <button class="btn btn-secondary" onclick="reloadAgenda()" title="Show changes other officers have made">↻ Refresh</button>
+    <button class="btn btn-secondary" onclick="window.open('/print/agenda?id=\${a.id}', '_blank')">🖨 Print</button>\`;
+  const page = document.getElementById('page');
+  const scroll = page.scrollTop;
+  setPage(agPageHtml(data));
+  page.scrollTop = scroll;
+}
+
+function agPageHtml(data) {
+  const a = data.agenda;
+  const att = data.attendance;
+  const checks = new Map(data.checks.map(c => [c.step, c]));
+  const head = \`
+    <div class="card">
+      <div class="flex gap-8 align-center" style="flex-wrap:wrap">
+        <div>
+          <div style="font-size:20px;font-weight:700">\${escHtml(fmtDay(a.meeting_date))}</div>
+          <div class="text-muted">\${meetingLabel(a)}</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-sm btn-secondary" onclick="editMeeting(\${a.meeting_id})">Edit Meeting / Attendance</button>
+        \${state.user?.role === 'admin' ? \`<button class="btn btn-sm btn-danger" onclick="deleteAgenda(\${a.id})">Delete Agenda</button>\` : ''}
+      </div>
+      <div class="form-grid" style="margin-top:16px">
+        \${agInput('Location', 'location', a.location)}
+        \${agInput('Planned start', 'start_time', a.start_time, 'time')}
+        \${agInput('Presiding', 'presiding', a.presiding)}
+        \${agInput('Secretary (recording)', 'secretary', a.secretary)}
+        \${agTimeInput('Called to order', 'called_to_order', a.called_to_order, 'call_to_order')}
+        \${agTimeInput('Adjourned', 'adjourned_at', a.adjourned_at, 'adjourn')}
+        <div class="form-group full">
+          <label>Attendance / quorum</label>
+          <div class="flex gap-8 align-center" style="flex-wrap:wrap">
+            <select style="width:130px" onchange="agField('quorum', this.value)">
+              <option value="" \${a.quorum == null ? 'selected' : ''}>Quorum?</option>
+              <option value="1" \${a.quorum === 1 ? 'selected' : ''}>Quorum: Yes</option>
+              <option value="0" \${a.quorum === 0 ? 'selected' : ''}>Quorum: No</option>
+            </select>
+            <span style="font-size:13px">\${att.total
+              ? \`<strong>\${att.total}</strong> present <span class="text-muted">(\${att.members} member\${att.members !== 1 ? 's' : ''}, \${att.visitors} visiting, \${att.guests} non-ham\${att.guests !== 1 ? 's' : ''})</span>\`
+              : '<span class="text-muted">No attendance recorded yet — use Edit Meeting / Attendance.</span>'}</span>
+          </div>
+        </div>
+      </div>
+    </div>\`;
+  return head + data.template.sections.map(sec => agSectionHtml(sec, data, checks)).join('');
+}
+
+function agInput(label, field, val, type = 'text', placeholder = '') {
+  return \`<div class="form-group"><label>\${escHtml(label)}</label><input type="\${type}" value="\${escHtml(val || '')}" placeholder="\${escHtml(placeholder)}" onchange="agField('\${field}', this.value)"></div>\`;
+}
+
+function agTextarea(label, field, val, rows = 3, placeholder = '') {
+  return \`<div class="form-group full"><label>\${escHtml(label)}</label><textarea rows="\${rows}" style="min-height:0" placeholder="\${escHtml(placeholder)}" onchange="agField('\${field}', this.value)">\${escHtml(val || '')}</textarea></div>\`;
+}
+
+// A time with a Now button that fills in the time and ticks the matching step
+function agTimeInput(label, field, val, step) {
+  return \`<div class="form-group"><label>\${escHtml(label)}</label>
+    <div class="flex gap-8"><input type="time" id="ag-\${field}" value="\${escHtml(val || '')}" onchange="agField('\${field}', this.value)">
+    <button class="btn btn-sm btn-secondary" onclick="agNow('\${field}', '\${step}')">Now</button></div></div>\`;
+}
+
+function agSectionHtml(sec, data, checks) {
+  const list = sec.list ? agListHtml(sec.list, data) : '';
+  const steps = sec.steps.map(st => agStepHtml(st, data.agenda, checks.get(st.key)) + (sec.listAfter === st.key ? list : '')).join('');
+  const after = sec.list === 'presentation'
+    ? \`<div class="form-grid" style="margin-top:12px">\${agTextarea('Presentation notes / follow-up', 'presentation_notes', data.agenda.presentation_notes, 2)}</div>\` : '';
+  return \`<div class="card">
+    <div class="ag-bar">\${sec.number}.&nbsp; \${escHtml(sec.title)}</div>
+    \${sec.note ? \`<p class="ag-note">\${escHtml(sec.note)}</p>\` : ''}
+    \${sec.listAfter ? steps : list + steps}\${after}
+  </div>\`;
+}
+
+function agStepHtml(st, a, check) {
+  const extra = st.field
+    ? \`<input type="text" class="ag-step-field" placeholder="\${escHtml(st.fieldLabel)}" value="\${escHtml(a[st.field] || '')}" onchange="agField('\${st.field}', this.value)">\`
+    : st.time ? \`<span class="text-muted" style="font-size:12px" id="ag-\${st.time}-show">\${a[st.time] ? 'at ' + agClock(a[st.time]) : ''}</span>\` : '';
+  return \`<div class="ag-step">
+    <label class="ag-step-main">
+      <input type="checkbox" id="ag-step-\${st.key}" \${check ? 'checked' : ''} onchange="agCheck('\${st.key}', this.checked)">
+      <span><strong>\${escHtml(st.label)}</strong>\${st.hint ? \` <span class="text-muted">\${escHtml(st.hint)}</span>\` : ''}\${check?.checked_by ? \` <span class="ag-by" title="\${escHtml(fmtDate(check.checked_at))}">✓ \${escHtml(check.checked_by)}</span>\` : ''}</span>
+    </label>
+    \${extra}
+  </div>\`;
+}
+
+function agListHtml(kind, data) {
+  if (kind === 'reports')      return agReportsHtml(data);
+  if (kind === 'old' || kind === 'new') return agItemsHtml(kind, data);
+  if (kind === 'announcement') return agAnnouncementsHtml(data);
+  if (kind === 'motions')      return agMotionsHtml(data);
+  if (kind === 'presentation') return agPresentationHtml(data.agenda);
+  if (kind === 'next')         return agNextHtml(data.agenda);
+  return '';
+}
+
+function agReportsHtml(data) {
+  const a = data.agenda, inc = data.income;
+  const reports = new Map(data.reports.map(r => [r.report_key, r]));
+  return data.report_slots.map(slot => {
+    const r = reports.get(slot.key);
+    const who = slot.officers.map(o => escHtml(o.name) + (o.callsign ? ' <span class="callsign">' + escHtml(o.callsign) + '</span>' : '')).join(', ');
+    const treasurer = slot.key !== 'treasurer' ? '' : \`
+      <div class="form-row" style="margin:6px 0">
+        <div class="form-group" style="flex:1;min-width:140px"><label>Beginning balance</label><input type="text" value="\${escHtml(a.treasurer_begin || '')}" placeholder="$0.00" onchange="agField('treasurer_begin', this.value)"></div>
+        <div class="form-group" style="flex:1;min-width:140px"><label>Ending balance</label><input type="text" value="\${escHtml(a.treasurer_end || '')}" placeholder="$0.00" onchange="agField('treasurer_end', this.value)"></div>
+      </div>
+      <div class="ag-income">Recorded in this app \${inc.since_last_meeting ? 'since the last meeting' : 'this year'} (\${escHtml(fmtDay(inc.since))} – \${escHtml(fmtDay(inc.through))}):
+        dues <strong>\${agMoney(inc.dues.total)}</strong> (\${inc.dues.count}),
+        donations <strong>\${agMoney(inc.donations.total)}</strong> (\${inc.donations.count}),
+        total <strong>\${agMoney(inc.total)}</strong></div>\`;
+    return \`<div class="ag-report">
+      <div class="ag-step">
+        <label class="ag-step-main">
+          <input type="checkbox" \${r?.given ? 'checked' : ''} onchange="agReport('\${slot.key}', { given: this.checked })">
+          <span><strong>\${escHtml(slot.label)}</strong>\${who ? ' — ' + who : ''}</span>
+        </label>
+        \${r?.body && r?.updated_by ? \`<span class="ag-by" title="\${escHtml(fmtDate(r.updated_at))}">\${escHtml(r.updated_by)}</span>\` : ''}
+      </div>
+      <div class="ag-indent">\${treasurer}
+        <textarea rows="2" style="min-height:0" placeholder="What this report will cover" onchange="agReport('\${slot.key}', { body: this.value })">\${escHtml(r?.body || '')}</textarea>
+      </div>
+    </div>\`;
+  }).join('');
+}
+
+function agItemsHtml(section, data) {
+  const items = data.items.filter(i => i.section === section);
+  const rows = items.map(i => \`
+    <div class="ag-item\${i.status !== 'open' ? ' done' : ''}">
+      <select class="ag-status" onchange="this.closest('.ag-item').classList.toggle('done', this.value !== 'open'); agItem(\${i.id}, { status: this.value })">
+        \${Object.entries(AG_STATUS).map(([k, v]) => \`<option value="\${k}" \${k === i.status ? 'selected' : ''}>\${v}</option>\`).join('')}
+      </select>
+      <div style="flex:1;min-width:0">
+        <div><strong class="ag-title">\${escHtml(i.title)}</strong>\${i.owner ? \` <span class="text-muted">— \${escHtml(i.owner)}</span>\` : ''}\${i.carried_from_date ? \` <span class="badge badge-gray">from \${escHtml(fmtDay(i.carried_from_date))}</span>\` : ''}</div>
+        \${i.details ? \`<div style="font-size:13px;white-space:pre-wrap">\${escHtml(i.details)}</div>\` : ''}
+        <div class="ag-by">Added by \${escHtml(i.added_by || '—')}</div>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="openAgItem(\${i.id})">Edit</button>
+    </div>\`).join('');
+  const carry = section === 'old' && data.previous
+    ? \`<button class="btn btn-sm btn-secondary" onclick="agCarry()" title="Copy business still open on the \${escHtml(fmtDay(data.previous.meeting_date))} agenda">Pull In Open Items</button>\` : '';
+  const empty = \`<p class="text-muted" style="font-size:13px;margin:6px 0">\${section === 'old' ? 'No unfinished business.' : 'No new business yet.'}</p>\`;
+  return (rows || empty) + agAddForm(section, carry);
+}
+
+function agAddForm(section, extra = '') {
+  const enter = \`onkeydown="if(event.key==='Enter')agAddItem('\${section}')"\`;
+  return \`<div class="ag-add">
+    <input type="text" id="ag-add-\${section}-title" placeholder="Add an \${section === 'announcement' ? 'announcement' : 'item'}…" \${enter}>
+    <input type="text" id="ag-add-\${section}-owner" placeholder="Brought by" style="max-width:180px" \${enter}>
+    <button class="btn btn-sm btn-primary" onclick="agAddItem('\${section}')">Add</button>
+    \${extra}
+  </div>\`;
+}
+
+function agAnnouncementsHtml(data) {
+  const items = data.items.filter(i => i.section === 'announcement');
+  return \`<div class="ag-indent" style="margin:4px 0 8px">
+    \${items.map(i => \`<div class="ag-item">
+      <div style="flex:1;min-width:0">• <strong>\${escHtml(i.title)}</strong>\${i.owner ? \` <span class="text-muted">— \${escHtml(i.owner)}</span>\` : ''}
+        \${i.details ? \`<div style="font-size:13px;white-space:pre-wrap">\${escHtml(i.details)}</div>\` : ''}</div>
+      <button class="btn btn-sm btn-secondary" onclick="openAgItem(\${i.id})">Edit</button>
+    </div>\`).join('')}
+    \${agAddForm('announcement')}
+  </div>\`;
+}
+
+function agResultBadge(r) {
+  const cls = { passed: 'badge-green', failed: 'badge-red', tabled: 'badge-yellow', withdrawn: 'badge-gray' }[r] || 'badge-gray';
+  return \`<span class="badge \${cls}">\${escHtml(AG_RESULTS[r] || r)}</span>\`;
+}
+
+function agMotionsHtml(data) {
+  const votes = m => [m.votes_yes, m.votes_no, m.votes_abstain].some(v => v != null)
+    ? [m.votes_yes, m.votes_no, m.votes_abstain].map(v => v ?? '–').join(' / ') : '';
+  const rows = data.motions.map((m, i) => \`<tr style="cursor:pointer" onclick="openAgMotion(\${m.id})">
+    <td class="text-muted">\${i + 1}</td>
+    <td style="white-space:pre-wrap">\${escHtml(m.motion)}</td>
+    <td>\${escHtml(m.moved_by || '')}</td>
+    <td>\${escHtml(m.seconded_by || '')}</td>
+    <td style="white-space:nowrap">\${votes(m)}</td>
+    <td>\${m.result ? agResultBadge(m.result) : ''}</td>
+  </tr>\`).join('');
+  return \`\${data.motions.length ? \`<div class="tbl-wrap" style="max-height:none"><table>
+      <thead><tr><th>#</th><th>Motion</th><th>Moved by</th><th>Seconded</th><th>Yes / No / Abs</th><th>Result</th></tr></thead>
+      <tbody>\${rows}</tbody></table></div>\` : '<p class="text-muted" style="font-size:13px;margin:6px 0">No motions yet.</p>'}
+    <div style="margin:8px 0 12px"><button class="btn btn-sm btn-primary" onclick="openAgMotion()">+ Record Motion</button></div>
+    <div class="form-grid">\${agTextarea('Discussion notes', 'discussion_notes', data.agenda.discussion_notes, 3)}</div>\`;
+}
+
+function agPresentationHtml(a) {
+  return \`<div class="form-grid" style="margin:8px 0 12px">
+    \${agInput('Presentation title', 'presentation_title', a.presentation_title)}
+    \${agInput('Presenter name', 'presenter_name', a.presenter_name)}
+    \${agInput('Callsign / title / affiliation', 'presenter_affiliation', a.presenter_affiliation)}
+    \${agInput('Phone / email', 'presenter_contact', a.presenter_contact)}
+    \${agInput('Est. length', 'presentation_length', a.presentation_length, 'text', 'e.g. 30 min')}
+    \${agTextarea('Introduction — presenter bio, topic overview, why it matters to the club', 'presentation_intro', a.presentation_intro, 4)}
+  </div>\`;
+}
+
+function agNextHtml(a) {
+  return \`<div class="form-grid ag-indent" style="margin:4px 0 8px">
+    \${agInput('Next meeting date', 'next_meeting_date', a.next_meeting_date, 'date')}
+    \${agInput('Time / location', 'next_meeting_place', a.next_meeting_place)}
+    \${agInput('Next presenter / topic', 'next_presenter', a.next_presenter)}
+  </div>\`;
+}
+
+// ── Agenda saves ──
+function agSaved() {
+  const el = document.getElementById('ag-saved');
+  if (el) el.textContent = 'Saved ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+async function agSend(method, sub, body) {
+  const p = api(method, '/agendas/' + state.agenda.agenda.id + sub, body);
+  const settled = p.catch(() => {});
+  agPending.push(settled);
+  settled.then(() => { agPending = agPending.filter(x => x !== settled); });
+  try {
+    const data = await p;
+    agSaved();
+    return data;
+  } catch(e) {
+    toast(e.data?.error || 'Could not save', 'error');
+    throw e;
+  }
+}
+
+async function agField(field, value) {
+  try { await agSend('PATCH', '', { [field]: value }); } catch {}
+}
+
+function agNow(field, step) {
+  const d = new Date();
+  const hhmm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const input = document.getElementById('ag-' + field);
+  if (input) input.value = hhmm;
+  const shown = document.getElementById('ag-' + field + '-show');
+  if (shown) shown.textContent = 'at ' + agClock(hhmm);
+  agField(field, hhmm);
+  const box = document.getElementById('ag-step-' + step);
+  if (box && !box.checked) { box.checked = true; agCheck(step, true); }
+}
+
+async function agCheck(step, checked) {
+  try { await agSend('POST', '/checks', { step, checked }); } catch { reloadAgenda(); }
+}
+
+async function agReport(key, patch) {
+  try { await agSend('PUT', '/reports/' + key, patch); } catch {}
+}
+
+async function agItem(id, patch) {
+  try { await agSend('PATCH', '/items/' + id, patch); } catch { reloadAgenda(); }
+}
+
+async function agAddItem(section) {
+  const titleEl = document.getElementById('ag-add-' + section + '-title');
+  const title = (titleEl?.value || '').trim();
+  if (!title) { titleEl?.focus(); return; }
+  try {
+    await agSend('POST', '/items', { section, title, owner: gv('ag-add-' + section + '-owner') });
+    await reloadAgenda();
+    document.getElementById('ag-add-' + section + '-title')?.focus();
+  } catch {}
+}
+
+async function agCarry() {
+  try {
+    const r = await agSend('POST', '/carry', {});
+    if (r.carried) {
+      toast(r.carried + ' item' + (r.carried !== 1 ? 's' : '') + ' pulled in ✓');
+      reloadAgenda();
+    } else {
+      toast('Nothing new to pull in — the open items are already here');
+    }
+  } catch {}
+}
+
+function openAgItem(id) {
+  const i = state.agenda.items.find(x => x.id === id);
+  if (!i) return;
+  const title = i.section === 'announcement' ? 'Announcement' : i.section === 'old' ? 'Old Business' : 'New Business';
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group full"><label>Title *</label><input type="text" id="agi-title" value="\${escHtml(i.title)}"></div>
+      \${fi('Brought by', 'agi-owner', i.owner || '')}
+      \${i.section !== 'announcement' ? \`<div class="form-group"><label>Status</label><select id="agi-status">
+        \${Object.entries(AG_STATUS).map(([k, v]) => \`<option value="\${k}" \${k === i.status ? 'selected' : ''}>\${v}</option>\`).join('')}
+      </select></div>\` : ''}
+    </div>
+    \${fi('Details', 'agi-details', i.details || '', 'textarea')}
+    \${i.carried_from_date ? \`<p class="form-hint" style="margin-top:8px">Carried over from the \${escHtml(fmtDay(i.carried_from_date))} agenda.</p>\` : ''}
+  \`, title, [
+    { label: 'Delete', cls: 'btn-danger',    fn: 'deleteAgItem(' + id + ')' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveAgItem(' + id + ')' },
+  ]);
+}
+
+async function saveAgItem(id) {
+  const body = { title: gv('agi-title'), owner: gv('agi-owner'), details: gv('agi-details') };
+  if (document.getElementById('agi-status')) body.status = gv('agi-status');
+  if (!body.title.trim()) { toast('Title is required', 'error'); return; }
+  try { await agSend('PATCH', '/items/' + id, body); closeModal(); reloadAgenda(); } catch {}
+}
+
+async function deleteAgItem(id) {
+  if (!confirm('Remove this item from the agenda?')) return;
+  try { await agSend('DELETE', '/items/' + id); closeModal(); reloadAgenda(); } catch {}
+}
+
+function openAgMotion(id = null) {
+  const m = (id && state.agenda.motions.find(x => x.id === id)) || {};
+  const num = (label, key) => \`<div class="form-group" style="width:90px"><label>\${label}</label><input type="number" min="0" id="agm-\${key}" value="\${m[key] ?? ''}"></div>\`;
+  showModal(\`
+    <div class="form-group full"><label>Motion *</label><textarea id="agm-motion" rows="3" placeholder="I move that…">\${escHtml(m.motion || '')}</textarea></div>
+    <div class="form-row" style="margin-top:12px">
+      <div class="form-group" style="flex:1;min-width:160px"><label>Moved by</label><input type="text" id="agm-moved_by" value="\${escHtml(m.moved_by || '')}"></div>
+      <div class="form-group" style="flex:1;min-width:160px"><label>Seconded by</label><input type="text" id="agm-seconded_by" value="\${escHtml(m.seconded_by || '')}"></div>
+    </div>
+    <div class="form-row" style="margin-top:12px">
+      \${num('Yes', 'votes_yes')}\${num('No', 'votes_no')}\${num('Abstain', 'votes_abstain')}
+      <div class="form-group" style="flex:1;min-width:140px"><label>Result</label><select id="agm-result">
+        <option value="">—</option>
+        \${Object.entries(AG_RESULTS).map(([k, v]) => \`<option value="\${k}" \${k === m.result ? 'selected' : ''}>\${v}</option>\`).join('')}
+      </select></div>
+    </div>
+  \`, id ? 'Edit Motion' : 'Record Motion', [
+    ...(id ? [{ label: 'Delete', cls: 'btn-danger', fn: 'deleteAgMotion(' + id + ')' }] : []),
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveAgMotion(' + (id || 'null') + ')' },
+  ]);
+}
+
+async function saveAgMotion(id) {
+  const body = {};
+  ['motion', 'moved_by', 'seconded_by', 'votes_yes', 'votes_no', 'votes_abstain', 'result'].forEach(k => { body[k] = gv('agm-' + k); });
+  if (!body.motion.trim()) { toast('Enter the motion', 'error'); return; }
+  try { await agSend(id ? 'PATCH' : 'POST', '/motions' + (id ? '/' + id : ''), body); closeModal(); reloadAgenda(); } catch {}
+}
+
+async function deleteAgMotion(id) {
+  if (!confirm('Delete this motion?')) return;
+  try { await agSend('DELETE', '/motions/' + id); closeModal(); reloadAgenda(); } catch {}
+}
+
+async function deleteAgenda(id) {
+  if (!confirm('Delete this agenda? The meeting and its attendance stay. This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/agendas/' + id);
+    toast('Agenda deleted');
+    nav('agendas');
+  } catch(e) { toast(e.data?.error || 'Failed to delete agenda', 'error'); }
+}
+
+// Coming back to the tab shows what other officers have changed, unless
+// something is being typed or a dialog is open
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || state.currentPage !== 'agenda') return;
+  if (document.querySelector('.modal-backdrop')) return;
+  const el = document.activeElement;
+  if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return;
+  reloadAgenda();
+});
 
 // ── INVENTORY ─────────────────────────────────────────────────────────
 let invMeta = { locations: [], members: [] };
@@ -3926,6 +4454,13 @@ function auditDetail(r) {
     case 'meeting.create':
     case 'meeting.update':     return d.meeting_date ? d.meeting_date + ' — ' + d.hams + ' ham' + (d.hams !== 1 ? 's' : '') + ', ' + d.guests + ' non-ham' + (d.guests !== 1 ? 's' : '') : '';
     case 'meeting.delete':     return d.meeting_date || '';
+    case 'agenda.create':      return d.meeting_date ? d.meeting_date + (d.carried ? ' — ' + d.carried + ' item' + (d.carried !== 1 ? 's' : '') + ' carried over' : '') : '';
+    case 'agenda.delete':      return d.meeting_date || '';
+    case 'agenda.carry':       return d.carried + ' item' + (d.carried !== 1 ? 's' : '') + ' carried over';
+    case 'agenda.item.create':
+    case 'agenda.item.delete': return ({ old: 'Old business', new: 'New business', announcement: 'Announcement' }[d.section] || 'Item') + ': ' + (d.title || '');
+    case 'agenda.motion.create':
+    case 'agenda.motion.delete': return d.motion || '';
     case 'inventory.update':   return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
     case 'inventory.move':     return [d.event_type === 'checked_out' ? 'checked out' : 'moved', d.event_date].filter(Boolean).join(' — ');
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';

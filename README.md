@@ -16,6 +16,7 @@ A Cloudflare Workers-based membership management system.
 - **Treasurer report** — the money received in a year: dues and donations by payment method, every payment listed, as a page, a printout, or a CSV
 - **Officer history** — who was president, vice president, treasurer, secretary, and trustee each year, entered one at a time or pasted as a list, and shown on the public directory
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
+- **Meeting agendas** — officers plan each meeting ahead of time (officer reports, old and new business, announcements, presentation) and run it from the same page: Robert's Rules checklist, motions and votes, call-to-order and adjourn times. Open business carries over to the next agenda of the same kind; board meetings get a shorter checklist; the treasurer's slot shows dues and donations received since the last meeting; prints like the paper agenda
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, move / check-out / note history, and printable QR labels (Avery 5160) that open the item when scanned
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB; new Church Hill, Kingsport, and Mount Carmel licensees are added automatically from the FCC, with a "New" badge and filter
 - **Callsign report** — active member callsigns as a copyable list
@@ -481,7 +482,7 @@ for the sync to act as.
 | `board` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | `member` | ✅ (portal) | ❌ | Own profile | ❌ | ❌ | ❌ |
 
-Board users also get donations, meeting attendance, inventory, and local hams. Deleting
+Board users also get donations, meeting attendance and agendas, inventory, and local hams. Deleting
 a donation, meeting, inventory item, or note is admin only.
 
 Admin and board users whose login is linked to a member record land on the member portal
@@ -538,6 +539,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `021_public_donations.sql` — `individual` donor type, `donor_name` and `donor_email` on donations
 - `022_officers.sql` — officer history
 - `023_prospects_fcc.sql` — FCC auto-add fields on prospects, `fcc_daily_imports` table
+- `025_agendas.sql` — meeting agendas: checklist ticks, officer reports, business items, motions
 
 ---
 
@@ -552,6 +554,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 /print/treasurer  Print-friendly treasurer report, ?year=YYYY (board+)
 /print/certificate  Membership certificate, ?member_id=N&year=YYYY (board+)
 /print/card       Membership card, ?member_id=N&year=YYYY (board+)
+/print/agenda     Meeting agenda and checklist, ?id=N (board+)
 /print/labels     Equipment QR labels for Avery 5160 sheets, ?ids=1,2,3 (default all) &skip=N (board+)
 /i/:id            Where a label's QR code points: the item in the inventory for signed-in officers, otherwise a public "found this?" page with the club's CONTACT_EMAIL
 /health           Uptime check — 200 if the Worker and D1 are reachable and the backup is current, 503 if not
@@ -609,7 +612,17 @@ POST   /api/meetings                  Record a meeting and its attendees
 POST   /api/meetings/resolve          Look up callsigns without saving
 GET    /api/meetings/:id              Meeting with attendee list
 PUT    /api/meetings/:id              Update a meeting; replaces its attendee list
-DELETE /api/meetings/:id              Delete a meeting (admin only)
+DELETE /api/meetings/:id              Delete a meeting and its agenda (admin only)
+GET    /api/agendas                   List agendas with their meetings (board+, ?year)
+POST   /api/agendas                   Start an agenda (uses or creates the meeting; carries open business)
+GET    /api/agendas/:id               Whole agenda: checklist, reports, items, motions, attendance, income
+PATCH  /api/agendas/:id               Change agenda fields (only the fields sent)
+DELETE /api/agendas/:id               Delete an agenda; the meeting stays (admin only)
+POST   /api/agendas/:id/checks        Tick or untick a checklist step
+PUT    /api/agendas/:id/reports/:key  Save an officer report
+POST   /api/agendas/:id/carry         Pull in open business from the previous agenda
+POST   /api/agendas/:id/items         Add business or an announcement (PATCH/DELETE /items/:itemId)
+POST   /api/agendas/:id/motions       Record a motion (PATCH/DELETE /motions/:motionId)
 
 GET    /api/prospects                 List local hams with member cross-reference (board+)
 GET    /api/prospects/stats           Outreach summary counts
@@ -799,7 +812,8 @@ HTTP transport, stateless, with plain JSON responses.
 
 **What the agent can do.** Read members, dues, donations, the treasurer report, dashboard stats,
 meetings, officers, inventory, and local hams; look up callsigns. It can also add notes to a
-member and record meeting attendance (`add_note`, `record_meeting`, `add_meeting_attendees`).
+member, record meeting attendance, and add items to meeting agendas (`add_note`, `record_meeting`,
+`add_meeting_attendees`, `add_agenda_item`).
 It cannot edit or delete members, dues, donations, or inventory, or manage users. The tool list
 is in `src/routes/mcp.js`.
 

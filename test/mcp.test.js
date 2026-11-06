@@ -92,7 +92,7 @@ describe('MCP protocol', () => {
     const names = body.result.tools.map(t => t.name);
     expect(names).toEqual(TOOLS.map(t => t.name));
     const writes = body.result.tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name);
-    expect(writes.sort()).toEqual(['add_meeting_attendees', 'add_note', 'record_meeting']);
+    expect(writes.sort()).toEqual(['add_agenda_item', 'add_meeting_attendees', 'add_note', 'record_meeting']);
   });
 
   it('returns an error for an unknown tool', async () => {
@@ -158,10 +158,29 @@ describe('MCP tools', () => {
       get_member: { member_id: id }, treasurer_report: { year: 2026 }, lookup_callsign: { callsign: 'W4AAA' },
       resolve_callsigns: { callsigns: ['W4AAA'] },
     };
-    const skip = ['get_meeting', 'get_inventory_item', 'lookup_callsign']; // need fixtures / network
+    const skip = ['get_meeting', 'get_agenda', 'get_inventory_item', 'lookup_callsign']; // need fixtures / network
     for (const t of TOOLS.filter(t => t.annotations.readOnlyHint && !skip.includes(t.name))) {
       const r = await call(t.name, args[t.name] || {});
       expect(r.isError, `${t.name}: ${r.text}`).toBe(false);
     }
+  });
+
+  it('reads agendas and adds items to them', async () => {
+    const userId = (await env.DB.prepare('SELECT id FROM users').first()).id;
+    const m = await env.DB.prepare(`INSERT INTO meetings (meeting_type, meeting_date) VALUES ('monthly', '2026-11-03')`).run();
+    const a = await env.DB.prepare(`INSERT INTO agendas (meeting_id) VALUES (?)`).bind(m.meta.last_row_id).run();
+    const agendaId = a.meta.last_row_id;
+
+    const listed = await call('list_agendas', {});
+    expect(listed.data.agendas.map(x => x.id)).toEqual([agendaId]);
+
+    const added = await call('add_agenda_item', { agenda_id: agendaId, section: 'new', title: 'Buy coax', owner: 'W4AAA' });
+    expect(added.isError, added.text).toBe(false);
+    expect(added.data).toMatchObject({ section: 'new', title: 'Buy coax', owner: 'W4AAA', created_by: userId });
+
+    const got = await call('get_agenda', { agenda_id: agendaId });
+    expect(got.data.items.map(i => i.title)).toEqual(['Buy coax']);
+
+    expect((await call('add_agenda_item', { agenda_id: agendaId, section: 'gossip', title: 'x' })).isError).toBe(true);
   });
 });

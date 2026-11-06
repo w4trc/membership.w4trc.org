@@ -8,7 +8,7 @@
  *
  * Each tool calls an existing /api route handler, so permission checks,
  * validation, and audit logging are the same as in the web app. The tool list
- * is the allowlist: reads, plus adding notes and recording meeting attendance.
+ * is the allowlist: reads, plus adding notes, meeting attendance, and agenda items.
  */
 
 import { handleMembers }     from './members.js';
@@ -19,6 +19,7 @@ import { handleAdmin }       from './admin.js';
 import { handleLookup }      from './lookup.js';
 import { handleProspects }   from './prospects.js';
 import { handleMeetings }    from './meetings.js';
+import { handleAgendas }     from './agendas.js';
 import { handleOfficers }    from './officers.js';
 import { handleInventory }   from './inventory.js';
 
@@ -29,7 +30,8 @@ const INSTRUCTIONS = `Membership data for the Kingsport Amateur Radio Club (W4TR
 Dues run by calendar year; renewal season for next year opens in October.
 Use search_members or get_member (by callsign) to find a member_id before adding a note.
 To record attendance, call resolve_callsigns first to check who each callsign is, then record_meeting.
-You can read everything and add notes and meeting attendance, but you cannot change members, dues, donations, or inventory.`;
+Officers plan meetings on agendas: list_agendas finds one, get_agenda reads it, and add_agenda_item adds business or an announcement.
+You can read everything and add notes, meeting attendance, and agenda items, but you cannot change members, dues, donations, or inventory.`;
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -161,6 +163,42 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { meeting_id: int('Meeting id') }, required: ['meeting_id'] },
     annotations: READ,
     run: (a) => ['GET', `/api/meetings/${posInt(a.meeting_id, 'meeting_id')}`],
+  },
+  {
+    name: 'list_agendas',
+    title: 'List meeting agendas',
+    description: 'Meeting agendas, newest first, with counts of business items (and how many are still open), motions, and attendees.',
+    inputSchema: { type: 'object', properties: { year: yearProp } },
+    annotations: READ,
+    run: (a) => ['GET', `/api/agendas${qs({ year: a.year })}`],
+  },
+  {
+    name: 'get_agenda',
+    title: 'Get meeting agenda',
+    description: 'One agenda in full: the checklist and what is ticked, officer reports, old and new business, announcements, motions and votes, the presentation, attendance, and money received since the last meeting.',
+    inputSchema: { type: 'object', properties: { agenda_id: int('Agenda id') }, required: ['agenda_id'] },
+    annotations: READ,
+    run: (a) => ['GET', `/api/agendas/${posInt(a.agenda_id, 'agenda_id')}`],
+  },
+  {
+    name: 'add_agenda_item',
+    title: 'Add agenda item',
+    description: 'Add an item to an agenda: new business, old (unfinished) business, or an announcement. Check get_agenda first so you do not add the same item twice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agenda_id: int('Agenda id'),
+        section:   str('Where it goes', { enum: ['new', 'old', 'announcement'] }),
+        title:     str('Short title'),
+        details:   str('Optional details'),
+        owner:     str('Optional: who is bringing it'),
+      },
+      required: ['agenda_id', 'section', 'title'],
+    },
+    annotations: WRITE,
+    run: (a) => ['POST', `/api/agendas/${posInt(a.agenda_id, 'agenda_id')}/items`, {
+      section: a.section, title: a.title, details: a.details, owner: a.owner,
+    }],
   },
   {
     name: 'list_officers',
@@ -320,6 +358,7 @@ const HANDLERS = [
   ['/api/lookup/',     handleLookup],
   ['/api/prospects',   handleProspects],
   ['/api/meetings',    handleMeetings],
+  ['/api/agendas',     handleAgendas],
   ['/api/officers',    handleOfficers],
   ['/api/inventory',   handleInventory],
 ];

@@ -16,12 +16,14 @@ import { handleLookup }      from './routes/lookup.js';
 import { handleSetup }       from './routes/setup.js';
 import { handleProspects }   from './routes/prospects.js';
 import { handlePrint, handlePrintTreasurer, handlePrintCredential } from './routes/print.js';
+import { handlePrintAgenda } from './routes/printAgenda.js';
 import { handlePortal, handleRegisterPage, handleDirectoryPage } from './routes/portal.js';
 import { handleStripe }      from './routes/stripe.js';
 import { handleDonatePage }  from './routes/donate.js';
 import { handleDemoCheckout } from './routes/demo.js';
 import { handlePrintLabels, handleItemLink } from './routes/labels.js';
 import { handleMeetings }    from './routes/meetings.js';
+import { handleAgendas }     from './routes/agendas.js';
 import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
 import { handleMcp }         from './routes/mcp.js';
@@ -117,6 +119,9 @@ export default Sentry.withSentry(
     }
     if (path === '/print/treasurer') {
       return handlePrintTreasurer(request, env);
+    }
+    if (path === '/print/agenda') {
+      return handlePrintAgenda(request, env);
     }
     if (path === '/print/labels') {
       return handlePrintLabels(request, env);
@@ -226,6 +231,11 @@ export default Sentry.withSentry(
       // Meeting attendance
       if (path.startsWith('/api/meetings')) {
         return handleMeetings(request, env, path, user);
+      }
+
+      // Meeting agendas
+      if (path.startsWith('/api/agendas')) {
+        return handleAgendas(request, env, path, user);
       }
 
       // Officer history
