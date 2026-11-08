@@ -103,17 +103,17 @@ describe('weekly roundup', () => {
     expect(emails[0].html).toContain('No new dues payments this week.');
   });
 
-  it('sends a week with only donations, and lists each one', async () => {
+  it('sends a week with only online donations, and lists each one', async () => {
     const member = await addMember({ callsign: 'W4DON', first_name: 'Dana', last_name: 'Giver' });
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO donations (donor_type, member_id, donation_kind, amount, donation_date, payment_method)
-                      VALUES ('member', ?, 'monetary', 50, '2026-10-26', 'check')`).bind(member),
-      env.DB.prepare(`INSERT INTO donations (donor_type, organization_name, donation_kind, item_description, estimated_value, donation_date)
-                      VALUES ('organization', 'Acme Radio', 'item', 'HF transceiver', 400, '2026-10-27')`),
-      env.DB.prepare(`INSERT INTO donations (donor_type, donor_name, donation_kind, amount, donation_date, payment_method)
-                      VALUES ('individual', 'Pat Public', 'monetary', 25, '2026-10-27', 'stripe')`),
-      env.DB.prepare(`INSERT INTO donations (donor_type, donation_kind, amount, donation_date, created_at)
-                      VALUES ('anonymous', 'monetary', 999, '2020-01-01', '2020-01-01 00:00:00')`),
+      env.DB.prepare(`INSERT INTO donations (donor_type, donor_name, donation_kind, amount, donation_date, payment_method, stripe_session_id)
+                      VALUES ('individual', 'Pat Public', 'monetary', 25, '2026-10-27', 'stripe', 'cs_public')`),
+      env.DB.prepare(`INSERT INTO donations (donor_type, donation_kind, amount, donation_date, payment_method, stripe_session_id)
+                      VALUES ('anonymous', 'monetary', 10, '2026-10-27', 'stripe', 'cs_anon')`),
+      env.DB.prepare(`INSERT INTO donations (donor_type, member_id, donation_kind, amount, donation_date, payment_method, stripe_session_id)
+                      VALUES ('member', ?, 'monetary', 40, '2026-10-26', 'stripe', 'cs_portal')`).bind(member),
+      env.DB.prepare(`INSERT INTO donations (donor_type, donation_kind, amount, donation_date, payment_method, stripe_session_id, created_at)
+                      VALUES ('anonymous', 'monetary', 999, '2020-01-01', 'stripe', 'cs_old', '2020-01-01 00:00:00')`),
     ]);
 
     const body = await (await roundup(RENEWAL_SEASON)).json();
@@ -121,13 +121,24 @@ describe('weekly roundup', () => {
     expect(body).toMatchObject({ sent: true, new_payments: 0, new_prospects: 0, new_donations: 3 });
     const html = emails[0].html;
     expect(html).toContain('Donations this week (3)');
-    expect(html).toContain('W4DON');
-    expect(html).toContain('Dana Giver');
-    expect(html).toContain('Acme Radio');
-    expect(html).toContain('HF transceiver (est. $400.00)');
     expect(html).toContain('Pat Public');
+    expect(html).toContain('Anonymous');
+    expect(html).toContain('W4DON');
     expect(html).toContain('$75.00');
     expect(html).not.toContain('$999.00');
+  });
+
+  it('leaves out donations entered by hand', async () => {
+    const member = await addMember({ callsign: 'W4HND' });
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO donations (donor_type, member_id, donation_kind, amount, donation_date, payment_method)
+                      VALUES ('member', ?, 'monetary', 50, '2026-10-26', 'check')`).bind(member),
+      env.DB.prepare(`INSERT INTO donations (donor_type, organization_name, donation_kind, item_description, estimated_value, donation_date)
+                      VALUES ('organization', 'Acme Radio', 'item', 'HF transceiver', 400, '2026-10-27')`),
+    ]);
+
+    expect(await (await roundup(RENEWAL_SEASON)).json()).toEqual({ sent: false, reason: 'nothing_new' });
+    expect(emails).toHaveLength(0);
   });
 
   it('leaves out hams added by a catch-up run', async () => {

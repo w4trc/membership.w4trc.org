@@ -693,7 +693,8 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     ORDER BY p.auto_added_at DESC
   `).all();
 
-  // Donations recorded in the last 7 days (money or items, any donor)
+  // Online donations (paid through Stripe) in the last 7 days. Donations an
+  // officer entered by hand are left out: whoever entered them already knows.
   const { results: newDonations } = await env.DB.prepare(`
     SELECT d.donor_type, d.donation_kind, d.amount, d.item_description, d.estimated_value,
            d.donation_date, d.payment_method, d.organization_name, d.donor_name,
@@ -701,6 +702,7 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     FROM donations d
     LEFT JOIN members m ON m.id = d.member_id
     WHERE d.created_at >= datetime('now', '-7 days')
+      AND d.stripe_session_id IS NOT NULL
     ORDER BY d.created_at DESC
   `).all();
 
