@@ -668,7 +668,7 @@ export async function handleWeeklyRoundup(request, env, now = new Date()) {
   return jsonResponse(await sendWeeklyRoundupEmail(env, now));
 }
 
-/** Email the board this week's dues payments and member counts. */
+/** Email the board this week's dues payments, donations, new local hams and member counts. */
 export async function sendWeeklyRoundupEmail(env, now = new Date()) {
   // Memberships with amount_paid recorded in the last 7 days, for any dues
   // year: during renewal season most payments are for next year.
@@ -693,7 +693,18 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     ORDER BY p.auto_added_at DESC
   `).all();
 
-  if (newPayments.length === 0 && newProspects.length === 0) {
+  // Donations recorded in the last 7 days (money or items, any donor)
+  const { results: newDonations } = await env.DB.prepare(`
+    SELECT d.donor_type, d.donation_kind, d.amount, d.item_description, d.estimated_value,
+           d.donation_date, d.payment_method, d.organization_name, d.donor_name,
+           m.callsign, m.first_name, m.last_name
+    FROM donations d
+    LEFT JOIN members m ON m.id = d.member_id
+    WHERE d.created_at >= datetime('now', '-7 days')
+    ORDER BY d.created_at DESC
+  `).all();
+
+  if (newPayments.length === 0 && newProspects.length === 0 && newDonations.length === 0) {
     return { sent: false, reason: 'nothing_new' };
   }
 
@@ -713,9 +724,12 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
 
   const weekOf = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
-  await sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects, memberCounts, weekOf });
+  await sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects, newDonations, memberCounts, weekOf });
 
-  return { sent: true, recipients: boardEmails.length, new_payments: newPayments.length, new_prospects: newProspects.length };
+  return {
+    sent: true, recipients: boardEmails.length,
+    new_payments: newPayments.length, new_prospects: newProspects.length, new_donations: newDonations.length,
+  };
 }
 
 // POST /api/admin/sync-prospects

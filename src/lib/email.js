@@ -83,7 +83,7 @@ const PROSPECT_REASONS = {
   new_to_list:  'New to the area',
 };
 
-export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects = [], memberCounts, weekOf }) {
+export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects = [], newDonations = [], memberCounts, weekOf }) {
   const club   = env.CLUB_NAME   || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   const count  = newPayments.length;
@@ -131,6 +131,40 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
     <tbody>${prospectRows}</tbody>
   </table>` : '';
 
+  const money = n => `$${Number(n).toFixed(2)}`;
+  const donationRows = newDonations.map(d => {
+    const member = [d.first_name, d.last_name].filter(Boolean).join(' ');
+    const donor  = d.donor_type === 'anonymous' ? 'Anonymous'
+      : d.donor_type === 'organization' ? (d.organization_name || 'Organization')
+      : (member || d.donor_name || '—');
+    const what   = d.donation_kind === 'item'
+      ? `${escHtml(d.item_description || 'Item')}${d.estimated_value != null ? ` (est. ${money(d.estimated_value)})` : ''}`
+      : escHtml(d.payment_method ? `Money (${d.payment_method})` : 'Money');
+    const amount = d.donation_kind === 'monetary' && d.amount != null ? money(d.amount) : '—';
+    return `<tr>
+      <td style="${cell}">${escHtml(d.donation_date || '')}</td>
+      <td style="${cell}">${d.callsign ? `<span style="font-family:monospace;font-weight:600">${escHtml(d.callsign)}</span> ` : ''}${escHtml(donor)}</td>
+      <td style="${cell}">${what}</td>
+      <td style="${cell};text-align:right">${amount}</td>
+    </tr>`;
+  }).join('');
+  const donationTotal = newDonations
+    .filter(d => d.donation_kind === 'monetary' && d.amount != null)
+    .reduce((sum, d) => sum + Number(d.amount), 0);
+
+  const donationsSection = newDonations.length ? `
+  <h3 style="margin:28px 0 12px">Donations this week (${newDonations.length})</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead><tr style="background:#f5f5f5">
+      <th style="${th}">Date</th><th style="${th}">Donor</th><th style="${th}">Donation</th><th style="${th};text-align:right">Amount</th>
+    </tr></thead>
+    <tbody>${donationRows}</tbody>
+    ${donationTotal > 0 ? `<tfoot><tr>
+      <td colspan="3" style="padding:8px 12px;font-weight:600">Total money donated</td>
+      <td style="padding:8px 12px;text-align:right;font-weight:600">${money(donationTotal)}</td>
+    </tr></tfoot>` : ''}
+  </table>` : '';
+
   const paymentsSection = count ? `
   <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
   <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -163,6 +197,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
 
   <table style="width:100%;border-collapse:separate;margin-bottom:24px"><tr>${tiles}</tr></table>
 ${paymentsSection}
+${donationsSection}
 ${prospectsSection}
 
   <hr style="border:none;border-top:1px solid #eee;margin:28px 0">
