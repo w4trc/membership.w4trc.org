@@ -32,7 +32,7 @@ A Cloudflare Workers-based membership management system.
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
-- Weekly email roundup of new dues payments and newly added local hams to the board (Sunday evening cron)
+- Weekly email roundup of new dues payments, online donations and newly added local hams to the board (Sunday evening cron)
 - Daily check of the FCC's license files for new local licensees, added to Local Hams (see [New local licensees](#11-new-local-licensees))
 - Daily cron: expired session cleanup, and January reactivation of members who renewed in advance
 - `/health` endpoint for uptime monitoring
@@ -186,8 +186,9 @@ In your Cloudflare DNS dashboard for `w4trc.org`:
 
 The daily cleanup and backup, the hourly Google Groups sync and the weekly roundup email
 all run inside the Worker (`[triggers]` in `wrangler.toml`). The roundup goes out Sunday at
-23:00 UTC (7 PM Eastern in summer, 6 PM in winter) and covers the 7 days before it. It also lists
-local hams the FCC check added that week, and sends nothing if there is neither.
+23:00 UTC (7 PM Eastern in summer, 6 PM in winter) and covers the 7 days before it: dues payments,
+online donations made that week (the /donate page and the member portal; ones entered by hand are left out), and
+local hams the FCC check added that week. It sends nothing if all three are empty.
 
 To send it on demand:
 
