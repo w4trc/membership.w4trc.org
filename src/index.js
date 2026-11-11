@@ -26,6 +26,7 @@ import { handleMeetings }    from './routes/meetings.js';
 import { handleAgendas }     from './routes/agendas.js';
 import { handleOfficers }    from './routes/officers.js';
 import { handleInventory }   from './routes/inventory.js';
+import { handleRepeaters }   from './routes/repeaters.js';
 import { handleMcp }         from './routes/mcp.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
@@ -246,6 +247,11 @@ export default Sentry.withSentry(
       // Equipment inventory
       if (path.startsWith('/api/inventory')) {
         return handleInventory(request, env, path, user);
+      }
+
+      // Club repeaters
+      if (path.startsWith('/api/repeaters')) {
+        return handleRepeaters(request, env, path, user);
       }
 
       // Members CRUD

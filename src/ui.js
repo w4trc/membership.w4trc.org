@@ -226,6 +226,18 @@ tr:last-child td { border-bottom: none; }
 .ag-add input { flex: 1; min-width: 160px; }
 .ag-income { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
 @media (max-width: 600px) { .ag-indent { padding-left: 0; } .ag-step-field { max-width: none; } }
+/* Repeaters */
+.rpt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.rpt-grid .card { margin-bottom: 0; }
+.rpt-card { cursor: pointer; transition: border-color .15s; }
+.rpt-card:hover { border-color: var(--accent); }
+.rpt-freq { font-family: var(--mono); font-size: 22px; font-weight: 700; }
+.rpt-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.rpt-kv > span:nth-child(odd) { color: var(--text-muted); }
+.rpt-tabs { overflow-x: auto; overflow-y: hidden; flex-shrink: 0; scrollbar-width: thin; }
+.rpt-tabs .tab { white-space: nowrap; flex-shrink: 0; }
+.rpt-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rpt-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; }
 a.officer { cursor: pointer; color: inherit; text-decoration: none; }
 a.officer:hover { color: var(--accent); }
 .badge-green  { background: rgba(46,204,113,.15); color: var(--success); }
@@ -582,6 +594,9 @@ textarea { resize: vertical; min-height: 80px; }
         </a>
         <a class="nav-item hidden" id="nav-inventory" onclick="nav('inventory');closeNav()" data-page="inventory">
           <span class="icon">📦</span> Inventory
+        </a>
+        <a class="nav-item hidden" id="nav-repeaters" onclick="nav('repeaters');closeNav()" data-page="repeaters">
+          <span class="icon">🗼</span> Repeaters
         </a>
         <a class="nav-item hidden" id="nav-officers" onclick="nav('officers');closeNav()" data-page="officers">
           <span class="icon">🎖️</span> Officers
@@ -1045,6 +1060,7 @@ function showAdmin(page = 'dashboard') {
   if (['board','admin'].includes(u.role)) document.getElementById('nav-attendance')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-agendas')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-inventory')?.classList.remove('hidden');
+  if (['board','admin'].includes(u.role)) document.getElementById('nav-repeaters')?.classList.remove('hidden');
   if (['board','admin'].includes(u.role)) document.getElementById('nav-callsigns')?.classList.remove('hidden');
   if (u.role !== 'admin') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
@@ -1059,7 +1075,7 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', repeaters: 'Repeaters', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
 
@@ -1069,13 +1085,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'agendas', 'inventory', 'treasurer', 'officers']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'agendas', 'inventory', 'repeaters', 'treasurer', 'officers']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, treasurer, attendance, agendas, inventory, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, treasurer, attendance, agendas, inventory, repeaters, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -3674,6 +3690,791 @@ async function saveInvLocation() {
   } catch(e) { toast(e.data?.error || 'Failed to add location', 'error'); }
 }
 
+// ── REPEATERS ─────────────────────────────────────────────────────────
+const RPT_STATUS = {
+  active:  ['Active', 'green'],
+  testing: ['Testing', 'blue'],
+  offline: ['Offline', 'red'],
+  planned: ['Planned', 'gray'],
+  retired: ['Retired', 'gray'],
+};
+const RPT_REPORT_CATEGORIES = {
+  noise: 'Noise', interference: 'Interference', unlicensed: 'Unlicensed use', kerchunking: 'Kerchunking',
+  conduct: 'Conduct', outage: 'Outage', audio: 'Audio problem', coverage: 'Coverage', other: 'Other',
+};
+const RPT_REPORT_STATUS = { open: ['Open', 'red'], investigating: ['Investigating', 'yellow'], resolved: ['Resolved', 'green'] };
+const RPT_MAINT_KINDS = {
+  maintenance: 'Maintenance', repair: 'Repair', upgrade: 'Upgrade', inspection: 'Inspection',
+  listing: 'Listing renewal', coordination: 'Coordination', license: 'License', lease: 'Site lease', insurance: 'Insurance', other: 'Other',
+};
+const RPT_DOC_KINDS = { manual: 'Manual', programming: 'Programming file', license: 'License', agreement: 'Agreement', diagram: 'Diagram', other: 'Other' };
+const RPT_TABS = [
+  ['info', 'Info'], ['reports', 'Reports'], ['visits', 'Visit Log'], ['maintenance', 'Maintenance & Renewals'],
+  ['notes', 'Site Notes'], ['photos', 'Photos'], ['documents', 'Manuals & Files'],
+];
+const RPT_MAX_FILE = 25 * 1024 * 1024;
+
+function rptBadge(map, key) {
+  const [label, color] = map[key] || [key, 'gray'];
+  return '<span class="badge badge-' + color + '">' + escHtml(label) + '</span>';
+}
+
+// Input minus output, the way it's printed in repeater listings (-0.600, +5.000)
+function rptOffset(r) {
+  const out = parseFloat(r.output_freq), inp = parseFloat(r.input_freq);
+  if (!isFinite(out) || !isFinite(inp)) return '';
+  const diff = inp - out;
+  if (Math.abs(diff) < 0.0000001) return 'Simplex';
+  return (diff > 0 ? '+' : '−') + Math.abs(diff).toFixed(3) + ' MHz';
+}
+
+function rptFreq(f) { return f ? '<span style="font-family:var(--mono)">' + escHtml(f) + '</span>' : ''; }
+
+function rptDue(d, today) {
+  if (d.next_due < today) return '<span class="badge badge-red">Overdue</span>';
+  return '<span class="badge badge-yellow">Due</span>';
+}
+
+function rptSize(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function rptMultiline(s) { return escHtml(s || '').replace(/\\n/g, '<br>'); }
+
+async function repeaters() {
+  document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="openRptForm()">+ Add Repeater</button>';
+  setPage('<div class="spinner"></div>');
+  let data;
+  try { data = await api('GET', '/repeaters'); }
+  catch(e) {
+    setPage('<p class="text-muted" style="padding:24px;text-align:center">Failed to load repeaters.</p>');
+    toast(e.data?.error || e.message || 'Failed to load repeaters', 'error');
+    return;
+  }
+  if (state.currentPage !== 'repeaters') return;
+  const list = data.repeaters || [];
+  const due = data.due || [];
+
+  const dueCard = due.length ? \`
+    <div class="card" style="border-color:rgba(243,156,18,.4)">
+      <div class="card-title">Coming Due <span class="text-muted" style="font-weight:400;font-size:12px">— overdue or due in the next \${data.due_soon_days} days</span></div>
+      \${due.map(d => \`
+        <div class="flex gap-8 align-center" style="padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;flex-wrap:wrap" onclick="openRepeater(\${d.repeater_id}, 'maintenance')">
+          \${rptDue(d, data.today)}
+          <strong>\${escHtml(d.title)}</strong>
+          <span class="text-muted">\${escHtml(RPT_MAINT_KINDS[d.kind] || d.kind)} · \${escHtml(d.repeater_name)}</span>
+          <span class="spacer"></span>
+          <span style="white-space:nowrap">\${escHtml(fmtDay(d.next_due))}</span>
+        </div>\`).join('')}
+    </div>\` : '';
+
+  const card = r => {
+    const offset = rptOffset(r);
+    return \`
+    <div class="card rpt-card" onclick="openRepeater(\${r.id})">
+      <div class="flex gap-8 align-center" style="margin-bottom:8px">
+        <strong style="font-size:15px">\${escHtml(r.name)}</strong>
+        <span class="spacer"></span>
+        \${rptBadge(RPT_STATUS, r.status)}
+      </div>
+      <div class="rpt-freq">\${escHtml(r.output_freq || '—')}</div>
+      <div class="text-muted" style="font-size:13px;margin-bottom:10px">
+        \${[r.callsign ? '<span class="callsign">' + escHtml(r.callsign) + '</span>' : '', escHtml(r.band || ''), escHtml(r.mode || '')].filter(Boolean).join(' · ')}
+      </div>
+      <div class="rpt-kv">
+        <span>Input</span><span>\${rptFreq(r.input_freq) || '—'}\${offset ? ' <span class="text-muted">(' + offset + ')</span>' : ''}</span>
+        <span>Tone</span><span>\${escHtml(r.tone_in || '—')}\${r.tone_out ? ' <span class="text-muted">/ ' + escHtml(r.tone_out) + ' out</span>' : ''}</span>
+        <span>Site</span><span>\${escHtml(r.site_name || '—')}</span>
+        <span>Last visit</span><span>\${r.last_visit ? escHtml(fmtDay(r.last_visit)) : '<span class="text-muted">—</span>'}</span>
+      </div>
+      \${r.open_reports ? \`<div style="margin-top:10px"><span class="badge badge-red">\${r.open_reports} open report\${r.open_reports !== 1 ? 's' : ''}</span></div>\` : ''}
+    </div>\`;
+  };
+
+  setPage(\`
+    \${dueCard}
+    \${list.length
+      ? \`<div class="rpt-grid">\${list.map(card).join('')}</div>\`
+      : '<div class="card"><p class="text-muted" style="text-align:center;margin:12px 0">No repeaters yet. Add the club\\'s repeaters to keep their listings, visits, and reports in one place.</p></div>'}
+  \`);
+}
+
+async function openRepeater(id, tab) {
+  state.currentPage = 'repeater';
+  if (tab) state.rptTab = tab;
+  else if (state.rpt?.repeater?.id !== id) state.rptTab = 'info';
+  document.getElementById('topbar-actions').innerHTML = '';
+  setPage('<div class="spinner"></div>');
+  try { showRepeater(await api('GET', '/repeaters/' + id)); }
+  catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
+}
+
+async function reloadRepeater() {
+  if (state.currentPage !== 'repeater' || !state.rpt) return;
+  try { showRepeater(await api('GET', '/repeaters/' + state.rpt.repeater.id)); }
+  catch(e) { toast(e.data?.error || 'Failed to reload the repeater', 'error'); }
+}
+
+function showRepeater(data) {
+  state.currentPage = 'repeater';
+  state.rpt = data;
+  state.rptPinShown = false;
+  const r = data.repeater;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'repeaters'));
+  document.getElementById('page-title').textContent = r.name;
+  document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-secondary" onclick="nav(\\'repeaters\\')">← All Repeaters</button>';
+  const page = document.getElementById('page');
+  const scroll = page.scrollTop;
+  setPage(rptPageHtml(data));
+  page.scrollTop = scroll;
+}
+
+function rptTab(key) {
+  state.rptTab = key;
+  showRepeater(state.rpt);
+}
+
+function rptPageHtml(data) {
+  const r = data.repeater;
+  const tab = RPT_TABS.some(([k]) => k === state.rptTab) ? state.rptTab : 'info';
+  const open = data.reports.filter(x => x.status !== 'resolved').length;
+  const overdue = data.due.filter(d => d.next_due < data.today).length;
+  const count = { reports: open || '', visits: data.visits.length || '', notes: data.notes.length || '', photos: data.photos.length || '', documents: data.documents.length || '', maintenance: overdue ? overdue + ' overdue' : '' };
+  const offset = rptOffset(r);
+
+  const head = \`
+    <div class="card">
+      <div class="flex gap-16 align-center" style="flex-wrap:wrap">
+        <div>
+          <div class="rpt-freq">\${escHtml(r.output_freq || '—')}</div>
+          <div class="text-muted" style="font-size:13px">\${[r.callsign ? '<span class="callsign">' + escHtml(r.callsign) + '</span>' : '', escHtml(r.band || ''), escHtml(r.mode || ''), escHtml(r.site_name || '')].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div class="rpt-kv" style="min-width:200px">
+          <span>Input</span><span>\${rptFreq(r.input_freq) || '—'}\${offset ? ' <span class="text-muted">(' + offset + ')</span>' : ''}</span>
+          <span>Tone</span><span>\${escHtml(r.tone_in || '—')}\${r.tone_out ? ' <span class="text-muted">/ ' + escHtml(r.tone_out) + ' out</span>' : ''}</span>
+        </div>
+        <span class="spacer"></span>
+        \${rptBadge(RPT_STATUS, r.status)}
+        <button class="btn btn-sm btn-secondary" onclick="openRptForm(state.rpt.repeater)">Edit</button>
+        \${state.user?.role === 'admin' ? '<button class="btn btn-sm btn-danger" onclick="deleteRepeater()">Delete</button>' : ''}
+      </div>
+    </div>\`;
+
+  const tabs = \`<div class="tabs rpt-tabs">\${RPT_TABS.map(([k, label]) =>
+    \`<div class="tab\${k === tab ? ' active' : ''}" onclick="rptTab('\${k}')">\${label}\${count[k] ? ' <span class="badge badge-' + (k === 'reports' || k === 'maintenance' ? 'red' : 'gray') + '">' + count[k] + '</span>' : ''}</div>\`).join('')}</div>\`;
+
+  const body = { info: rptInfoHtml, reports: rptReportsHtml, visits: rptVisitsHtml, maintenance: rptMaintHtml, notes: rptNotesHtml, photos: rptPhotosHtml, documents: rptDocsHtml }[tab](data);
+  return head + tabs + body;
+}
+
+function rptInfoHtml(data) {
+  const r = data.repeater;
+  const pin = r.screen_pin
+    ? \`<span id="rpt-pin" style="font-family:var(--mono)">••••</span> <button class="btn btn-sm btn-secondary" style="margin-left:6px" onclick="toggleRptPin(this)">Show</button>\`
+    : '';
+  const map = r.site_address ? \` <a href="https://www.google.com/maps/search/?api=1&query=\${encodeURIComponent(r.site_address)}" target="_blank" rel="noopener" style="font-size:12px">Map ↗</a>\` : '';
+  return \`
+    <div class="card">
+      <div class="card-title">Listing</div>
+      <div class="detail-grid">
+        \${dfield('Output (repeater transmits)', rptFreq(r.output_freq))}
+        \${dfield('Input (users transmit)', rptFreq(r.input_freq))}
+        \${dfield('Offset', escHtml(rptOffset(r)))}
+        \${dfield('Access tone (users send)', escHtml(r.tone_in))}
+        \${dfield('Repeater tone (sent out)', escHtml(r.tone_out))}
+        \${dfield('Callsign', r.callsign ? '<span class="callsign">' + escHtml(r.callsign) + '</span>' : '')}
+        \${dfield('Band', escHtml(r.band))}
+        \${dfield('Mode', escHtml(r.mode))}
+        \${dfield('Power', escHtml(r.power))}
+        \${dfield('Screen PIN', pin)}
+      </div>
+      \${r.digital_info ? \`<div class="detail-section" style="margin-top:12px"><h4>Digital Settings</h4><div>\${rptMultiline(r.digital_info)}</div></div>\` : ''}
+    </div>
+    <div class="card">
+      <div class="card-title">Equipment</div>
+      <div class="detail-grid">
+        \${dfield('Repeater / controller', rptMultiline(r.equipment))}
+        \${dfield('Antenna & feedline', rptMultiline(r.antenna))}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Site</div>
+      <div class="detail-grid">
+        \${dfield('Site', escHtml(r.site_name))}
+        \${dfield('Address', r.site_address ? rptMultiline(r.site_address) + map : '')}
+      </div>
+      \${r.site_access ? \`<div class="detail-section" style="margin-top:12px"><h4>Access</h4><div>\${rptMultiline(r.site_access)}</div></div>\` : ''}
+    </div>
+    \${r.notes ? \`<div class="card"><div class="card-title">Notes</div><div>\${rptMultiline(r.notes)}</div></div>\` : ''}
+    <p class="text-muted" style="font-size:12px">Last changed \${escHtml(fmtDate(r.updated_at))}.</p>\`;
+}
+
+function toggleRptPin(btn) {
+  const el = document.getElementById('rpt-pin');
+  if (!el) return;
+  state.rptPinShown = !state.rptPinShown;
+  el.textContent = state.rptPinShown ? state.rpt.repeater.screen_pin : '••••';
+  btn.textContent = state.rptPinShown ? 'Hide' : 'Show';
+}
+
+function rptEntryButtons(list, e) {
+  return \`<span style="white-space:nowrap">
+    <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openRptEntry('\${list}', \${e.id})">Edit</button>
+    <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteRptEntry('\${list}', \${e.id})">✕</button>
+  </span>\`;
+}
+
+function rptBy(e) { return e.added_by ? ' · added by ' + escHtml(e.added_by) : ''; }
+
+function rptReportsHtml(data) {
+  const list = data.reports;
+  return \`
+    <div class="flex gap-8 align-center" style="margin-bottom:12px">
+      <span class="text-muted" style="font-size:13px">Noise, interference, unlicensed operators, outages — anything reported about this repeater.</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" onclick="openRptEntry('reports')">+ Log Report</button>
+    </div>
+    \${list.length === 0 ? '<div class="card"><p class="text-muted" style="text-align:center;margin:12px 0">No reports logged.</p></div>' : list.map(e => \`
+      <div class="card" style="padding:14px 16px\${e.status === 'resolved' ? ';opacity:.75' : ''}">
+        <div class="flex gap-8 align-center" style="flex-wrap:wrap">
+          \${rptBadge(RPT_REPORT_STATUS, e.status)}
+          <strong>\${escHtml(RPT_REPORT_CATEGORIES[e.category] || e.category)}</strong>
+          <span class="text-muted" style="font-size:12px">\${escHtml(fmtDay(e.report_date))}\${e.reported_by ? ' · reported by ' + escHtml(e.reported_by) : ''}\${rptBy(e)}</span>
+          <span class="spacer"></span>
+          \${rptEntryButtons('reports', e)}
+        </div>
+        <div style="margin-top:8px">\${rptMultiline(e.description)}</div>
+        \${e.resolution || e.resolved_date ? \`<div style="margin-top:8px;font-size:13px;color:var(--text-muted)"><strong>Resolution\${e.resolved_date ? ' (' + escHtml(fmtDay(e.resolved_date)) + ')' : ''}:</strong> \${rptMultiline(e.resolution || '')}</div>\` : ''}
+      </div>\`).join('')}\`;
+}
+
+function rptVisitsHtml(data) {
+  const list = data.visits;
+  const time = e => [e.time_in, e.time_out].filter(Boolean).join('–');
+  return \`
+    <div class="flex gap-8 align-center" style="margin-bottom:12px">
+      <span class="text-muted" style="font-size:13px">Every trip to the site: who went, when, and why.</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" onclick="openRptEntry('visits')">+ Log Visit</button>
+    </div>
+    <div class="card" style="padding:0">
+      \${list.length === 0 ? '<p class="text-muted" style="padding:24px;text-align:center">No visits logged.</p>' : \`
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Time</th><th>Who</th><th>Why</th><th>Notes</th><th></th></tr></thead>
+        <tbody>\${list.map(e => \`<tr>
+          <td style="white-space:nowrap">\${escHtml(fmtDay(e.visit_date))}</td>
+          <td style="white-space:nowrap;color:var(--text-muted)">\${escHtml(time(e)) || '—'}</td>
+          <td>\${escHtml(e.visitors)}</td>
+          <td>\${escHtml(e.purpose)}</td>
+          <td style="max-width:320px">\${e.notes ? rptMultiline(e.notes) : '<span class="text-muted">—</span>'}</td>
+          <td>\${rptEntryButtons('visits', e)}</td>
+        </tr>\`).join('')}</tbody>
+      </table></div>\`}
+    </div>\`;
+}
+
+function rptMaintHtml(data) {
+  const list = data.maintenance;
+  const due = data.due;
+  return \`
+    <div class="flex gap-8 align-center" style="margin-bottom:12px">
+      <span class="text-muted" style="font-size:13px">Work done on the repeater, and paperwork kept up: listing renewals, coordination, license, site lease. Give a next-due date to be reminded.</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" onclick="openRptEntry('maintenance')">+ Log Maintenance</button>
+    </div>
+    \${due.length ? \`
+    <div class="card">
+      <div class="card-title">Next Due</div>
+      \${due.map(d => \`
+        <div class="flex gap-8 align-center" style="padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          \${d.next_due < data.today ? '<span class="badge badge-red">Overdue</span>' : d.next_due <= rptAddDays(data.today, data.due_soon_days) ? '<span class="badge badge-yellow">Soon</span>' : '<span class="badge badge-gray">Later</span>'}
+          <strong>\${escHtml(d.title)}</strong>
+          <span class="text-muted">\${escHtml(RPT_MAINT_KINDS[d.kind] || d.kind)}\${d.done_date ? ' · last done ' + escHtml(fmtDay(d.done_date)) : ''}</span>
+          <span class="spacer"></span>
+          <span style="white-space:nowrap">\${escHtml(fmtDay(d.next_due))}</span>
+          <button class="btn btn-sm btn-secondary" onclick="rptRenew(\${d.id})">Mark Done</button>
+        </div>\`).join('')}
+    </div>\` : ''}
+    <div class="card" style="padding:0">
+      \${list.length === 0 ? '<p class="text-muted" style="padding:24px;text-align:center">Nothing logged yet.</p>' : \`
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Done</th><th>Type</th><th>What</th><th>By</th><th>Next due</th><th>Cost</th><th>Notes</th><th></th></tr></thead>
+        <tbody>\${list.map(e => \`<tr>
+          <td style="white-space:nowrap">\${e.done_date ? escHtml(fmtDay(e.done_date)) : '<span class="text-muted">Scheduled</span>'}</td>
+          <td>\${escHtml(RPT_MAINT_KINDS[e.kind] || e.kind)}</td>
+          <td><strong>\${escHtml(e.title)}</strong></td>
+          <td>\${escHtml(e.done_by || '—')}</td>
+          <td style="white-space:nowrap">\${e.next_due ? escHtml(fmtDay(e.next_due)) : '<span class="text-muted">—</span>'}</td>
+          <td>\${e.cost != null ? '$' + Number(e.cost).toFixed(2) : '<span class="text-muted">—</span>'}</td>
+          <td style="max-width:280px">\${e.notes ? rptMultiline(e.notes) : '<span class="text-muted">—</span>'}</td>
+          <td>\${rptEntryButtons('maintenance', e)}</td>
+        </tr>\`).join('')}</tbody>
+      </table></div>\`}
+    </div>\`;
+}
+
+function rptAddDays(ymd, days) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
+function rptNotesHtml(data) {
+  return \`
+    <div class="card">
+      <div class="form-group" style="margin-bottom:8px">
+        <textarea id="rpt-new-note" placeholder="A note about the site: where things are, who to call, what to bring…"></textarea>
+      </div>
+      <div class="flex gap-8 align-center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:0"><input type="checkbox" id="rpt-new-note-pin" style="width:auto"> Pin to top</label>
+        <span class="spacer"></span>
+        <button class="btn btn-sm btn-primary" onclick="addRptNote()">Add Note</button>
+      </div>
+    </div>
+    \${data.notes.length === 0 ? '<p class="text-muted" style="text-align:center">No site notes yet.</p>' : data.notes.map(n => \`
+      <div class="card" style="padding:14px 16px">
+        <div class="flex gap-8 align-center">
+          \${n.pinned ? '<span class="badge badge-blue">Pinned</span>' : ''}
+          <span class="note-meta" style="margin:0">\${escHtml(fmtDate(n.created_at))}\${rptBy(n)}\${n.updated_at !== n.created_at ? ' · edited' : ''}</span>
+          <span class="spacer"></span>
+          <button class="btn btn-sm btn-secondary" onclick="pinRptNote(\${n.id}, \${n.pinned ? 0 : 1})">\${n.pinned ? 'Unpin' : 'Pin'}</button>
+          \${rptEntryButtons('notes', n)}
+        </div>
+        <div class="note-text" style="margin-top:8px">\${rptMultiline(n.note)}</div>
+      </div>\`).join('')}\`;
+}
+
+function rptPhotoUrl(id, photoId, thumb) {
+  return '/api/repeaters/' + id + '/photos/' + photoId + (thumb ? '?size=thumb' : '');
+}
+
+function rptPhotosHtml(data) {
+  const id = data.repeater.id;
+  return \`
+    <div class="card">
+      <div class="flex gap-8 align-center" style="flex-wrap:wrap">
+        <input type="text" id="rpt-photo-caption" placeholder="Caption (optional)" style="flex:1;min-width:180px">
+        <input type="date" id="rpt-photo-date" value="\${localToday()}" style="width:160px" title="Date taken">
+        <label class="btn btn-primary" style="margin:0">+ Add Photos
+          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadRptPhotos(this)">
+        </label>
+      </div>
+      <div id="rpt-photo-status" class="text-muted" style="font-size:12px;margin-top:6px">Photos are shrunk before upload. Pick several at once to add them all with the same caption and date.</div>
+    </div>
+    \${data.photos.length === 0 ? '<p class="text-muted" style="text-align:center">No site photos yet.</p>' : \`
+    <div class="rpt-photos">\${data.photos.map(p => \`
+      <div class="rpt-photo card" style="padding:8px;margin:0">
+        <a href="\${rptPhotoUrl(id, p.id)}" target="_blank" title="Open full size">
+          <img src="\${rptPhotoUrl(id, p.id, true)}" alt="\${escHtml(p.caption || 'Site photo')}" loading="lazy">
+        </a>
+        <div style="font-size:13px;margin-top:6px">\${escHtml(p.caption || '')}</div>
+        <div class="flex gap-8 align-center" style="margin-top:4px">
+          <span class="text-muted" style="font-size:11px">\${p.taken_date ? escHtml(fmtDay(p.taken_date)) : ''}</span>
+          <span class="spacer"></span>
+          <button class="btn btn-sm btn-secondary" onclick="editRptPhoto(\${p.id})">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRptPhoto(\${p.id})">✕</button>
+        </div>
+      </div>\`).join('')}
+    </div>\`}\`;
+}
+
+function rptDocsHtml(data) {
+  const id = data.repeater.id;
+  return \`
+    <div class="flex gap-8 align-center" style="margin-bottom:12px;flex-wrap:wrap">
+      <span class="text-muted" style="font-size:13px">Manuals, programming files, licenses, and agreements. Upload a file (up to 25 MB) or link to one online.</span>
+      <span class="spacer"></span>
+      <button class="btn btn-secondary" onclick="openRptDoc('link')">+ Add Link</button>
+      <button class="btn btn-primary" onclick="openRptDoc('file')">+ Upload File</button>
+    </div>
+    <div class="card" style="padding:0">
+      \${data.documents.length === 0 ? '<p class="text-muted" style="padding:24px;text-align:center">No manuals or files yet.</p>' : \`
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Title</th><th>Type</th><th>File</th><th>Added</th><th></th></tr></thead>
+        <tbody>\${data.documents.map(d => \`<tr>
+          <td><a href="/api/repeaters/\${id}/documents/\${d.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none"><strong>\${escHtml(d.title)}</strong></a></td>
+          <td>\${escHtml(RPT_DOC_KINDS[d.kind] || d.kind)}</td>
+          <td style="font-size:12px">\${d.url
+            ? '<span class="text-muted">Link: ' + escHtml(d.url.replace(/^https?:[/][/]/, '').slice(0, 50)) + '</span>'
+            : escHtml(d.filename || '') + ' <span class="text-muted">' + rptSize(d.size) + '</span>'}</td>
+          <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">\${escHtml(fmtDate(d.created_at))}\${d.added_by ? '<br>' + escHtml(d.added_by) : ''}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-sm btn-secondary" onclick="editRptDoc(\${d.id})">Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteRptDoc(\${d.id})">✕</button>
+          </td>
+        </tr>\`).join('')}</tbody>
+      </table></div>\`}
+    </div>\`;
+}
+
+// ── Repeater add / edit ──
+function openRptForm(r = null) {
+  const v = k => r?.[k] ?? '';
+  const ta = (label, id, val, ph = '') => \`<div class="form-group full"><label>\${escHtml(label)}</label><textarea id="\${id}" placeholder="\${escHtml(ph)}">\${escHtml(String(val))}</textarea></div>\`;
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Name *</label>
+        <input type="text" id="rpt-name" value="\${escHtml(v('name'))}" placeholder="e.g. 2m Bays Mountain">
+      </div>
+      \${fi('Callsign', 'rpt-callsign', v('callsign'), 'text', 'W4TRC')}
+      <div class="form-group">
+        <label>Status</label>
+        <select id="rpt-status">\${Object.entries(RPT_STATUS).map(([k, [label]]) => \`<option value="\${k}" \${(r?.status || 'active') === k ? 'selected' : ''}>\${label}</option>\`).join('')}</select>
+      </div>
+      \${fi('Output MHz (repeater transmits)', 'rpt-output', v('output_freq'), 'text', '146.970')}
+      \${fi('Input MHz (users transmit)', 'rpt-input', v('input_freq'), 'text', '146.370')}
+      \${fi('Access tone (users send)', 'rpt-tone-in', v('tone_in'), 'text', '114.8 or D023')}
+      \${fi('Repeater tone (sent out)', 'rpt-tone-out', v('tone_out'), 'text', 'blank if none')}
+      \${fi('Band', 'rpt-band', v('band'), 'text', '2m, 70cm, 6m…')}
+      \${fi('Mode', 'rpt-mode', v('mode'), 'text', 'FM, DMR, Fusion…')}
+      \${fi('Power', 'rpt-power', v('power'), 'text', '50 W')}
+      \${fi('Screen PIN', 'rpt-pin-input', v('screen_pin'))}
+      \${ta('Digital settings', 'rpt-digital', v('digital_info'), 'Color code, NAC, DG-ID, talkgroups…')}
+      \${ta('Repeater / controller', 'rpt-equipment', v('equipment'), 'Make and model, duplexer, controller')}
+      \${ta('Antenna & feedline', 'rpt-antenna', v('antenna'), 'Antenna, height on the tower, feedline')}
+      \${fi('Site', 'rpt-site-name', v('site_name'), 'text', 'e.g. Bays Mountain tower')}
+      \${fi('Site address or coordinates', 'rpt-site-address', v('site_address'))}
+      \${ta('Site access', 'rpt-site-access', v('site_access'), 'Directions, keys, gate codes, who to call')}
+      \${ta('Notes', 'rpt-notes', v('notes'))}
+      \${fi('Sort order', 'rpt-sort', r ? v('sort_order') : '', 'number', 'Lower numbers show first')}
+    </div>
+  \`, r ? 'Edit Repeater' : 'Add Repeater', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveRepeater(' + (r?.id || 'null') + ')' },
+  ]);
+}
+
+async function saveRepeater(id) {
+  const body = {
+    name: gv('rpt-name').trim(), callsign: gv('rpt-callsign'), status: gv('rpt-status'),
+    output_freq: gv('rpt-output'), input_freq: gv('rpt-input'), tone_in: gv('rpt-tone-in'), tone_out: gv('rpt-tone-out'),
+    band: gv('rpt-band'), mode: gv('rpt-mode'), power: gv('rpt-power'), screen_pin: gv('rpt-pin-input'),
+    digital_info: gv('rpt-digital'), equipment: gv('rpt-equipment'), antenna: gv('rpt-antenna'),
+    site_name: gv('rpt-site-name'), site_address: gv('rpt-site-address'), site_access: gv('rpt-site-access'), notes: gv('rpt-notes'),
+  };
+  if (gv('rpt-sort') !== '') body.sort_order = gv('rpt-sort');
+  if (!body.name) { toast('Name is required', 'error'); return; }
+  try {
+    const data = await api(id ? 'PATCH' : 'POST', '/repeaters' + (id ? '/' + id : ''), body);
+    closeModal();
+    toast('Repeater saved ✓');
+    if (!id) state.rptTab = 'info';
+    showRepeater(data);
+  } catch(e) { toast(e.data?.error || 'Failed to save repeater', 'error'); }
+}
+
+async function deleteRepeater() {
+  const r = state.rpt?.repeater;
+  if (!r) return;
+  if (!confirm('Delete ' + r.name + ' along with its visits, reports, maintenance, notes, photos, and files? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/repeaters/' + r.id);
+    toast('Repeater deleted');
+    nav('repeaters');
+  } catch(e) { toast(e.data?.error || 'Failed to delete repeater', 'error'); }
+}
+
+// ── Visits, reports, maintenance, notes ──
+// [field, label, type, options]; type is text, textarea, date, time, number, or an object of select choices
+const RPT_FORMS = {
+  visits: {
+    title: 'Site Visit', noun: 'Visit',
+    fields: [
+      ['visit_date', 'Date', 'date', { required: true, today: true }],
+      ['time_in', 'Arrived', 'time'],
+      ['time_out', 'Left', 'time'],
+      ['visitors', 'Who visited', 'text', { required: true, full: true, placeholder: 'Names or callsigns' }],
+      ['purpose', 'Why', 'text', { required: true, full: true, placeholder: 'e.g. Replace fan, check SWR, show the site to a new trustee' }],
+      ['notes', 'What was done / found', 'textarea'],
+    ],
+  },
+  reports: {
+    title: 'Report', noun: 'Report',
+    fields: [
+      ['report_date', 'Date', 'date', { required: true, today: true }],
+      ['category', 'What kind', RPT_REPORT_CATEGORIES, { required: true }],
+      ['reported_by', 'Reported by', 'text', { placeholder: 'Name or callsign' }],
+      ['status', 'Status', Object.fromEntries(Object.entries(RPT_REPORT_STATUS).map(([k, [l]]) => [k, l])), { default: 'open' }],
+      ['description', 'What was heard or reported', 'textarea', { required: true, placeholder: 'When, how often, how strong, any callsigns heard' }],
+      ['resolution', 'Resolution / follow-up', 'textarea'],
+      ['resolved_date', 'Resolved on', 'date'],
+    ],
+  },
+  maintenance: {
+    title: 'Maintenance & Renewals', noun: 'Entry',
+    fields: [
+      ['kind', 'Type', RPT_MAINT_KINDS, { required: true }],
+      ['title', 'What', 'text', { required: true, placeholder: 'e.g. RepeaterBook listing, SERA coordination, duplexer retune', list: true }],
+      ['done_date', 'Date done', 'date', { today: true }],
+      ['next_due', 'Next due', 'date'],
+      ['done_by', 'Done by', 'text'],
+      ['cost', 'Cost ($)', 'number'],
+      ['notes', 'Notes', 'textarea'],
+    ],
+  },
+  notes: {
+    title: 'Site Note', noun: 'Note',
+    fields: [['note', 'Note', 'textarea', { required: true }]],
+  },
+};
+
+function rptField(list, [key, label, type, opt = {}], val) {
+  const id = 'rf-' + key;
+  const req = opt.required ? ' *' : '';
+  if (type === 'textarea') {
+    return \`<div class="form-group full"><label>\${escHtml(label)}\${req}</label><textarea id="\${id}" placeholder="\${escHtml(opt.placeholder || '')}">\${escHtml(String(val ?? ''))}</textarea></div>\`;
+  }
+  if (typeof type === 'object') {
+    return \`<div class="form-group\${opt.full ? ' full' : ''}"><label>\${escHtml(label)}\${req}</label><select id="\${id}">
+      \${opt.required && !val ? '<option value="">— Choose —</option>' : ''}
+      \${Object.entries(type).map(([k, l]) => \`<option value="\${k}" \${val === k ? 'selected' : ''}>\${escHtml(l)}</option>\`).join('')}
+    </select></div>\`;
+  }
+  // Suggest titles already used, so a renewal logged again matches the earlier one
+  const titles = opt.list ? [...new Set((state.rpt?.[list] || []).map(e => e.title))] : [];
+  return \`<div class="form-group\${opt.full ? ' full' : ''}"><label>\${escHtml(label)}\${req}</label>
+    <input type="\${type}" id="\${id}" value="\${escHtml(String(val ?? ''))}" placeholder="\${escHtml(opt.placeholder || '')}"\${type === 'number' ? ' step="0.01" min="0"' : ''}\${titles.length ? ' list="rf-list-' + key + '"' : ''}>
+    \${titles.length ? \`<datalist id="rf-list-\${key}">\${titles.map(t => \`<option value="\${escHtml(t)}">\`).join('')}</datalist>\` : ''}
+  </div>\`;
+}
+
+function openRptEntry(list, entryId = null, preset = null) {
+  const form = RPT_FORMS[list];
+  const e = entryId ? state.rpt[list].find(x => x.id === entryId) : null;
+  if (entryId && !e) return;
+  const val = ([key, , , opt = {}]) => {
+    if (e) return e[key];
+    if (preset && key in preset) return preset[key];
+    if (opt.today) return localToday();
+    return opt.default ?? '';
+  };
+  showModal(\`
+    <div class="form-grid">\${form.fields.map(f => rptField(list, f, val(f))).join('')}</div>
+    \${list === 'reports' ? '<p class="form-hint" style="margin-top:12px">Marking a report resolved dates it today unless you give another date.</p>' : ''}
+    \${list === 'maintenance' ? '<p class="form-hint" style="margin-top:12px">Give a next-due date for things that come around again, like a listing renewal. When you log the same thing again, its new due date replaces the old one.</p>' : ''}
+  \`, (e ? 'Edit ' : 'Log ') + form.title, [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: "saveRptEntry('" + list + "', " + (entryId || 'null') + ')' },
+  ]);
+}
+
+async function saveRptEntry(list, entryId) {
+  const form = RPT_FORMS[list];
+  const body = {};
+  for (const [key, label, , opt = {}] of form.fields) {
+    const v = gv('rf-' + key).trim();
+    if (opt.required && !v) { toast(label + ' is required', 'error'); return; }
+    body[key] = v;
+  }
+  const id = state.rpt.repeater.id;
+  try {
+    await api(entryId ? 'PATCH' : 'POST', '/repeaters/' + id + '/' + list + (entryId ? '/' + entryId : ''), body);
+    closeModal();
+    toast(form.noun + ' saved ✓');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to save', 'error'); }
+}
+
+async function deleteRptEntry(list, entryId) {
+  if (!confirm('Delete this ' + RPT_FORMS[list].noun.toLowerCase() + '?')) return;
+  try {
+    await api('DELETE', '/repeaters/' + state.rpt.repeater.id + '/' + list + '/' + entryId);
+    toast('Deleted');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to delete', 'error'); }
+}
+
+// Log the same renewal again, done today, keeping the same yearly (or whatever) interval
+function rptRenew(maintId) {
+  const d = state.rpt.maintenance.find(x => x.id === maintId) || state.rpt.due.find(x => x.id === maintId);
+  if (!d) return;
+  const today = localToday();
+  let next = '';
+  if (d.done_date && d.next_due) {
+    const days = Math.round((Date.parse(d.next_due) - Date.parse(d.done_date)) / 86400000);
+    if (days > 0) next = rptAddDays(today, days);
+  }
+  openRptEntry('maintenance', null, { kind: d.kind, title: d.title, done_date: today, next_due: next });
+}
+
+async function addRptNote() {
+  const note = gv('rpt-new-note').trim();
+  if (!note) { toast('Note text is required', 'error'); return; }
+  try {
+    await api('POST', '/repeaters/' + state.rpt.repeater.id + '/notes', { note, pinned: !!document.getElementById('rpt-new-note-pin')?.checked });
+    toast('Note added');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to add note', 'error'); }
+}
+
+async function pinRptNote(noteId, pinned) {
+  try {
+    await api('PATCH', '/repeaters/' + state.rpt.repeater.id + '/notes/' + noteId, { pinned: !!pinned });
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to change note', 'error'); }
+}
+
+// ── Photos ──
+async function uploadRptPhotos(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  if (!files.length) return;
+  const id = state.rpt.repeater.id;
+  const caption = gv('rpt-photo-caption');
+  const taken = gv('rpt-photo-date');
+  const status = document.getElementById('rpt-photo-status');
+  let done = 0, failed = 0;
+  for (const file of files) {
+    if (status) status.textContent = 'Uploading ' + (done + failed + 1) + ' of ' + files.length + '…';
+    try {
+      const { image, thumb } = await invReadPhoto(file);
+      await api('POST', '/repeaters/' + id + '/photos', { image, thumb, caption, taken_date: taken });
+      done++;
+    } catch(e) {
+      failed++;
+      toast((file.name || 'A photo') + ': ' + (e.data?.error || e.message || 'upload failed'), 'error');
+    }
+  }
+  if (done) toast(done + ' photo' + (done !== 1 ? 's' : '') + ' added ✓');
+  if (state.rpt?.repeater?.id === id) reloadRepeater();
+}
+
+function editRptPhoto(photoId) {
+  const p = state.rpt.photos.find(x => x.id === photoId);
+  if (!p) return;
+  showModal(\`
+    <img src="\${rptPhotoUrl(state.rpt.repeater.id, p.id, true)}" alt="" style="max-width:100%;max-height:200px;border-radius:6px;display:block;margin-bottom:12px">
+    <div class="form-grid">
+      <div class="form-group full"><label>Caption</label><input type="text" id="rpt-photo-edit-caption" value="\${escHtml(p.caption || '')}"></div>
+      \${fi('Date taken', 'rpt-photo-edit-date', p.taken_date || '', 'date')}
+    </div>
+  \`, 'Edit Photo', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'saveRptPhoto(' + photoId + ')' },
+  ]);
+}
+
+async function saveRptPhoto(photoId) {
+  try {
+    await api('PATCH', '/repeaters/' + state.rpt.repeater.id + '/photos/' + photoId, { caption: gv('rpt-photo-edit-caption'), taken_date: gv('rpt-photo-edit-date') });
+    closeModal();
+    toast('Photo saved ✓');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to save photo', 'error'); }
+}
+
+async function deleteRptPhoto(photoId) {
+  if (!confirm('Delete this photo?')) return;
+  try {
+    await api('DELETE', '/repeaters/' + state.rpt.repeater.id + '/photos/' + photoId);
+    toast('Photo deleted');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to delete photo', 'error'); }
+}
+
+// ── Manuals & files ──
+function rptDocKindSelect(val = 'manual') {
+  return \`<div class="form-group"><label>Type</label><select id="rpt-doc-kind">\${Object.entries(RPT_DOC_KINDS).map(([k, l]) => \`<option value="\${k}" \${val === k ? 'selected' : ''}>\${l}</option>\`).join('')}</select></div>\`;
+}
+
+function openRptDoc(mode) {
+  showModal(\`
+    <div class="form-grid">
+      \${mode === 'file'
+        ? '<div class="form-group full"><label>File *</label><input type="file" id="rpt-doc-file" onchange="rptDocPicked(this)"></div>'
+        : fi('Web address', 'rpt-doc-url', '', 'url', 'https://…', true)}
+      <div class="form-group full"><label>Title *</label><input type="text" id="rpt-doc-title" placeholder="e.g. MTR3000 service manual"></div>
+      \${rptDocKindSelect()}
+    </div>
+    \${mode === 'file' ? '<p class="form-hint" style="margin-top:12px">Up to 25 MB. PDFs and pictures open in the browser; other files download.</p>' : ''}
+  \`, mode === 'file' ? 'Upload File' : 'Add Link', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: mode === 'file' ? 'Upload' : 'Save', cls: 'btn-primary', fn: "saveRptDoc('" + mode + "')" },
+  ]);
+}
+
+// Title a new upload after its file name, unless one was typed
+function rptDocPicked(input) {
+  const title = document.getElementById('rpt-doc-title');
+  if (title && !title.value) title.value = (input.files[0]?.name || '').replace(/[.][^.]+$/, '');
+}
+
+async function saveRptDoc(mode) {
+  const id = state.rpt.repeater.id;
+  const title = gv('rpt-doc-title').trim();
+  const kind = gv('rpt-doc-kind');
+  if (!title) { toast('Title is required', 'error'); return; }
+  try {
+    if (mode === 'link') {
+      const url = gv('rpt-doc-url').trim();
+      if (!url) { toast('Web address is required', 'error'); return; }
+      await api('POST', '/repeaters/' + id + '/documents', { title, kind, url });
+    } else {
+      const file = document.getElementById('rpt-doc-file')?.files?.[0];
+      if (!file) { toast('Choose a file', 'error'); return; }
+      if (file.size > RPT_MAX_FILE) { toast('Files can be up to 25 MB', 'error'); return; }
+      const btn = document.querySelector('.modal-footer .btn-primary');
+      if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+      const q = new URLSearchParams({ title, kind, filename: file.name });
+      const resp = await fetch('/api/repeaters/' + id + '/documents?' + q, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+        throw Object.assign(new Error(data.error || 'Upload failed'), { data });
+      }
+    }
+    closeModal();
+    toast('Saved ✓');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || e.message || 'Failed to save', 'error'); }
+}
+
+function editRptDoc(docId) {
+  const d = state.rpt.documents.find(x => x.id === docId);
+  if (!d) return;
+  showModal(\`
+    <div class="form-grid">
+      <div class="form-group full"><label>Title *</label><input type="text" id="rpt-doc-title" value="\${escHtml(d.title)}"></div>
+      \${rptDocKindSelect(d.kind)}
+      \${d.url ? fi('Web address', 'rpt-doc-url', d.url, 'url') : ''}
+    </div>
+  \`, 'Edit ' + (d.url ? 'Link' : 'File'), [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Save',   cls: 'btn-primary',   fn: 'updateRptDoc(' + docId + ')' },
+  ]);
+}
+
+async function updateRptDoc(docId) {
+  const d = state.rpt.documents.find(x => x.id === docId);
+  const body = { title: gv('rpt-doc-title').trim(), kind: gv('rpt-doc-kind') };
+  if (d?.url) body.url = gv('rpt-doc-url').trim();
+  if (!body.title) { toast('Title is required', 'error'); return; }
+  try {
+    await api('PATCH', '/repeaters/' + state.rpt.repeater.id + '/documents/' + docId, body);
+    closeModal();
+    toast('Saved ✓');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to save', 'error'); }
+}
+
+async function deleteRptDoc(docId) {
+  const d = state.rpt.documents.find(x => x.id === docId);
+  if (!confirm('Delete ' + (d ? '"' + d.title + '"' : 'this file') + '?' + (d && !d.url ? ' The uploaded file is removed too.' : ''))) return;
+  try {
+    await api('DELETE', '/repeaters/' + state.rpt.repeater.id + '/documents/' + docId);
+    toast('Deleted');
+    reloadRepeater();
+  } catch(e) { toast(e.data?.error || 'Failed to delete', 'error'); }
+}
+
 // ── MEMBERSHIP CUTOFF ─────────────────────────────────────────────────
 async function cutoff() {
   const yr = new Date().getFullYear();
@@ -4451,6 +5252,7 @@ function auditTarget(r) {
   }
   if (r.target_type === 'user') return d?.email || \`user #\${r.target_id}\`;
   if (r.target_type === 'inventory_item' || r.target_type === 'inventory_location') return d?.name || \`item #\${r.target_id}\`;
+  if (r.target_type === 'repeater') return d?.name || \`repeater #\${r.target_id}\`;
   if (r.target_type === 'note') return d?.member_id ? \`note for member #\${d.member_id}\` : \`note #\${r.target_id}\`;
   return '—';
 }
@@ -4492,6 +5294,24 @@ function auditDetail(r) {
     case 'agenda.item.delete': return ({ old: 'Old business', new: 'New business', announcement: 'Announcement' }[d.section] || 'Item') + ': ' + (d.title || '');
     case 'agenda.motion.create':
     case 'agenda.motion.delete': return d.motion || '';
+    case 'repeater.create':    return d.output_freq ? d.output_freq + ' MHz' : '';
+    case 'repeater.update':    return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
+    case 'repeater.visit.create':
+    case 'repeater.visit.update':
+    case 'repeater.visit.delete': return 'Visit ' + [d.visit_date, d.purpose].filter(Boolean).join(' — ');
+    case 'repeater.report.create':
+    case 'repeater.report.update':
+    case 'repeater.report.delete': return 'Report: ' + [d.category, d.status].filter(Boolean).join(', ');
+    case 'repeater.maintenance.create':
+    case 'repeater.maintenance.update':
+    case 'repeater.maintenance.delete': return [d.title, d.done_date ? 'done ' + d.done_date : '', d.next_due ? 'due ' + d.next_due : ''].filter(Boolean).join(' — ');
+    case 'repeater.note.create':
+    case 'repeater.note.update':
+    case 'repeater.note.delete': return 'Note: ' + (d.note || '');
+    case 'repeater.photo.create':
+    case 'repeater.photo.delete': return 'Photo' + (d.caption ? ': ' + d.caption : '');
+    case 'repeater.document.create':
+    case 'repeater.document.delete': return 'File: ' + (d.title || d.filename || '');
     case 'inventory.update':   return d.changed?.length ? 'Changed: ' + d.changed.map(k => k.replace(/_/g, ' ')).join(', ') : '';
     case 'inventory.move':     return [d.event_type === 'checked_out' ? 'checked out' : 'moved', d.event_date].filter(Boolean).join(' — ');
     case 'membership.create':  return d.year ? 'Year ' + d.year : '';

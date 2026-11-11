@@ -18,6 +18,7 @@ A Cloudflare Workers-based membership management system.
 - **Meeting attendance** — record meetings and who attended, by callsign (members, local hams, or HamDB lookup) plus guests
 - **Meeting agendas** — officers plan each meeting ahead of time (officer reports, old and new business, announcements, presentation) and run it from the same page: Robert's Rules checklist, motions and votes, call-to-order and adjourn times. Open business carries over to the next agenda of the same kind; board meetings get a shorter checklist; the treasurer's slot shows dues and donations received since the last meeting; prints like the paper agenda
 - **Equipment inventory** — items, storage locations, photos, purchase/donation info, move / check-out / note history, and printable QR labels (Avery 5160) that open the item when scanned
+- **Repeaters** — each club repeater's listing (output and input frequencies, offset, access and repeater tones, mode, screen PIN behind a Show button, equipment, site and access directions), plus a visit log (who went, when, and why), reports of noise, interference, unlicensed use and outages with open / investigating / resolved status, maintenance and renewals (coordination, RepeaterBook and other listings, license, site lease) with next-due dates and a "coming due" list, site notes, site photos, and manuals and other files (uploaded or linked). See [Repeaters](#repeaters)
 - **Local hams (prospects)** — outreach tracking for area hams who aren't members, synced from HamDB; new Church Hill, Kingsport, and Mount Carmel licensees are added automatically from the FCC, with a "New" badge and filter
 - **Callsign report** — active member callsigns as a copyable list
 - **Membership certificate and card** — printable by an officer for any member whose dues are paid
@@ -483,8 +484,8 @@ for the sync to act as.
 | `board` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | `member` | ✅ (portal) | ❌ | Own profile | ❌ | ❌ | ❌ |
 
-Board users also get donations, meeting attendance and agendas, inventory, and local hams. Deleting
-a donation, meeting, inventory item, or note is admin only.
+Board users also get donations, meeting attendance and agendas, inventory, repeaters, and local hams. Deleting
+a donation, meeting, inventory item, repeater, or note is admin only.
 
 Admin and board users whose login is linked to a member record land on the member portal
 like everyone else (so they can pay their own dues and donate online), with an **Admin
@@ -516,6 +517,13 @@ inventory_photos       → item photo + thumbnail
 inventory_events       → item move / check-out / note history
 google_group_members   → addresses the Google Groups sync has placed in each year's group
 officers               → who held which position in which year
+repeaters              → club repeaters: frequencies, tones, screen PIN, equipment, site
+repeater_visits        → site visits (date, times, who, why)
+repeater_reports       → reports of trouble on a repeater, with status and resolution
+repeater_maintenance   → maintenance done and renewals kept up, with next-due dates
+repeater_notes         → site notes
+repeater_photos        → site photos + thumbnails
+repeater_documents     → manuals and files (uploaded to R2, or a link)
 ```
 
 Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migration):
@@ -541,6 +549,8 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `022_officers.sql` — officer history
 - `023_prospects_fcc.sql` — FCC auto-add fields on prospects, `fcc_daily_imports` table
 - `025_agendas.sql` — meeting agendas: checklist ticks, officer reports, business items, motions
+- `026_agenda_quorum.sql` — voting member count fixed when a meeting adjourns
+- `027_repeaters.sql` — repeaters, their visits, reports, maintenance, notes, photos, and documents
 
 ---
 
@@ -624,6 +634,19 @@ PUT    /api/agendas/:id/reports/:key  Save an officer report
 POST   /api/agendas/:id/carry         Pull in open business from the previous agenda
 POST   /api/agendas/:id/items         Add business or an announcement (PATCH/DELETE /items/:itemId)
 POST   /api/agendas/:id/motions       Record a motion (PATCH/DELETE /motions/:motionId)
+
+GET    /api/repeaters                 Repeaters with open reports, last visit, and what is coming due (board+)
+POST   /api/repeaters                 Add a repeater
+GET    /api/repeaters/:id             One repeater with visits, reports, maintenance, notes, photos, documents
+PATCH  /api/repeaters/:id             Change repeater fields (only the fields sent)
+DELETE /api/repeaters/:id             Delete a repeater and everything on it (admin only)
+POST   /api/repeaters/:id/visits      Log a site visit (PATCH/DELETE /visits/:entryId)
+POST   /api/repeaters/:id/reports     Log a report (PATCH/DELETE /reports/:entryId)
+POST   /api/repeaters/:id/maintenance Log maintenance or a renewal (PATCH/DELETE /maintenance/:entryId)
+POST   /api/repeaters/:id/notes       Add a site note (PATCH/DELETE /notes/:entryId)
+POST   /api/repeaters/:id/photos      Add a photo { image, thumb, caption, taken_date } (GET/PATCH/DELETE /photos/:photoId)
+POST   /api/repeaters/:id/documents   JSON { title, kind, url } adds a link; any other body uploads a file
+                                      (?title=&kind=&filename=, up to 25 MB) (GET/PATCH/DELETE /documents/:docId)
 
 GET    /api/prospects                 List local hams with member cross-reference (board+)
 GET    /api/prospects/stats           Outreach summary counts
@@ -805,6 +828,38 @@ re-synced in the background if data is older than 7 days.
 
 ---
 
+## Repeaters
+
+The **Repeaters** tab (board+) keeps everything about the club's repeaters in one place. The
+list shows each machine's output frequency, input and offset, tone, site, last visit, and open
+reports, with a **Coming Due** box on top for maintenance and renewals that are overdue or due
+in the next 60 days. Each repeater has these tabs:
+
+- **Info** — the listing (output = what the repeater transmits, input = what users transmit,
+  offset worked out from the two, access tone users send and any tone the repeater sends out),
+  callsign, band, mode, power, digital settings, screen PIN (hidden until **Show** is clicked),
+  equipment, antenna, site, address (with a map link), and access directions
+- **Reports** — noise, interference, unlicensed use, kerchunking, conduct, outages, audio, and
+  coverage reports, each open, investigating, or resolved. Resolving one dates it today unless
+  another date is given
+- **Visit Log** — date, arrive and leave times, who went, why, and what was done
+- **Maintenance & Renewals** — work done and paperwork kept up (coordination, listing renewals,
+  license, site lease, insurance). Give an entry a next-due date to see it in Coming Due. The
+  latest entry with the same type and title is the one that counts, so logging a renewal again
+  replaces the old due date; **Mark Done** does that for you, keeping the same interval
+- **Site Notes** — dated notes, which can be pinned to the top
+- **Photos** — shrunk in the browser and stored in D1 like inventory photos, so they're in the
+  daily backup
+- **Manuals & Files** — upload a file (PDF, programming file, license, ...) up to 25 MB, or add
+  a link. Uploads are stored in R2 under `repeaters/` in the `karc-membership-backups` bucket,
+  next to (but not part of) the database backups, so no new bucket is needed. PDFs, pictures,
+  and plain text open in the browser; anything else downloads
+
+The screen PIN is never written to the audit log (only that it changed), and the MCP tools
+leave it out.
+
+---
+
 ## AI Agent Access (MCP)
 
 `POST /mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI
@@ -812,10 +867,11 @@ agent (such as Hermes) can look up club data and do a few board tasks. It uses t
 HTTP transport, stateless, with plain JSON responses.
 
 **What the agent can do.** Read members, dues, donations, the treasurer report, dashboard stats,
-meetings, officers, inventory, and local hams; look up callsigns. It can also add notes to a
-member, record meeting attendance, and add items to meeting agendas (`add_note`, `record_meeting`,
-`add_meeting_attendees`, `add_agenda_item`).
-It cannot edit or delete members, dues, donations, or inventory, or manage users. The tool list
+meetings, officers, inventory, repeaters (without screen PINs), and local hams; look up callsigns.
+It can also add notes to a member, record meeting attendance, add items to meeting agendas, and
+log reports against a repeater (`add_note`, `record_meeting`, `add_meeting_attendees`,
+`add_agenda_item`, `add_repeater_report`).
+It cannot edit or delete members, dues, donations, inventory, or repeater settings, or manage users. The tool list
 is in `src/routes/mcp.js`.
 
 **How it's secured.** Requests need `Authorization: Bearer <MCP_TOKEN>`. Each call runs as the

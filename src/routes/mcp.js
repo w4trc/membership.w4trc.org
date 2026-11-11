@@ -22,6 +22,7 @@ import { handleMeetings }    from './meetings.js';
 import { handleAgendas }     from './agendas.js';
 import { handleOfficers }    from './officers.js';
 import { handleInventory }   from './inventory.js';
+import { handleRepeaters, REPORT_CATEGORIES } from './repeaters.js';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const SERVER_INFO = { name: 'w4trc-membership', version: '1.0.0' };
@@ -31,7 +32,8 @@ Dues run by calendar year; renewal season for next year opens in October.
 Use search_members or get_member (by callsign) to find a member_id before adding a note.
 To record attendance, call resolve_callsigns first to check who each callsign is, then record_meeting.
 Officers plan meetings on agendas: list_agendas finds one, get_agenda reads it, and add_agenda_item adds business or an announcement.
-You can read everything and add notes, meeting attendance, and agenda items, but you cannot change members, dues, donations, or inventory.`;
+The club's repeaters: list_repeaters and get_repeater read them, and add_repeater_report logs trouble on the air (noise, interference, unlicensed use, outages). Screen PINs are never shown here.
+You can read everything and add notes, meeting attendance, agenda items, and repeater reports, but you cannot change members, dues, donations, inventory, or repeater settings.`;
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -228,6 +230,48 @@ export const TOOLS = [
     run: (a) => ['GET', `/api/inventory/${posInt(a.item_id, 'item_id')}`],
   },
   {
+    name: 'list_repeaters',
+    title: 'List repeaters',
+    description: 'The club repeaters with frequencies, tones, site, status, open report count, last site visit, and maintenance or listing renewals due within 60 days (or overdue). Screen PINs are left out.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: READ,
+    run: async (a, ctx) => {
+      const data = await callApi(ctx, 'GET', '/api/repeaters');
+      return { ...data, repeaters: data.repeaters.map(withoutPin) };
+    },
+  },
+  {
+    name: 'get_repeater',
+    title: 'Get repeater',
+    description: 'One repeater in full: listing details, site visits, reports, maintenance and renewals, site notes, and the titles of its photos and manuals. The screen PIN is left out.',
+    inputSchema: { type: 'object', properties: { repeater_id: int('Repeater id') }, required: ['repeater_id'] },
+    annotations: READ,
+    run: async (a, ctx) => {
+      const data = await callApi(ctx, 'GET', `/api/repeaters/${posInt(a.repeater_id, 'repeater_id')}`);
+      return { ...data, repeater: withoutPin(data.repeater) };
+    },
+  },
+  {
+    name: 'add_repeater_report',
+    title: 'Add repeater report',
+    description: 'Log a report of trouble on a repeater, such as noise, interference, unlicensed use, or an outage. Check get_repeater first so you do not log the same report twice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repeater_id: int('Repeater id (from list_repeaters)'),
+        category:    str('What kind of trouble', { enum: REPORT_CATEGORIES }),
+        description: str('What was heard or reported: when, how often, any callsigns'),
+        reported_by: str('Optional: who reported it'),
+        report_date: str('Optional: date it happened (YYYY-MM-DD); defaults to today'),
+      },
+      required: ['repeater_id', 'category', 'description'],
+    },
+    annotations: WRITE,
+    run: (a) => ['POST', `/api/repeaters/${posInt(a.repeater_id, 'repeater_id')}/reports`, {
+      category: a.category, description: a.description, reported_by: a.reported_by, report_date: a.report_date,
+    }],
+  },
+  {
     name: 'search_prospects',
     title: 'Search local hams',
     description: 'Licensed hams in the area who are not members (outreach list synced from HamDB), 75 per page.',
@@ -347,6 +391,11 @@ function requireText(v, name) {
   return v.trim();
 }
 
+function withoutPin(repeater) {
+  const { screen_pin, ...rest } = repeater;
+  return { ...rest, has_screen_pin: !!screen_pin };
+}
+
 // ── Calling the existing API handlers ────────────────────────────────────────
 
 const HANDLERS = [
@@ -361,6 +410,7 @@ const HANDLERS = [
   ['/api/agendas',     handleAgendas],
   ['/api/officers',    handleOfficers],
   ['/api/inventory',   handleInventory],
+  ['/api/repeaters',   handleRepeaters],
 ];
 
 async function callApi(ctx, method, pathAndQuery, body) {
