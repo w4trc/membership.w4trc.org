@@ -53,7 +53,7 @@ Open work is tracked in [TODO.md](TODO.md).
 | Backups | Cloudflare R2 (daily SQL file) |
 | Mailing lists | Google Groups (optional, synced hourly) |
 | Auth | Server-side sessions (PBKDF2 passwords) |
-| Frontend | Single-page app served from Worker |
+| Frontend | Single-page app: `src/ui.html` served by the Worker, `public/app.css` and `public/app.js` as static assets |
 | Callsign API | HamDB (free, no key needed) |
 | Email | Resend |
 | Payments | Stripe Checkout |
@@ -262,6 +262,10 @@ npm run db:seed:prospects:local
 npm run dev
 # → http://localhost:8787
 ```
+
+The admin section and member portal are one page: `src/ui.html` is the page
+itself, `public/app.css` its styles and `public/app.js` its script. They are
+plain files with no build step, and `npm run deploy` uploads them with the Worker.
 
 Put local secrets in `.dev.vars`. `npm run import-members` loads members from a CSV
 (`scripts/import-members.js`), and `bruno/` holds a Bruno API collection.

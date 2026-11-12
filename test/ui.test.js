@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { serveUI } from '../src/ui.js';
+import appScript from '../public/app.js?raw';
 
-// The app's script as the browser gets it, after the page template has run
+// The app's script as the browser gets it
 async function servedScript() {
-  const html = await serveUI(new Request('https://members.w4trc.org/'), {}).text();
-  return [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+  return appScript;
 }
 
 // Pull one top-level function out of the served script and make it callable
@@ -14,6 +14,15 @@ async function servedFunction(name) {
   const end = script.indexOf('\n}\n', start);
   return new Function(`${script.slice(start, end + 2)}; return ${name};`)();
 }
+
+describe('served page', () => {
+  it('loads the stylesheet and script from their own files', async () => {
+    const html = await serveUI(new Request('https://members.w4trc.org/admin/members'), {}).text();
+    expect(html).toContain('<link rel="stylesheet" href="/app.css">');
+    expect(html).toContain('<script src="/app.js"></script>');
+    expect(html).not.toMatch(/<style|<script>/);
+  });
+});
 
 describe('served page script', () => {
   it('parses', async () => {

@@ -47,6 +47,17 @@ MCP_USER_EMAIL = "joshuabot@w4trc.org"  # login account the /mcp endpoint acts a
 # GOOGLE_SERVICE_ACCOUNT_KEY - service account JSON key for the Google Groups sync (optional)
 # MCP_TOKEN               - bearer token for the /mcp endpoint used by AI agents (optional)
 
+# The browser's stylesheet and script (app.css, app.js), served as static files
+# without running the worker. The page that loads them is src/ui.html.
+[assets]
+directory = "./public"
+
+# Bundle the page shell as a Text module
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
 # Bundle binary assets (logo, etc.) as Data modules
 [[rules]]
 type = "Data"

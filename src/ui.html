@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W4TRC Member System – Kingsport Amateur Radio Club</title>
+<link rel="stylesheet" href="/app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <!-- Login screen -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="logo">
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
+        <h1>Member System</h1>
+        <p>Kingsport Amateur Radio Club</p>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group mt-8">
+        <label>Password</label>
+        <input type="password" id="login-pass" placeholder="••••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doLogin()">Sign In</button>
+      <div id="login-err" class="hidden mt-8" style="color:var(--danger);font-size:13px;text-align:center"></div>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+        <a href="#" onclick="showForgot();return false;" style="color:var(--text-muted)">Forgot password?</a>
+      </p>
+      <p style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-muted)">
+        New member? <a href="/register" style="color:var(--accent)">Register or claim your account →</a>
+      </p>
+      <p style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-muted)">
+        Want to support the club? <a href="/donate" style="color:var(--accent)">Donate →</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Forgot password screen -->
+  <div id="forgot-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
+    <div class="login-card">
+      <div class="logo">
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
+        <h1>Reset Password</h1>
+        <p>Enter your email address to receive a reset link</p>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doForgotPassword()">Send Reset Link</button>
+      <div id="forgot-msg" class="hidden mt-8" style="font-size:13px;text-align:center"></div>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+        <a href="#" onclick="showLogin();return false;" style="color:var(--text-muted)">← Back to sign in</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Reset password screen -->
+  <div id="reset-screen" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
+    <div class="login-card">
+      <div class="logo">
+        <img src="/logo.png" alt="KARC" style="height:72px;margin-bottom:10px">
+        <h1>Set New Password</h1>
+        <p>Choose a new password for your account</p>
+      </div>
+      <div class="form-group">
+        <label>New Password (10+ characters)</label>
+        <input type="password" id="reset-pass" placeholder="••••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group mt-8">
+        <label>Confirm New Password</label>
+        <input type="password" id="reset-confirm" placeholder="••••••••••" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doResetPassword()">Set Password</button>
+      <div id="reset-msg" class="hidden mt-8" style="font-size:13px;text-align:center"></div>
+    </div>
+  </div>
+
+  <!-- Main app shell (hidden until logged in) -->
+  <div id="main-shell" class="hidden">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <img src="/logo.png" alt="KARC" style="height:40px;margin-bottom:6px;display:block">
+        <div class="call">W4TRC</div>
+        <div class="club-name">Kingsport Amateur Radio Club</div>
+      </div>
+      <nav>
+        <div class="nav-section">Main</div>
+        <a class="nav-item active" href="/admin" data-page="dashboard">
+          <span class="icon">📊</span> Dashboard
+        </a>
+        <a class="nav-item" href="/admin/members" data-page="members">
+          <span class="icon">👥</span> Members
+        </a>
+        <a class="nav-item" href="/admin/memberships" data-page="memberships">
+          <span class="icon">💳</span> Dues & Memberships
+        </a>
+        <a class="nav-item" href="/admin/donations" data-page="donations">
+          <span class="icon">🎁</span> Donations
+        </a>
+        <a class="nav-item hidden" id="nav-treasurer" href="/admin/treasurer" data-page="treasurer">
+          <span class="icon">🧾</span> Treasurer Report
+        </a>
+        <a class="nav-item hidden" id="nav-attendance" href="/admin/attendance" data-page="attendance">
+          <span class="icon">📝</span> Attendance
+        </a>
+        <a class="nav-item hidden" id="nav-agendas" href="/admin/agendas" data-page="agendas">
+          <span class="icon">🗒️</span> Agendas
+        </a>
+        <a class="nav-item hidden" id="nav-inventory" href="/admin/inventory" data-page="inventory">
+          <span class="icon">📦</span> Inventory
+        </a>
+        <a class="nav-item hidden" id="nav-repeaters" href="/admin/repeaters" data-page="repeaters">
+          <span class="icon">🗼</span> Repeaters
+        </a>
+        <a class="nav-item hidden" id="nav-officers" href="/admin/officers" data-page="officers">
+          <span class="icon">🎖️</span> Officers
+        </a>
+        <a class="nav-item hidden" id="nav-prospects" href="/admin/prospects" data-page="prospects">
+          <span class="icon">📡</span> Local Hams
+        </a>
+        <a class="nav-item hidden" id="nav-my-membership" href="/portal" data-shell="portal">
+          <span class="icon">🏠</span> My Membership
+        </a>
+        <div class="nav-section" id="nav-section-admin">Admin</div>
+        <a class="nav-item" href="/admin/users" data-page="users">
+          <span class="icon">🔐</span> User Accounts
+        </a>
+        <a class="nav-item" href="/admin/audit" data-page="audit">
+          <span class="icon">📋</span> Audit Log
+        </a>
+        <a class="nav-item" href="/admin/sessions" data-page="sessions">
+          <span class="icon">🔑</span> Active Sessions
+        </a>
+        <a class="nav-item" href="/admin/google-groups" data-page="googleGroups">
+          <span class="icon">📧</span> Google Groups
+        </a>
+        <a class="nav-item hidden" id="nav-cutoff" href="/admin/cutoff" data-page="cutoff">
+          <span class="icon">⚡</span> Membership Cutoff
+        </a>
+        <a class="nav-item hidden" id="nav-callsigns" href="/admin/callsigns" data-page="callsigns">
+          <span class="icon">📻</span> Callsign Report
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="avatar" id="user-avatar">?</div>
+          <div>
+            <div id="user-email" style="font-size:12px;color:var(--text)"></div>
+            <div id="user-role"  style="font-size:10px;color:var(--text-muted);text-transform:uppercase"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" style="flex:1;justify-content:center">🔑 Password</button>
+          <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="flex:1;justify-content:center">⏏ Sign Out</button>
+        </div>
+        <button class="btn btn-sm btn-secondary theme-toggle-btn" onclick="toggleTheme()" style="width:100%;justify-content:center;margin-top:6px">☀ Light Mode</button>
+      </div>
+    </aside>
+
+    <div id="nav-backdrop" onclick="closeNav()"></div>
+    <div id="content">
+      <div id="topbar">
+        <button id="menu-toggle" onclick="toggleNav()" aria-label="Menu">&#9776;</button>
+        <h2 id="page-title">Dashboard</h2>
+        <div class="spacer"></div>
+        <div id="topbar-actions"></div>
+      </div>
+      <div id="page">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member portal shell (members, and officers with a linked member record) -->
+  <div id="portal-shell" class="hidden">
+    <div id="portal-backdrop" onclick="closePortalNav()"></div>
+    <aside id="portal-sidebar">
+      <div class="sidebar-header">
+        <img src="/logo.png" alt="KARC" style="height:40px;margin-bottom:6px;display:block">
+        <div class="call">W4TRC</div>
+        <div class="club-name">Member Portal</div>
+      </div>
+      <nav>
+        <a class="nav-item active" href="/portal" data-ppage="portal-home">
+          <span class="icon">🏠</span> My Dashboard
+        </a>
+        <a class="nav-item" href="/portal/profile" data-ppage="portal-profile">
+          <span class="icon">👤</span> My Profile
+        </a>
+        <a class="nav-item" href="/portal/history" data-ppage="portal-history">
+          <span class="icon">📋</span> Membership History
+        </a>
+        <a class="nav-item" href="/portal/donate" data-ppage="portal-donate">
+          <span class="icon">🎁</span> Donate
+        </a>
+        <a class="nav-item" href="/directory" target="_blank">
+          <span class="icon">📡</span> Public Directory ↗
+        </a>
+        <a class="nav-item hidden" id="portal-admin-link" href="/admin" data-shell="admin">
+          <span class="icon">🔐</span> Admin Section
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="avatar" id="portal-avatar">?</div>
+          <div>
+            <div id="portal-callsign" style="font-family:var(--mono);color:var(--accent);font-weight:bold;font-size:13px"></div>
+            <div id="portal-name" style="font-size:11px;color:var(--text-muted)"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm btn-secondary" onclick="openChangePassword()" style="flex:1;justify-content:center">🔑 Password</button>
+          <button class="btn btn-sm btn-secondary" onclick="doLogout()" style="flex:1;justify-content:center">⏏ Sign Out</button>
+        </div>
+        <button class="btn btn-sm btn-secondary theme-toggle-btn" onclick="toggleTheme()" style="width:100%;justify-content:center;margin-top:6px">☀ Light Mode</button>
+      </div>
+    </aside>
+    <div id="portal-content">
+      <div id="portal-topbar">
+        <button id="portal-menu-toggle" onclick="togglePortalNav()" aria-label="Menu">&#9776;</button>
+        <h2 id="portal-page-title">My Dashboard</h2>
+      </div>
+      <div id="portal-page">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Modal container -->
+<div id="modal-root"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
