@@ -3788,7 +3788,6 @@ async function repeaters() {
         <span>Input</span><span>\${rptFreq(r.input_freq) || '—'}\${offset ? ' <span class="text-muted">(' + offset + ')</span>' : ''}</span>
         <span>Tone</span><span>\${escHtml(r.tone_in || '—')}\${r.tone_out ? ' <span class="text-muted">/ ' + escHtml(r.tone_out) + ' out</span>' : ''}</span>
         <span>Site</span><span>\${escHtml(r.site_name || '—')}</span>
-        <span>Last visit</span><span>\${r.last_visit ? escHtml(fmtDay(r.last_visit)) : '<span class="text-muted">—</span>'}</span>
       </div>
       \${r.open_reports ? \`<div style="margin-top:10px"><span class="badge badge-red">\${r.open_reports} open report\${r.open_reports !== 1 ? 's' : ''}</span></div>\` : ''}
     </div>\`;
@@ -3800,10 +3799,10 @@ async function repeaters() {
       <span style="font-size:20px">🏔️</span>
       <div>
         <strong>Repeater Site</strong>
-        <div class="text-muted" style="font-size:13px">Contacts, notes, and photos for the whole site, shown with every repeater</div>
+        <div class="text-muted" style="font-size:13px">Visit log, contacts, notes, and photos for the whole site, shown with every repeater</div>
       </div>
       <span class="spacer"></span>
-      <span class="text-muted" style="font-size:13px">\${site.contacts || 0} contact\${site.contacts !== 1 ? 's' : ''} · \${site.notes} note\${site.notes !== 1 ? 's' : ''} · \${site.photos} photo\${site.photos !== 1 ? 's' : ''}</span>
+      <span class="text-muted" style="font-size:13px">Last visit \${site.last_visit ? escHtml(fmtDay(site.last_visit)) : 'not logged'} · \${site.contacts || 0} contact\${site.contacts !== 1 ? 's' : ''} · \${site.notes} note\${site.notes !== 1 ? 's' : ''} · \${site.photos} photo\${site.photos !== 1 ? 's' : ''}</span>
     </div>\`;
 
   setPage(\`
@@ -3893,16 +3892,16 @@ function rptTab(key) {
   showRepeater(state.rpt);
 }
 
-const RPT_SITE_TABS = [['contacts', 'Contacts'], ['notes', 'Site Notes'], ['photos', 'Photos']];
+const RPT_SITE_TABS = [['contacts', 'Contacts'], ['visits', 'Visit Log'], ['notes', 'Site Notes'], ['photos', 'Photos']];
 
 function rptSitePageHtml(data) {
   const tab = RPT_SITE_TABS.some(([k]) => k === state.rptTab) ? state.rptTab : 'contacts';
-  const count = { contacts: data.contacts.length || '', notes: data.notes.length || '', photos: data.photos.length || '' };
+  const count = { contacts: data.contacts.length || '', visits: data.visits.length || '', notes: data.notes.length || '', photos: data.photos.length || '' };
   return \`
-    <p class="text-muted" style="font-size:13px;margin:0 0 12px">Contacts, notes, and photos here are for the whole site. They also show on every repeater's tabs.</p>
+    <p class="text-muted" style="font-size:13px;margin:0 0 12px">The visit log, contacts, notes, and photos here are for the whole site. They also show on every repeater's tabs.</p>
     <div class="tabs rpt-tabs">\${RPT_SITE_TABS.map(([k, label]) =>
       \`<div class="tab\${k === tab ? ' active' : ''}" onclick="rptTab('\${k}')">\${label}\${count[k] ? ' <span class="badge badge-gray">' + count[k] + '</span>' : ''}</div>\`).join('')}</div>
-    \${{ contacts: rptContactsHtml, notes: rptNotesHtml, photos: rptPhotosHtml }[tab](data)}\`;
+    \${{ contacts: rptContactsHtml, visits: rptVisitsHtml, notes: rptNotesHtml, photos: rptPhotosHtml }[tab](data)}\`;
 }
 
 function rptPageHtml(data) {
@@ -4024,7 +4023,7 @@ function rptVisitsHtml(data) {
   const time = e => [e.time_in, e.time_out].filter(Boolean).join('–');
   return \`
     <div class="flex gap-8 align-center" style="margin-bottom:12px">
-      <span class="text-muted" style="font-size:13px">Every trip to the site: who went, when, and why.</span>
+      <span class="text-muted" style="font-size:13px">Every trip to the site: who went, when, and why. Visits are for the whole site, so every repeater shows the same log.</span>
       <span class="spacer"></span>
       <button class="btn btn-primary" onclick="openRptEntry('visits')">+ Log Visit</button>
     </div>
@@ -4285,7 +4284,7 @@ async function deleteRepeater() {
 // [field, label, type, options]; type is text, textarea, date, time, number, or an object of select choices
 const RPT_FORMS = {
   visits: {
-    title: 'Site Visit', noun: 'Visit',
+    title: 'Site Visit', noun: 'Visit', siteOnly: true,
     fields: [
       ['visit_date', 'Date', 'date', { required: true, today: true }],
       ['time_in', 'Arrived', 'time'],
@@ -4391,7 +4390,8 @@ async function saveRptEntry(list, entryId) {
     body[key] = v;
   }
   const entry = entryId ? state.rpt[list].find(x => x.id === entryId) : null;
-  const base = !form.siteWide || state.rpt.site ? rptBase(entry)
+  const base = form.siteOnly ? '/repeaters/site'
+    : !form.siteWide || state.rpt.site ? rptBase(entry)
     : entry ? rptScopeEdit('rf-scope', entry, body)
     : rptScopeBase('rf-scope');
   try {

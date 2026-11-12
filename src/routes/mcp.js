@@ -232,7 +232,7 @@ export const TOOLS = [
   {
     name: 'list_repeaters',
     title: 'List repeaters',
-    description: 'The club repeaters with frequencies, tones, site, status, open report count, last site visit, and maintenance or listing renewals due within 60 days (or overdue). Screen PINs are left out.',
+    description: 'The club repeaters with frequencies, tones, site, status, open report count, the site\'s last visit, and maintenance or listing renewals due within 60 days (or overdue). Screen PINs are left out.',
     inputSchema: { type: 'object', properties: {} },
     annotations: READ,
     run: async (a, ctx) => {
