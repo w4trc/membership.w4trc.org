@@ -21,7 +21,7 @@
  */
 
 import { POSITIONS, officersByYear } from '../lib/officers.js';
-import { clubToday } from '../lib/clubDate.js';
+import { clubToday, clubYear } from '../lib/clubDate.js';
 import { requireAuth, hashPassword, createSession } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
@@ -320,7 +320,7 @@ async function portalRegister(request, env) {
 async function portalMe(env, user) {
   if (!user.memberId) return jsonError('No member record linked to this account', 404);
 
-  const year = new Date().getFullYear();
+  const year = clubYear();
   const member = await env.DB.prepare(`
     SELECT
       m.*,
@@ -972,7 +972,7 @@ export async function handleDirectoryPage(request, env) {
 }
 
 function directoryPageHtml(members, officerYears = []) {
-  const year = new Date().getFullYear();
+  const year = clubYear();
   const count = members.length;
 
   const officerRows = officerYears.map(y => `<tr>

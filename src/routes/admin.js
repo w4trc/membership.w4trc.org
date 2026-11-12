@@ -26,7 +26,7 @@ import { repeatersComingDue } from './repeaters.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
-import { clubToday }                  from '../lib/clubDate.js';
+import { clubToday, clubYear }        from '../lib/clubDate.js';
 import { duesYear }                   from '../lib/duesYear.js';
 import { IN_GOOD_STANDING }           from '../lib/standing.js';
 import { treasurerReport, treasurerCsv, parseReportYear } from '../lib/treasurerReport.js';
@@ -424,7 +424,7 @@ async function changePassword(request, env, user) {
 }
 
 async function getDashboardStats(env) {
-  const year = new Date().getFullYear();
+  const year = clubYear();
 
   const [members, eastmanYear, memberships, recentActivity, notRenewed, expiringLicenses] = await Promise.all([
     env.DB.prepare(`
@@ -493,7 +493,7 @@ async function runCutoff(request, env, user) {
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
 
-  const year   = parseInt(body.year, 10) || new Date().getFullYear();
+  const year   = parseInt(body.year, 10) || clubYear();
   const dryRun = body.dry_run !== false; // default to dry_run for safety
 
   // Members who are active (not silent key) and have no paid/exempt record for the year

@@ -933,7 +933,7 @@ To cut the agent off, deactivate that login account or change `MCP_TOKEN`.
 
 - Passwords hashed with PBKDF2 (100,000 iterations, SHA-256)
 - Sessions stored server-side in D1 (not JWT — no token theft risk); 30 days for admin and board, 8 hours for members
-- Rate limiting on login, password reset, and portal verification (10 attempts/15 min per IP); 120 requests/min on the rest of the auth and portal API
+- Rate limiting on login, password reset, and portal verification (10 attempts/15 min per IP), and 40 per 15 min on the other forms that need no login (registration, member lookup, callsign lookup). Ordinary page loads are not counted, which keeps the limiter inside the free plan's daily KV writes
 - Full audit trail on all significant actions
 - Members can call only their portal, online payment and password change; every other API area is checked for an officer login in one place (`mayCallApi` in `src/lib/auth.js`), so a new route is closed to members by default
 - Admin-only endpoints protected at route level

@@ -7,6 +7,7 @@
  */
 
 import { isBoardOrAbove } from '../lib/auth.js';
+import { clubYear } from '../lib/clubDate.js';
 import { jsonResponse, jsonError } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 
@@ -30,7 +31,7 @@ export async function handleMemberships(request, env, path, user) {
 }
 
 async function listMemberships(request, env, user, url) {
-  const year     = parseInt(url.searchParams.get('year') || String(new Date().getFullYear()), 10);
+  const year     = parseInt(url.searchParams.get('year') || String(clubYear()), 10);
   const status   = url.searchParams.get('status') || 'all';
 
   let where  = ['ms.year = ?'];
@@ -162,7 +163,7 @@ async function updateMembership(request, env, user, id) {
 }
 
 async function getStats(request, env, user, url) {
-  const year = parseInt(url.searchParams.get('year') || String(new Date().getFullYear()), 10);
+  const year = parseInt(url.searchParams.get('year') || String(clubYear()), 10);
 
   const stats = await env.DB.prepare(`
     SELECT

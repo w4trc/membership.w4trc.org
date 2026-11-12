@@ -5,22 +5,34 @@
 
 const LIMITS = {
   login:  { window: 900,  max: 10  }, // 10 attempts per 15 min
-  api:    { window: 60,   max: 120 }, // 120 req/min general
+  public: { window: 900,  max: 40  }, // 40 per 15 min for the other no-login forms
   donate: { window: 900,  max: 10  }, // 10 public donation checkouts per 15 min
   demo:   { window: 900,  max: 30  }, // 30 renewal demo checkouts per 15 min
 };
 
-export async function rateLimit(request, env, type = 'api') {
+// Calls that carry a password or code, or send an email: the strict bucket
+const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/portal/request-token', '/portal/claim'];
+// The other calls anyone can make without logging in
+const PUBLIC_PATHS = ['/auth/reset-password', '/portal/lookup', '/portal/register', '/portal/callsign-lookup/'];
+
+// Only the calls above are counted. Everything else under /api/auth and
+// /api/portal (the session check on every page load, a member's own portal
+// pages) costs no KV write: the free plan allows 1,000 writes a day, and a
+// limiter that has run out of writes lets everything through.
+export function rateLimitBucket(pathname, type) {
+  if (LIMITS[type]) return type;
+  if (LOGIN_PATHS.some(p => pathname.includes(p))) return 'login';
+  if (PUBLIC_PATHS.some(p => pathname.includes(p))) return 'public';
+  return null;
+}
+
+export async function rateLimit(request, env, type) {
   if (!env.RATE_LIMIT_KV) return null; // Skip if KV not configured
 
-  const ip  = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const url = new URL(request.url);
+  const key = rateLimitBucket(new URL(request.url).pathname, type);
+  if (!key) return null;
 
-  // Routes that carry credentials or trigger outbound emails get the strict login bucket
-  const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/portal/request-token', '/portal/claim'];
-  const detectedKey = LOGIN_PATHS.some(p => url.pathname.includes(p)) ? 'login' : 'api';
-  // Caller can override with an explicit type; fall back to path detection
-  const key   = LIMITS[type] ? type : detectedKey;
+  const ip  = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = LIMITS[key];
   const kvKey = `rl:${key}:${ip}`;
 

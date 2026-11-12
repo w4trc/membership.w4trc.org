@@ -95,6 +95,21 @@ describe('who may call the API', () => {
     expect(await call('board', 'DELETE', `/api/members/${memberId}`)).toBe(403);
   });
 
+  it('shows the printable directory, with its phone numbers and emails, to officers only', async () => {
+    const page = async (role) => {
+      const ctx = createExecutionContext();
+      const res = await worker.fetch(new Request('https://members.w4trc.org/print', {
+        redirect: 'manual',
+        headers: role ? { Cookie: `karc_session=${SESSIONS[role]}` } : {},
+      }), env, ctx);
+      await waitOnExecutionContext(ctx);
+      return res.status;
+    };
+    expect(await page(null)).toBe(302);
+    expect(await page('member')).toBe(302);
+    expect(await page('board')).toBe(200);
+  });
+
   it('still gives members their portal, password change and online payment', async () => {
     expect(await call('member', 'GET', '/api/portal/me')).toBe(200);
     expect(await call('member', 'GET', '/api/portal/history')).toBe(200);

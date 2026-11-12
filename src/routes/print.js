@@ -7,6 +7,7 @@
  */
 
 import { requireAuth, isBoardOrAbove } from '../lib/auth.js';
+import { clubYear } from '../lib/clubDate.js';
 import { memberCredential } from '../lib/standing.js';
 import { treasurerReport, parseReportYear, EASTMAN_PER_MEMBER } from '../lib/treasurerReport.js';
 
@@ -14,11 +15,11 @@ const CLASS_ORDER = ['Amateur Extra', 'Advanced', 'General', 'Technician Plus', 
 
 export async function handlePrint(request, env) {
   const authResult = await requireAuth(request, env);
-  if (!authResult.ok) {
+  if (!authResult.ok || !isBoardOrAbove(authResult.user)) {
     return new Response(null, { status: 302, headers: { Location: '/' } });
   }
 
-  const year = new Date().getFullYear();
+  const year = clubYear();
 
   const { results: members } = await env.DB.prepare(`
     SELECT m.callsign, m.first_name, m.last_name, m.license_class, m.phone, m.email, m.city, m.state,

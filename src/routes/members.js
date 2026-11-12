@@ -342,7 +342,7 @@ async function createMember(request, env, user) {
   // Auto-create current-year membership record if requested (or always for Eastman members)
   const isEastman = body.is_eastman_member ? true : false;
   if (body.create_membership || isEastman) {
-    const year = new Date().getFullYear();
+    const year = clubYear();
     const isLifetimeHonorary = body.membership_type === 'lifetime_honorary';
     const duesType = isLifetimeHonorary ? 'individual' : (body.membership_type || 'individual');
     const amtDue  = (isLifetimeHonorary || isEastman) ? 0.00 : (body.membership_type === 'family' ? 30.00 : 20.00);

@@ -212,6 +212,7 @@ async function doLogin() {
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
 async function doLogout() {
+  if (!leavePageOk()) return;
   if (DEMO) { demoStartOver(); return; }
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
@@ -428,18 +429,19 @@ window.addEventListener('popstate', e => {
   if (DEMO || !state.user) return;
   const to = e.state?.i ?? 0;
   if (popIgnore) { popIgnore = false; histIdx = to; return; }
-  if (modalDirty && !confirm(DISCARD_MSG)) {
+  if ((modalDirty || pageDirty) && !confirm(DISCARD_MSG)) {
     // Step back to where the form is
     if (histIdx !== to) { popIgnore = true; history.go(histIdx - to); }
     return;
   }
   histIdx = to;
+  pageDirty = false;
   route();
 });
 
 // Leaving the site or reloading with a half-filled form asks first
 window.addEventListener('beforeunload', e => {
-  if (!modalDirty) return;
+  if (!modalDirty && !pageDirty) return;
   e.preventDefault();
   e.returnValue = '';
 });
@@ -459,8 +461,12 @@ document.addEventListener('click', e => {
   const a = e.target.closest?.('a.nav-item');
   if (!a || a.target || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
+  if (!leavePageOk()) return;
   closeNav();
   closePortalNav();
+  // A sidebar click opens the plain list, the same as its address does
+  if (a.dataset.page === 'members') state.memberFilters = { ...MEMBER_FILTERS };
+  if (a.dataset.page === 'memberships') state.memberYear = new Date().getFullYear();
   if (a.dataset.shell) return a.dataset.shell === 'admin' ? showAdmin() : showPortal();
   if (a.dataset.ppage) pNav(a.dataset.ppage);
   else nav(a.dataset.page);
@@ -1117,7 +1123,7 @@ function openAddMember() {
     </div>
     ${fi('Notes (optional)','f-bio','','textarea')}
   `, 'Add New Member', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save Member', cls: 'btn-primary', fn: 'saveMember()' },
   ]);
 
@@ -1282,7 +1288,7 @@ async function openEditMember(id) {
       <input type="text" id="e-interests" value="${escHtml(m.interests||'')}" placeholder="DX, CW, VHF contesting…">
     </div>
   `, 'Edit: ' + m.first_name + ' ' + m.last_name + (m.callsign ? ' (' + m.callsign + ')' : ''), [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save Changes', cls: 'btn-primary', fn: 'updateMember(' + id + ')' },
   ]);
 
@@ -1473,7 +1479,7 @@ async function openAddDues(memberId, memberName, memberType) {
     </div>
     ${fi('Notes','d-notes','','textarea')}
   `, 'Record Membership Payment', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save', cls: 'btn-primary', fn: 'saveDues(' + memberId + ')' },
   ]);
 }
@@ -1563,7 +1569,7 @@ async function openEditDues(id, memberId) {
     </div>
     ${fi('Notes','ed-notes',ms.notes||'','textarea')}
   `, 'Edit Membership Record – ' + ms.year, [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save', cls: 'btn-primary', fn: 'updateDues(' + id + ',' + (memberId || 'null') + ')' },
   ]);
 }
@@ -1797,7 +1803,7 @@ async function openAddDonation(memberId, memberName) {
     </div>
     ${fi('Notes','dn-notes','','textarea')}
   `, 'Record Donation', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save', cls: 'btn-primary', fn: 'saveDonation(' + (memberId || 'null') + ')' },
   ]);
   onDonorTypeChange();
@@ -1923,7 +1929,7 @@ async function openEditDonation(id, memberId) {
     </div>
     ${fi('Notes','edn-notes',d.notes||'','textarea')}
   `, 'Edit Donation', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Delete', cls: 'btn-danger',    fn: 'deleteDonation(' + id + ',' + (memberId||'null') + ')' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'updateDonation(' + id + ',' + (memberId||'null') + ')' },
   ]);
@@ -2147,7 +2153,7 @@ function openMeetingForm(mt = null, attendees = []) {
     </div>
     ${fi('Notes', 'mt-notes', mt?.notes || '', 'textarea')}
   `, mt ? 'Edit Meeting' : 'Record Meeting', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveMeeting(' + (mt?.id || 'null') + ')' },
   ]);
   if (calls) previewCallsigns();
@@ -2298,7 +2304,7 @@ function openNewAgenda() {
     </div>
     <p class="form-hint" style="margin-top:12px">Board meetings get a shorter checklist, without the pledge, prayer, and presentation. Business still open on the last agenda of the same kind is carried over. If the meeting is already recorded under Attendance, the agenda is added to it.</p>
   `, 'New Agenda', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Create', cls: 'btn-primary',   fn: 'createAgenda()' },
   ]);
 }
@@ -2665,7 +2671,7 @@ function openAgItem(id) {
     ${i.carried_from_date ? `<p class="form-hint" style="margin-top:8px">Carried over from the ${escHtml(fmtDay(i.carried_from_date))} agenda.</p>` : ''}
   `, title, [
     { label: 'Delete', cls: 'btn-danger',    fn: 'deleteAgItem(' + id + ')' },
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveAgItem(' + id + ')' },
   ]);
 }
@@ -2700,7 +2706,7 @@ function openAgMotion(id = null) {
     </div>
   `, id ? 'Edit Motion' : 'Record Motion', [
     ...(id ? [{ label: 'Delete', cls: 'btn-danger', fn: 'deleteAgMotion(' + id + ')' }] : []),
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveAgMotion(' + (id || 'null') + ')' },
   ]);
 }
@@ -3154,7 +3160,7 @@ function addInvLocation() {
     ${fi('Location Name', 'inv-loc-name', '', 'text', 'e.g. Clubhouse, Trailer', true)}
     <p class="text-muted" style="font-size:12px;margin-top:8px">Current locations: ${invMeta.locations.map(l => escHtml(l.name)).join(', ') || 'none'}</p>
   `, 'Add Location', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveInvLocation()' },
   ]);
 }
@@ -3834,7 +3840,7 @@ function openRptForm(r = null) {
       ${fi('Sort order', 'rpt-sort', r ? v('sort_order') : '', 'number', 'Lower numbers show first')}
     </div>
   `, r ? 'Edit Repeater' : 'Add Repeater', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveRepeater(' + (r?.id || 'null') + ')' },
   ]);
 }
@@ -3964,7 +3970,7 @@ function openRptEntry(list, entryId = null, preset = null) {
     ${list === 'reports' ? '<p class="form-hint" style="margin-top:12px">Marking a report resolved dates it today unless you give another date.</p>' : ''}
     ${list === 'maintenance' ? '<p class="form-hint" style="margin-top:12px">Give a next-due date for things that come around again, like a listing renewal. When you log the same thing again, its new due date replaces the old one.</p>' : ''}
   `, (e ? 'Edit ' : 'Log ') + form.title, [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: "saveRptEntry('" + list + "', " + (entryId || 'null') + ')' },
   ]);
 }
@@ -4067,7 +4073,7 @@ function editRptPhoto(photoId) {
       ${state.rpt.site ? '' : '<div class="form-group"><label>For</label>' + rptScopeSelect('rpt-photo-edit-scope', p) + '</div>'}
     </div>
   `, 'Edit Photo', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'saveRptPhoto(' + photoId + ')' },
   ]);
 }
@@ -4108,7 +4114,7 @@ function openRptDoc(mode) {
     </div>
     ${mode === 'file' ? '<p class="form-hint" style="margin-top:12px">Up to 25 MB. PDFs and pictures open in the browser; other files download.</p>' : ''}
   `, mode === 'file' ? 'Upload File' : 'Add Link', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: mode === 'file' ? 'Upload' : 'Save', cls: 'btn-primary', fn: "saveRptDoc('" + mode + "')" },
   ]);
 }
@@ -4163,7 +4169,7 @@ function editRptDoc(docId) {
       ${d.url ? fi('Web address', 'rpt-doc-url', d.url, 'url') : ''}
     </div>
   `, 'Edit ' + (d.url ? 'Link' : 'File'), [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Save',   cls: 'btn-primary',   fn: 'updateRptDoc(' + docId + ')' },
   ]);
 }
@@ -4366,7 +4372,7 @@ function openAddUser() {
       </select>
     </div>
   `, 'Add User Account', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Create', cls: 'btn-primary', fn: 'saveNewUser()' },
   ]);
 }
@@ -4448,7 +4454,7 @@ function openChangePassword() {
       ${fi('Confirm New Password','cp-confirm','','password')}
     </div>
   `, 'Change My Password', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Update Password', cls: 'btn-primary', fn: 'changeMyPassword()' },
   ]);
 }
@@ -4739,7 +4745,7 @@ function openOfficerForm(id = null, year = null, position = null) {
     </div>
     <p id="of-error" style="font-size:13px;color:var(--danger);margin-top:10px"></p>
   `, o ? 'Edit Officer' : 'Add Officer', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     ...(o ? [{ label: 'Remove', cls: 'btn-danger', fn: 'removeOfficer(' + o.id + ')' }] : []),
     { label: 'Save', cls: 'btn-primary', fn: 'saveOfficer(' + (o ? o.id : 'null') + ')' },
   ]);
@@ -4784,7 +4790,7 @@ function openOfficerPaste() {
     <p class="text-muted" style="font-size:12px;margin-top:6px">A range such as 1986-1988 adds every year in it. Anyone already listed is skipped. If a line cannot be read, nothing is added.</p>
     <div id="op-error" style="font-size:13px;color:var(--danger);margin-top:10px"></div>
   `, 'Paste a List of Officers', [
-    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Add', cls: 'btn-primary', fn: 'saveOfficerPaste()' },
   ]);
   document.getElementById('op-text').focus();
@@ -5056,10 +5062,23 @@ function auditDetail(r) {
 
 // ── Modal helpers ─────────────────────────────────────────────────────
 // True once something in the open window has been typed or changed. Closing
-// it by accident (a click outside, Escape, ✕, Back) asks first; Cancel and
-// a finished save do not.
+// it (Cancel, a click outside, Escape, ✕, Back) asks first; a finished save
+// does not.
 let modalDirty = false;
 const DISCARD_MSG = 'Discard the changes you have not saved?';
+
+// The same for the member's own profile form, which is a page, not a window.
+// The directory switch on that page saves by itself, so it does not count.
+let pageDirty = false;
+document.getElementById('portal-page').addEventListener('input', e => {
+  if (e.target.id?.startsWith('pf-') && e.target.id !== 'pf-directory') pageDirty = true;
+});
+
+function leavePageOk() {
+  if (pageDirty && !confirm(DISCARD_MSG)) return false;
+  pageDirty = false;
+  return true;
+}
 for (const type of ['input', 'change']) {
   document.getElementById('modal-root').addEventListener(type, () => { modalDirty = true; });
 }
@@ -5553,7 +5572,10 @@ function showPortal(page) {
   pNav(page || (payStatus?.startsWith('donation-') ? 'portal-donate' : 'portal-home'));
 }
 
-function setPortalPage(html) { document.getElementById('portal-page').innerHTML = html; }
+function setPortalPage(html) {
+  pageDirty = false;
+  document.getElementById('portal-page').innerHTML = html;
+}
 
 const PORTAL_TITLES = {
   'portal-home':    'My Dashboard',
@@ -5773,6 +5795,7 @@ async function saveProfile() {
       emergency_name:  gv('pf-emerg-name'),
       emergency_phone: gv('pf-emerg-phone'),
     });
+    pageDirty = false;
     toast('Profile saved ✓');
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
