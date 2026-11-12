@@ -169,4 +169,40 @@ describe('Sunday cron', () => {
     expect(emails[0].html).toContain('W4CCC');
     expect(emails[0].html).toContain('2027 members');
   });
+
+  describe('repeater maintenance and renewals', () => {
+    async function repeater(name, status = 'active') {
+      return (await env.DB.prepare(`INSERT INTO repeaters (name, status) VALUES (?, ?)`).bind(name, status).run()).meta.last_row_id;
+    }
+    const due = (id, title, next_due, done_date = null) => env.DB.prepare(`
+      INSERT INTO repeater_maintenance (repeater_id, kind, title, done_date, next_due) VALUES (?, 'listing', ?, ?, ?)
+    `).bind(id, title, done_date, next_due).run();
+
+    it('sends a week with only repeater items due, overdue first', async () => {
+      const id = await repeater('2m Bays Mountain');
+      await due(id, 'SERA coordination', '2026-06-01', '2025-06-01');  // overdue
+      await due(id, 'RepeaterBook listing', '2026-07-20');             // within 60 days
+      await due(id, 'FCC license', '2027-06-01');                      // too far off
+
+      const body = await (await roundup(SUMMER)).json();
+      expect(body).toMatchObject({ sent: true, new_payments: 0, repeater_due: 2 });
+      const html = emails[0].html;
+      expect(html).toContain('Repeater maintenance &amp; renewals due (2)');
+      expect(html).toContain('2m Bays Mountain');
+      expect(html.indexOf('SERA coordination')).toBeLessThan(html.indexOf('RepeaterBook listing'));
+      expect(html).toContain('2026-06-01 (overdue)');
+      expect(html).not.toContain('2026-07-20 (overdue)');
+      expect(html).not.toContain('FCC license');
+    });
+
+    it('leaves out renewals done again and retired repeaters', async () => {
+      const id = await repeater('2m');
+      await due(id, 'RepeaterBook listing', '2026-06-01', '2025-06-01');
+      await due(id, 'RepeaterBook listing', '2027-06-10', '2026-06-10');  // renewed: replaces the due date above
+      await due(await repeater('Old 440', 'retired'), 'Site lease', '2026-06-01');
+
+      expect(await (await roundup(SUMMER)).json()).toMatchObject({ sent: false, reason: 'nothing_new' });
+      expect(emails).toHaveLength(0);
+    });
+  });
 });

@@ -7,6 +7,14 @@ import { env } from 'cloudflare:workers';
 export async function resetDb() {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM audit_log'),
+    env.DB.prepare('DELETE FROM repeater_visits'),
+    env.DB.prepare('DELETE FROM repeater_reports'),
+    env.DB.prepare('DELETE FROM repeater_maintenance'),
+    env.DB.prepare('DELETE FROM repeater_notes'),
+    env.DB.prepare('DELETE FROM repeater_contacts'),
+    env.DB.prepare('DELETE FROM repeater_photos'),
+    env.DB.prepare('DELETE FROM repeater_documents'),
+    env.DB.prepare('DELETE FROM repeaters'),
     env.DB.prepare('DELETE FROM agenda_checks'),
     env.DB.prepare('DELETE FROM agenda_reports'),
     env.DB.prepare('DELETE FROM agenda_motions'),

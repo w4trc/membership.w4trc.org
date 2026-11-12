@@ -22,6 +22,7 @@ import { hashPassword }               from '../lib/auth.js';
 import { jsonResponse, jsonError }    from '../lib/response.js';
 import { audit }                      from '../lib/audit.js';
 import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
+import { repeatersComingDue } from './repeaters.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
 import { backupDatabase }             from '../lib/backup.js';
@@ -706,13 +707,17 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
     ORDER BY d.created_at DESC
   `).all();
 
-  if (newPayments.length === 0 && newProspects.length === 0 && newDonations.length === 0) {
+  // Repeater maintenance and renewals overdue or due soon. These come back
+  // every week until someone logs them done, so an overdue listing is not forgotten.
+  const today = clubToday(now);
+  const repeaterDue = await repeatersComingDue(env, today);
+
+  if (newPayments.length === 0 && newProspects.length === 0 && newDonations.length === 0 && repeaterDue.length === 0) {
     return { sent: false, reason: 'nothing_new' };
   }
 
   // Members in good standing for this year, and for next year once renewal
   // season opens in October
-  const today    = clubToday(now);
   const thisYear = Number(today.slice(0, 4));
   const years    = [...new Set([thisYear, duesYear(new Date(`${today}T12:00:00Z`))])];
   const counts   = await env.DB.batch(years.map(year => env.DB.prepare(`
@@ -726,11 +731,12 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
 
   const weekOf = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
-  await sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects, newDonations, memberCounts, weekOf });
+  await sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects, newDonations, memberCounts, weekOf, repeaterDue, today });
 
   return {
     sent: true, recipients: boardEmails.length,
     new_payments: newPayments.length, new_prospects: newProspects.length, new_donations: newDonations.length,
+    repeater_due: repeaterDue.length,
   };
 }
 

@@ -92,7 +92,7 @@ describe('MCP protocol', () => {
     const names = body.result.tools.map(t => t.name);
     expect(names).toEqual(TOOLS.map(t => t.name));
     const writes = body.result.tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name);
-    expect(writes.sort()).toEqual(['add_agenda_item', 'add_meeting_attendees', 'add_note', 'record_meeting']);
+    expect(writes.sort()).toEqual(['add_agenda_item', 'add_meeting_attendees', 'add_note', 'add_repeater_report', 'record_meeting']);
   });
 
   it('returns an error for an unknown tool', async () => {
@@ -158,7 +158,7 @@ describe('MCP tools', () => {
       get_member: { member_id: id }, treasurer_report: { year: 2026 }, lookup_callsign: { callsign: 'W4AAA' },
       resolve_callsigns: { callsigns: ['W4AAA'] },
     };
-    const skip = ['get_meeting', 'get_agenda', 'get_inventory_item', 'lookup_callsign']; // need fixtures / network
+    const skip = ['get_meeting', 'get_agenda', 'get_inventory_item', 'get_repeater', 'lookup_callsign']; // need fixtures / network
     for (const t of TOOLS.filter(t => t.annotations.readOnlyHint && !skip.includes(t.name))) {
       const r = await call(t.name, args[t.name] || {});
       expect(r.isError, `${t.name}: ${r.text}`).toBe(false);
@@ -182,5 +182,24 @@ describe('MCP tools', () => {
     expect(got.data.items.map(i => i.title)).toEqual(['Buy coax']);
 
     expect((await call('add_agenda_item', { agenda_id: agendaId, section: 'gossip', title: 'x' })).isError).toBe(true);
+  });
+
+  it('reads repeaters without their screen PINs and logs reports', async () => {
+    const r = await env.DB.prepare(`INSERT INTO repeaters (name, output_freq, screen_pin) VALUES ('2m', '146.970', '4321')`).run();
+    const repeaterId = r.meta.last_row_id;
+
+    const listed = await call('list_repeaters', {});
+    expect(listed.data.repeaters).toHaveLength(1);
+    expect(listed.data.repeaters[0]).toMatchObject({ id: repeaterId, has_screen_pin: true });
+    expect(listed.text).not.toContain('4321');
+
+    const added = await call('add_repeater_report', { repeater_id: repeaterId, category: 'noise', description: 'Hum on the input' });
+    expect(added.isError, added.text).toBe(false);
+    expect(added.data).toMatchObject({ category: 'noise', status: 'open' });
+
+    const got = await call('get_repeater', { repeater_id: repeaterId });
+    expect(got.text).not.toContain('4321');
+    expect(got.data.reports.map(x => x.description)).toEqual(['Hum on the input']);
+    expect((await call('add_repeater_report', { repeater_id: repeaterId, category: 'gossip', description: 'x' })).isError).toBe(true);
   });
 });
