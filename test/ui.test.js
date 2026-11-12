@@ -97,3 +97,44 @@ describe('repeater note Markdown', () => {
     expect(html).toContain('<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>');
   });
 });
+
+describe('page addresses', () => {
+  it('round-trips every admin page, detail page, and portal page', async () => {
+    const adminPath = await servedFunction('adminPath');
+    const portalPath = await servedFunction('portalPath');
+    const parseRoute = await servedFunction('parseRoute');
+
+    expect(adminPath('dashboard')).toBe('/admin');
+    expect(adminPath('googleGroups')).toBe('/admin/google-groups');
+    expect(adminPath('repeaters', 3, 'maintenance')).toBe('/admin/repeaters/3/maintenance');
+    expect(portalPath('portal-home')).toBe('/portal');
+    expect(portalPath('portal-history')).toBe('/portal/history');
+
+    for (const page of ['dashboard', 'members', 'googleGroups', 'agendas']) {
+      expect(parseRoute(adminPath(page))).toMatchObject({ shell: 'admin', page });
+    }
+    expect(parseRoute('/admin/members/42')).toMatchObject({ page: 'members', id: '42' });
+    expect(parseRoute('/admin/repeaters/site/photos')).toMatchObject({ page: 'repeaters', id: 'site', tab: 'photos' });
+    for (const page of ['portal-home', 'portal-profile', 'portal-donate']) {
+      expect(parseRoute(portalPath(page))).toEqual({ shell: 'portal', page });
+    }
+  });
+
+  it('leaves other addresses to the default landing page', async () => {
+    const parseRoute = await servedFunction('parseRoute');
+    expect(parseRoute('/')).toBeNull();
+    expect(parseRoute('/i/12')).toBeNull();
+    expect(parseRoute('/reset-password')).toBeNull();
+  });
+
+  it('gives every sidebar link the address its page answers to', async () => {
+    const html = await serveUI(new Request('https://members.w4trc.org/'), {}).text();
+    const adminPath = await servedFunction('adminPath');
+    const portalPath = await servedFunction('portalPath');
+    const links = [...html.matchAll(/<a class="nav-item[^>]*href="([^"]+)" data-(p?)page="([^"]+)"/g)];
+    expect(links.length).toBe(21);
+    for (const [, href, portal, page] of links) {
+      expect(href).toBe(portal ? portalPath(page) : adminPath(page));
+    }
+  });
+});

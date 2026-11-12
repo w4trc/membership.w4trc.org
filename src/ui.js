@@ -592,59 +592,59 @@ textarea { resize: vertical; min-height: 80px; }
       </div>
       <nav>
         <div class="nav-section">Main</div>
-        <a class="nav-item active" onclick="nav('dashboard');closeNav()" data-page="dashboard">
+        <a class="nav-item active" href="/admin" data-page="dashboard">
           <span class="icon">📊</span> Dashboard
         </a>
-        <a class="nav-item" onclick="nav('members');closeNav()" data-page="members">
+        <a class="nav-item" href="/admin/members" data-page="members">
           <span class="icon">👥</span> Members
         </a>
-        <a class="nav-item" onclick="nav('memberships');closeNav()" data-page="memberships">
+        <a class="nav-item" href="/admin/memberships" data-page="memberships">
           <span class="icon">💳</span> Dues & Memberships
         </a>
-        <a class="nav-item" onclick="nav('donations');closeNav()" data-page="donations">
+        <a class="nav-item" href="/admin/donations" data-page="donations">
           <span class="icon">🎁</span> Donations
         </a>
-        <a class="nav-item hidden" id="nav-treasurer" onclick="nav('treasurer');closeNav()" data-page="treasurer">
+        <a class="nav-item hidden" id="nav-treasurer" href="/admin/treasurer" data-page="treasurer">
           <span class="icon">🧾</span> Treasurer Report
         </a>
-        <a class="nav-item hidden" id="nav-attendance" onclick="nav('attendance');closeNav()" data-page="attendance">
+        <a class="nav-item hidden" id="nav-attendance" href="/admin/attendance" data-page="attendance">
           <span class="icon">📝</span> Attendance
         </a>
-        <a class="nav-item hidden" id="nav-agendas" onclick="nav('agendas');closeNav()" data-page="agendas">
+        <a class="nav-item hidden" id="nav-agendas" href="/admin/agendas" data-page="agendas">
           <span class="icon">🗒️</span> Agendas
         </a>
-        <a class="nav-item hidden" id="nav-inventory" onclick="nav('inventory');closeNav()" data-page="inventory">
+        <a class="nav-item hidden" id="nav-inventory" href="/admin/inventory" data-page="inventory">
           <span class="icon">📦</span> Inventory
         </a>
-        <a class="nav-item hidden" id="nav-repeaters" onclick="nav('repeaters');closeNav()" data-page="repeaters">
+        <a class="nav-item hidden" id="nav-repeaters" href="/admin/repeaters" data-page="repeaters">
           <span class="icon">🗼</span> Repeaters
         </a>
-        <a class="nav-item hidden" id="nav-officers" onclick="nav('officers');closeNav()" data-page="officers">
+        <a class="nav-item hidden" id="nav-officers" href="/admin/officers" data-page="officers">
           <span class="icon">🎖️</span> Officers
         </a>
-        <a class="nav-item hidden" id="nav-prospects" onclick="nav('prospects');closeNav()" data-page="prospects">
+        <a class="nav-item hidden" id="nav-prospects" href="/admin/prospects" data-page="prospects">
           <span class="icon">📡</span> Local Hams
         </a>
-        <a class="nav-item hidden" id="nav-my-membership" onclick="closeNav();showPortal()">
+        <a class="nav-item hidden" id="nav-my-membership" href="/portal" data-shell="portal">
           <span class="icon">🏠</span> My Membership
         </a>
         <div class="nav-section" id="nav-section-admin">Admin</div>
-        <a class="nav-item" onclick="nav('users');closeNav()" data-page="users">
+        <a class="nav-item" href="/admin/users" data-page="users">
           <span class="icon">🔐</span> User Accounts
         </a>
-        <a class="nav-item" onclick="nav('audit');closeNav()" data-page="audit">
+        <a class="nav-item" href="/admin/audit" data-page="audit">
           <span class="icon">📋</span> Audit Log
         </a>
-        <a class="nav-item" onclick="nav('sessions');closeNav()" data-page="sessions">
+        <a class="nav-item" href="/admin/sessions" data-page="sessions">
           <span class="icon">🔑</span> Active Sessions
         </a>
-        <a class="nav-item" onclick="nav('googleGroups');closeNav()" data-page="googleGroups">
+        <a class="nav-item" href="/admin/google-groups" data-page="googleGroups">
           <span class="icon">📧</span> Google Groups
         </a>
-        <a class="nav-item hidden" id="nav-cutoff" onclick="nav('cutoff');closeNav()" data-page="cutoff">
+        <a class="nav-item hidden" id="nav-cutoff" href="/admin/cutoff" data-page="cutoff">
           <span class="icon">⚡</span> Membership Cutoff
         </a>
-        <a class="nav-item hidden" id="nav-callsigns" onclick="nav('callsigns');closeNav()" data-page="callsigns">
+        <a class="nav-item hidden" id="nav-callsigns" href="/admin/callsigns" data-page="callsigns">
           <span class="icon">📻</span> Callsign Report
         </a>
       </nav>
@@ -688,22 +688,22 @@ textarea { resize: vertical; min-height: 80px; }
         <div class="club-name">Member Portal</div>
       </div>
       <nav>
-        <a class="nav-item active" onclick="pNav('portal-home');closePortalNav()" data-ppage="portal-home">
+        <a class="nav-item active" href="/portal" data-ppage="portal-home">
           <span class="icon">🏠</span> My Dashboard
         </a>
-        <a class="nav-item" onclick="pNav('portal-profile');closePortalNav()" data-ppage="portal-profile">
+        <a class="nav-item" href="/portal/profile" data-ppage="portal-profile">
           <span class="icon">👤</span> My Profile
         </a>
-        <a class="nav-item" onclick="pNav('portal-history');closePortalNav()" data-ppage="portal-history">
+        <a class="nav-item" href="/portal/history" data-ppage="portal-history">
           <span class="icon">📋</span> Membership History
         </a>
-        <a class="nav-item" onclick="pNav('portal-donate');closePortalNav()" data-ppage="portal-donate">
+        <a class="nav-item" href="/portal/donate" data-ppage="portal-donate">
           <span class="icon">🎁</span> Donate
         </a>
         <a class="nav-item" href="/directory" target="_blank">
           <span class="icon">📡</span> Public Directory ↗
         </a>
-        <a class="nav-item hidden" id="portal-admin-link" onclick="closePortalNav();showAdmin()">
+        <a class="nav-item hidden" id="portal-admin-link" href="/admin" data-shell="admin">
           <span class="icon">🔐</span> Admin Section
         </a>
       </nav>
@@ -959,6 +959,9 @@ async function doLogout() {
   if (DEMO) { demoStartOver(); return; }
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
+  state.pagePath = null;
+  history.replaceState(null, '', '/');
+  document.title = APP_TITLE;
   sessionStorage.removeItem('view');
   document.getElementById('main-shell').classList.add('hidden');
   document.getElementById('portal-shell').classList.add('hidden');
@@ -1040,21 +1043,72 @@ function showApp() {
   document.getElementById('portal-admin-link').classList.toggle('hidden', !officer);
   document.getElementById('nav-my-membership').classList.toggle('hidden', !u.memberId);
 
-  // Officers with a member record land on the same portal as members, with a
-  // button to the admin section. A reload keeps them in the admin section;
-  // coming back from Stripe checkout always returns to the portal.
+  route();
+}
+
+// ── URLs ──────────────────────────────────────────────────────────────
+// Every page has its own address, so a reload stays put and a link can be
+// sent to another officer. The worker serves this page for any path.
+const APP_TITLE = document.title;
+let urlQuiet = false; // true while the address itself is choosing the page
+
+function adminPath(page, id, tab) {
+  const slug = page === 'dashboard' ? '' : page === 'googleGroups' ? 'google-groups' : page;
+  return ['/admin', slug, id, tab].filter(Boolean).join('/');
+}
+
+function portalPath(page) {
+  return page === 'portal-home' ? '/portal' : '/' + page.replace('-', '/');
+}
+
+function parseRoute(pathname) {
+  const [shell, page, id, tab] = pathname.split('/').filter(Boolean);
+  if (shell === 'portal') return { shell, page: page ? 'portal-' + page : 'portal-home' };
+  if (shell !== 'admin') return null;
+  return { shell, page: page === 'google-groups' ? 'googleGroups' : page || 'dashboard', id, tab };
+}
+
+// Moving between pages adds to the browser history; arriving from anywhere
+// else (the bare site address, a scanned label) replaces that entry instead.
+function setUrl(path, replace) {
+  if (DEMO || urlQuiet || !state.user || location.pathname === path) return;
+  history[replace || !parseRoute(location.pathname) ? 'replaceState' : 'pushState'](null, '', path);
+}
+
+// The address of the page under any open window, which closing it returns to
+function pageUrl(path, replace) {
+  state.pagePath = path;
+  setUrl(path, replace);
+}
+
+function setTitle(title) {
+  if (!DEMO) document.title = title + ' – W4TRC';
+}
+
+// Show whatever the address bar asks for, if this user may see it
+function route() {
+  const u = state.user;
+  const officer = ['board','admin'].includes(u.role);
+  document.getElementById('modal-root').innerHTML = '';
+
   // A scanned equipment label (/i/:id) opens that item in the inventory
   const itemId = location.pathname.startsWith('/i/') ? parseInt(location.pathname.slice(3), 10) : 0;
   if (itemId) {
-    history.replaceState(null, '', '/');
-    if (officer) {
-      showAdmin('inventory');
-      openInvItem(itemId);
-      return;
-    }
-    toast('That label opens the club inventory, which is for officers.', 'warn');
+    history.replaceState(null, '', officer ? adminPath('inventory', itemId) : '/');
+    if (!officer) toast('That label opens the club inventory, which is for officers.', 'warn');
   }
 
+  const r = parseRoute(location.pathname);
+  urlQuiet = true;
+  try {
+    if (r?.shell === 'admin' && officer) return routeAdmin(r);
+    if (r?.shell === 'portal' && (!officer || u.memberId)) return showPortal(PORTAL_TITLES[r.page] ? r.page : 'portal-home');
+  } finally { urlQuiet = false; }
+
+  // Anywhere else: officers with a member record land on the same portal as
+  // members, unless they were last in the admin section. Coming back from
+  // Stripe checkout (/?payment=...) always returns to the portal.
+  if (location.pathname !== '/') history.replaceState(null, '', '/');
   const fromCheckout = new URLSearchParams(location.search).has('payment');
   const lastView = sessionStorage.getItem('view');
   if (!officer || (u.memberId && (fromCheckout || lastView !== 'admin'))) {
@@ -1064,7 +1118,40 @@ function showApp() {
   showAdmin();
 }
 
+function routeAdmin(r) {
+  const id = parseInt(r.id, 10);
+  adminShell();
+  if (r.page === 'agendas' && id) return openAgenda(id);
+  if (r.page === 'repeaters' && r.id === 'site') return openSite(r.tab);
+  if (r.page === 'repeaters' && id) return openRepeater(id, r.tab);
+  nav(ADMIN_TITLES[r.page] ? r.page : 'dashboard');
+  if (!id) return;
+  if (r.page === 'members') viewMember(id);
+  if (r.page === 'attendance') openMeeting(id);
+  if (r.page === 'inventory') openInvItem(id);
+}
+
+window.addEventListener('popstate', () => { if (!DEMO && state.user) route(); });
+
+// Sidebar links are real links (open in a new tab, copy the address), but a
+// plain click switches pages without reloading.
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a.nav-item');
+  if (!a || a.target || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  closeNav();
+  closePortalNav();
+  if (a.dataset.shell) return a.dataset.shell === 'admin' ? showAdmin() : showPortal();
+  if (a.dataset.ppage) pNav(a.dataset.ppage);
+  else nav(a.dataset.page);
+});
+
 function showAdmin(page = 'dashboard') {
+  adminShell();
+  nav(page);
+}
+
+function adminShell() {
   const u = state.user;
   sessionStorage.setItem('view', 'admin');
   document.getElementById('login-screen').classList.add('hidden');
@@ -1087,17 +1174,19 @@ function showAdmin(page = 'dashboard') {
     document.getElementById('nav-section-admin')?.classList.add('hidden');
     document.querySelectorAll('[data-page="users"],[data-page="audit"],[data-page="sessions"],[data-page="googleGroups"]').forEach(el => el.classList.add('hidden'));
   }
-  nav(page);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────
+const ADMIN_TITLES = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', repeaters: 'Repeaters', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+
 function nav(page) {
   state.currentPage = page;
+  pageUrl(adminPath(page));
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
-  const titles = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', repeaters: 'Repeaters', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
-  document.getElementById('page-title').textContent = titles[page] || page;
+  document.getElementById('page-title').textContent = ADMIN_TITLES[page] || page;
+  setTitle(ADMIN_TITLES[page] || page);
   document.getElementById('topbar-actions').innerHTML = '';
 
   const adminOnly = new Set(['users', 'audit', 'sessions', 'googleGroups', 'cutoff']);
@@ -1433,6 +1522,7 @@ async function exportMembersCSV() {
 }
 
 async function viewMember(id) {
+  setUrl(adminPath('members', id), true);
   showModal('<div class="spinner"></div>', 'Member Detail', []);
   try {
     const m = await api('GET', '/members/' + id);
@@ -2624,6 +2714,7 @@ async function openMeeting(id) {
   let data;
   try { data = await api('GET', '/meetings/' + id); }
   catch(e) { toast(e.data?.error || 'Failed to load meeting', 'error'); return; }
+  setUrl(adminPath('attendance', id), true);
 
   const mt = data.meeting;
   const att = data.attendees || [];
@@ -2873,6 +2964,7 @@ async function createAgenda() {
 
 async function openAgenda(id) {
   state.currentPage = 'agenda';
+  pageUrl(adminPath('agendas', id));
   document.getElementById('topbar-actions').innerHTML = '';
   setPage('<div class="spinner"></div>');
   try { showAgenda(await api('GET', '/agendas/' + id)); }
@@ -2890,8 +2982,10 @@ function showAgenda(data) {
   state.currentPage = 'agenda';
   state.agenda = data;
   const a = data.agenda;
+  pageUrl(adminPath('agendas', a.id));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'agendas'));
   document.getElementById('page-title').textContent = (MEETING_TYPES[a.meeting_type] || 'Meeting') + ' Agenda';
+  setTitle((MEETING_TYPES[a.meeting_type] || 'Meeting') + ' Agenda ' + a.meeting_date);
   document.getElementById('topbar-actions').innerHTML = \`
     <span id="ag-saved" class="text-muted" style="font-size:12px"></span>
     <button class="btn btn-secondary" onclick="nav('agendas')">← All Agendas</button>
@@ -3396,6 +3490,7 @@ async function openInvItem(id) {
   let data;
   try { data = await api('GET', '/inventory/' + id); }
   catch(e) { toast(e.data?.error || 'Failed to load item', 'error'); return; }
+  setUrl(adminPath('inventory', id), true);
 
   const it = data.item;
   const events = data.events || [];
@@ -3936,6 +4031,7 @@ async function openRepeater(id, tab) {
   state.currentPage = 'repeater';
   if (tab) state.rptTab = tab;
   else if (state.rpt?.repeater?.id !== id) state.rptTab = 'info';
+  pageUrl(adminPath('repeaters', id, state.rptTab));
   document.getElementById('topbar-actions').innerHTML = '';
   setPage('<div class="spinner"></div>');
   try { showRepeater(await api('GET', '/repeaters/' + id)); }
@@ -3946,6 +4042,7 @@ async function openRepeater(id, tab) {
 async function openSite(tab) {
   state.currentPage = 'repeater';
   if (tab || !state.rpt?.site) state.rptTab = tab || 'contacts';
+  pageUrl(adminPath('repeaters', 'site', state.rptTab));
   document.getElementById('topbar-actions').innerHTML = '';
   setPage('<div class="spinner"></div>');
   try { showRepeater({ site: true, ...(await api('GET', '/repeaters/site')) }); }
@@ -3996,8 +4093,12 @@ function showRepeater(data) {
   state.rpt = data;
   state.rptPinShown = false;
   const r = data.repeater;
+  // A tab change swaps the address in place, so Back leaves the repeater
+  const rptHome = adminPath('repeaters', data.site ? 'site' : r.id);
+  pageUrl(rptHome + '/' + state.rptTab, !!state.pagePath?.startsWith(rptHome + '/'));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'repeaters'));
   document.getElementById('page-title').textContent = data.site ? 'Repeater Site' : r.name;
+  setTitle(data.site ? 'Repeater Site' : r.name);
   document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-secondary" onclick="nav(\\'repeaters\\')">← All Repeaters</button>';
   const page = document.getElementById('page');
   const scroll = page.scrollTop;
@@ -5606,7 +5707,10 @@ function showModal(bodyHtml, title, buttons) {
   \`;
 }
 
-function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+  if (state.pagePath) setUrl(state.pagePath, true);
+}
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
@@ -6051,7 +6155,7 @@ function closePortalNav() {
   document.getElementById('portal-backdrop').classList.remove('open');
 }
 
-function showPortal() {
+function showPortal(page) {
   sessionStorage.setItem('view', 'portal');
   state.currentPage = null; // admin keyboard shortcuts stay off in the portal
   document.getElementById('login-screen').classList.add('hidden');
@@ -6066,22 +6170,25 @@ function showPortal() {
   else if (payStatus === 'donation-success') toast('Thank you! Your donation has been received.', 'success');
   else if (payStatus === 'donation-cancelled') toast('Donation cancelled — nothing was charged.', 'warn');
 
-  pNav(payStatus?.startsWith('donation-') ? 'portal-donate' : 'portal-home');
+  pNav(page || (payStatus?.startsWith('donation-') ? 'portal-donate' : 'portal-home'));
 }
 
 function setPortalPage(html) { document.getElementById('portal-page').innerHTML = html; }
 
+const PORTAL_TITLES = {
+  'portal-home':    'My Dashboard',
+  'portal-profile': 'My Profile',
+  'portal-history': 'Membership History',
+  'portal-donate':  'Donate',
+};
+
 function pNav(page) {
+  pageUrl(portalPath(page));
   document.querySelectorAll('[data-ppage]').forEach(el => {
     el.classList.toggle('active', el.dataset.ppage === page);
   });
-  const titles = {
-    'portal-home':    'My Dashboard',
-    'portal-profile': 'My Profile',
-    'portal-history': 'Membership History',
-    'portal-donate':  'Donate',
-  };
-  document.getElementById('portal-page-title').textContent = titles[page] || page;
+  document.getElementById('portal-page-title').textContent = PORTAL_TITLES[page] || page;
+  setTitle(PORTAL_TITLES[page] || page);
   if (page === 'portal-home')    portalHome();
   if (page === 'portal-profile') portalProfile();
   if (page === 'portal-history') portalHistory();
