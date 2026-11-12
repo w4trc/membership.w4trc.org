@@ -4,7 +4,7 @@
  * { code } as well; without it the answer is 401 with details.two_step = true.
  */
 
-import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, DUMMY_HASH, withD1Retry } from '../lib/auth.js';
+import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, dummyHash, withD1Retry } from '../lib/auth.js';
 import { jsonResponse, jsonError, setCookieHeader, clearCookieHeader } from '../lib/response.js';
 import { audit } from '../lib/audit.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
@@ -38,7 +38,7 @@ export async function handleAuth(request, env, path) {
 
     if (!user || !user.is_active) {
       // Still verify to prevent timing attacks
-      await verifyPassword(password, await DUMMY_HASH);
+      await verifyPassword(password, await dummyHash());
       await audit(env, { action: 'login.failed', detail: { email, reason: 'user_not_found' }, request });
       return jsonError('Invalid email or password', 401);
     }

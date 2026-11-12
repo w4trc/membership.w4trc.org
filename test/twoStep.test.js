@@ -63,6 +63,18 @@ describe('two-step sign-in', () => {
     expect((await auth('GET', '/api/auth/two-step', null, res.cookie)).body).toEqual({ enabled: false, recovery_left: 0 });
   });
 
+  it('answers a wrong email or password the same way, without an error', async () => {
+    const unknown = await auth('POST', '/api/auth/login', { email: 'nobody@example.com', password: PASSWORD });
+    expect(unknown.status).toBe(401);
+    expect(unknown.body.error).toBe('Invalid email or password');
+    const wrong = await auth('POST', '/api/auth/login', { email: EMAIL, password: 'not the password' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toBe(unknown.body.error);
+
+    await env.DB.prepare('UPDATE users SET is_active = 0 WHERE id = ?').bind(userId).run();
+    expect((await login()).status).toBe(401);
+  });
+
   it('needs a login to set up, and the password again', async () => {
     expect((await auth('POST', '/api/auth/two-step/setup', { password: PASSWORD })).status).toBe(401);
     const { cookie } = await login();

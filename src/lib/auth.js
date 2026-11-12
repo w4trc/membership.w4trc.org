@@ -6,9 +6,15 @@
 
 // ── Password hashing (PBKDF2 via Web Crypto) ─────────────────────────────────
 
-// Computed once at module load so verifyPassword always does real PBKDF2 work
-// even when the account doesn't exist, preventing timing-based account enumeration.
-export const DUMMY_HASH = hashPassword('__karc_timing_dummy__');
+// A hash to check against when the account doesn't exist, so verifyPassword
+// always does real PBKDF2 work and timing doesn't reveal which emails have a
+// login. Made on first use, not at module load: Workers refuse to generate
+// random values (the salt) outside a request.
+let dummyHashPromise;
+export function dummyHash() {
+  dummyHashPromise ??= hashPassword('__karc_timing_dummy__');
+  return dummyHashPromise;
+}
 
 export async function hashPassword(password) {
   const enc     = new TextEncoder();
