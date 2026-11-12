@@ -238,6 +238,21 @@ tr:last-child td { border-bottom: none; }
 .rpt-tabs .tab { white-space: nowrap; flex-shrink: 0; }
 .rpt-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .rpt-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; }
+.rpt-md { white-space: normal; line-height: 1.55; overflow-wrap: anywhere; }
+.rpt-md > :first-child { margin-top: 0; }
+.rpt-md > :last-child { margin-bottom: 0; }
+.rpt-md p, .rpt-md ul, .rpt-md ol, .rpt-md blockquote, .rpt-md pre { margin: 0 0 8px; }
+.rpt-md ul, .rpt-md ol { padding-left: 22px; }
+.rpt-md li.rpt-task { list-style: none; margin-left: -18px; }
+.rpt-md li.rpt-task.done { color: var(--text-muted); }
+.rpt-md h3, .rpt-md h4, .rpt-md h5, .rpt-md h6 { margin: 12px 0 6px; font-weight: 600; }
+.rpt-md h3 { font-size: 16px; } .rpt-md h4 { font-size: 14px; } .rpt-md h5, .rpt-md h6 { font-size: 13px; }
+.rpt-md code { font-family: var(--mono); font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.rpt-md pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+.rpt-md pre code { border: none; padding: 0; background: none; }
+.rpt-md blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); }
+.rpt-md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.rpt-md a { color: var(--accent); }
 a.officer { cursor: pointer; color: inherit; text-decoration: none; }
 a.officer:hover { color: var(--accent); }
 .badge-green  { background: rgba(46,204,113,.15); color: var(--success); }
@@ -3744,6 +3759,103 @@ function rptSize(n) {
 
 function rptMultiline(s) { return escHtml(s || '').replace(/\\n/g, '<br>'); }
 
+// ── Markdown for site notes ──
+// A small renderer, enough for notes: headings, bold, italic, strikethrough,
+// code, links, lists (with [ ] / [x] checkboxes), quotes, and rules. All text
+// is escaped first, and links may only be web, email, or phone links, so a
+// note can never add its own HTML or script to the page.
+function rptSafeUrl(url) {
+  return /^(https?:[/][/]|mailto:|tel:)/i.test(url) ? url : null;
+}
+
+function rptInline(text) {
+  const held = [];
+  const hold = html => '\\u0000' + (held.push(html) - 1) + '\\u0000';
+  let s = String(text);
+  // Code spans first, so nothing inside them is formatted
+  s = s.replace(/\`([^\`]+)\`/g, (_, c) => hold('<code>' + escHtml(c) + '</code>'));
+  // [text](url)
+  s = s.replace(/\\[([^\\]]+)\\]\\(([^)\\s]+)\\)/g, (m, label, url) => {
+    const safe = rptSafeUrl(url);
+    return safe ? hold('<a href="' + escHtml(safe) + '" target="_blank" rel="noopener noreferrer">' + rptInline(label) + '</a>') : m;
+  });
+  // Bare web addresses
+  s = s.replace(/https?:[/][/][^\\s<>()]+[^\\s<>().,;:!?'"]/g, url =>
+    hold('<a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escHtml(url) + '</a>'));
+  s = escHtml(s)
+    .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\\*([^*\\s][^*]*)\\*/g, '$1<em>$2</em>')
+    .replace(/(^|[^_A-Za-z0-9])_([^_\\s][^_]*)_(?![A-Za-z0-9])/g, '$1<em>$2</em>')
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  return s.replace(/\\u0000([0-9]+)\\u0000/g, (_, i) => held[Number(i)]);
+}
+
+function rptMarkdown(src) {
+  const lines = String(src || '').replace(/\\r\\n?/g, '\\n').split('\\n');
+  const out = [];
+  let para = [], list = null, quote = [], code = null;
+  const flushPara = () => { if (para.length) out.push('<p>' + para.map(rptInline).join('<br>') + '</p>'); para = []; };
+  const flushQuote = () => { if (quote.length) out.push('<blockquote>' + quote.map(rptInline).join('<br>') + '</blockquote>'); quote = []; };
+  const closeList = () => { if (list) out.push('</' + list + '>'); list = null; };
+  const flushAll = () => { flushPara(); flushQuote(); closeList(); };
+  for (const line of lines) {
+    if (code) {
+      if (/^\\s*\`\`\`/.test(line)) { out.push('<pre><code>' + escHtml(code.join('\\n')) + '</code></pre>'); code = null; }
+      else code.push(line);
+      continue;
+    }
+    let m;
+    if (/^\\s*\`\`\`/.test(line)) { flushAll(); code = []; continue; }
+    if (!line.trim()) { flushAll(); continue; }
+    if ((m = /^(#{1,4})\\s+(.+)$/.exec(line))) {
+      flushAll();
+      const n = m[1].length + 2; // # is h3 inside a note
+      out.push('<h' + n + '>' + rptInline(m[2]) + '</h' + n + '>');
+      continue;
+    }
+    if (/^\\s*([-*_])(\\s*\\1){2,}\\s*$/.test(line)) { flushAll(); out.push('<hr>'); continue; }
+    if ((m = /^\\s*>\\s?(.*)$/.exec(line))) { flushPara(); closeList(); quote.push(m[1]); continue; }
+    const bullet = /^\\s*[-*+]\\s+(.*)$/.exec(line);
+    const number = /^\\s*[0-9]+[.)]\\s+(.*)$/.exec(line);
+    if (bullet || number) {
+      flushPara(); flushQuote();
+      const type = bullet ? 'ul' : 'ol';
+      if (list !== type) { closeList(); out.push('<' + type + '>'); list = type; }
+      let item = (bullet || number)[1];
+      const task = /^\\[([ xX])\\]\\s+(.*)$/.exec(item);
+      if (task) {
+        const done = task[1] !== ' ';
+        out.push('<li class="rpt-task' + (done ? ' done' : '') + '">' + (done ? '☑' : '☐') + ' ' + rptInline(task[2]) + '</li>');
+      } else {
+        out.push('<li>' + rptInline(item) + '</li>');
+      }
+      continue;
+    }
+    flushQuote(); closeList();
+    para.push(line);
+  }
+  if (code) out.push('<pre><code>' + escHtml(code.join('\\n')) + '</code></pre>');
+  flushAll();
+  return out.join('');
+}
+
+function rptNotePreview() {
+  const el = document.getElementById('rpt-new-note-preview');
+  if (!el) return;
+  const text = gv('rpt-new-note');
+  el.classList.toggle('hidden', !text.trim() || el.dataset.open !== '1');
+  el.innerHTML = rptMarkdown(text);
+}
+
+function toggleRptNotePreview(btn) {
+  const el = document.getElementById('rpt-new-note-preview');
+  if (!el) return;
+  el.dataset.open = el.dataset.open === '1' ? '' : '1';
+  btn.textContent = el.dataset.open === '1' ? 'Hide Preview' : 'Preview';
+  rptNotePreview();
+}
+
 async function repeaters() {
   document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="openRptForm()">+ Add Repeater</button>';
   setPage('<div class="spinner"></div>');
@@ -3950,6 +4062,7 @@ function rptInfoHtml(data) {
         \${dfield('Output (repeater transmits)', rptFreq(r.output_freq))}
         \${dfield('Input (users transmit)', rptFreq(r.input_freq))}
         \${dfield('Offset', escHtml(rptOffset(r)))}
+        \${dfield('Control (receive only)', rptFreq(r.control_freq))}
         \${dfield('Access tone (users send)', escHtml(r.tone_in))}
         \${dfield('Repeater tone (sent out)', escHtml(r.tone_out))}
         \${dfield('Callsign', r.callsign ? '<span class="callsign">' + escHtml(r.callsign) + '</span>' : '')}
@@ -4093,12 +4206,15 @@ function rptNotesHtml(data) {
   return \`
     <div class="card">
       <div class="form-group" style="margin-bottom:8px">
-        <textarea id="rpt-new-note" placeholder="A note about the site: where things are, who to call, what to bring…"></textarea>
+        <textarea id="rpt-new-note" oninput="rptNotePreview()" placeholder="A note about the site: where things are, who to call, what to bring…"></textarea>
       </div>
+      <div id="rpt-new-note-preview" class="rpt-md hidden" style="border:1px dashed var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px"></div>
+      <div class="text-muted" style="font-size:12px;margin-bottom:8px">Markdown works: **bold**, *italic*, # heading, - list, - [ ] checklist, [link](https://…), \\\`code\\\`</div>
       <div class="flex gap-8 align-center">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:0"><input type="checkbox" id="rpt-new-note-pin" style="width:auto"> Pin to top</label>
         <span class="spacer"></span>
         \${rptScopeSelect('rpt-new-note-scope')}
+        <button class="btn btn-sm btn-secondary" onclick="toggleRptNotePreview(this)">Preview</button>
         <button class="btn btn-sm btn-primary" onclick="addRptNote()">Add Note</button>
       </div>
     </div>
@@ -4112,7 +4228,7 @@ function rptNotesHtml(data) {
           <button class="btn btn-sm btn-secondary" onclick="pinRptNote(\${n.id}, \${n.pinned ? 0 : 1})">\${n.pinned ? 'Unpin' : 'Pin'}</button>
           \${rptEntryButtons('notes', n)}
         </div>
-        <div class="note-text" style="margin-top:8px">\${rptMultiline(n.note)}</div>
+        <div class="note-text rpt-md" style="margin-top:8px">\${rptMarkdown(n.note)}</div>
       </div>\`).join('')}\`;
 }
 
@@ -4229,6 +4345,7 @@ function openRptForm(r = null) {
       </div>
       \${fi('Output MHz (repeater transmits)', 'rpt-output', v('output_freq'), 'text', '146.970')}
       \${fi('Input MHz (users transmit)', 'rpt-input', v('input_freq'), 'text', '146.370')}
+      \${fi('Control MHz (receive only)', 'rpt-control', v('control_freq'), 'text', 'Control receiver frequency')}
       \${fi('Access tone (users send)', 'rpt-tone-in', v('tone_in'), 'text', '114.8 or D023')}
       \${fi('Repeater tone (sent out)', 'rpt-tone-out', v('tone_out'), 'text', 'blank if none')}
       \${fi('Band', 'rpt-band', v('band'), 'text', '2m, 70cm, 6m…')}
@@ -4253,7 +4370,7 @@ function openRptForm(r = null) {
 async function saveRepeater(id) {
   const body = {
     name: gv('rpt-name').trim(), callsign: gv('rpt-callsign'), status: gv('rpt-status'),
-    output_freq: gv('rpt-output'), input_freq: gv('rpt-input'), tone_in: gv('rpt-tone-in'), tone_out: gv('rpt-tone-out'),
+    output_freq: gv('rpt-output'), input_freq: gv('rpt-input'), control_freq: gv('rpt-control'), tone_in: gv('rpt-tone-in'), tone_out: gv('rpt-tone-out'),
     band: gv('rpt-band'), mode: gv('rpt-mode'), power: gv('rpt-power'), screen_pin: gv('rpt-pin-input'),
     digital_info: gv('rpt-digital'), equipment: gv('rpt-equipment'), antenna: gv('rpt-antenna'),
     site_name: gv('rpt-site-name'), site_address: gv('rpt-site-address'), site_access: gv('rpt-site-access'), notes: gv('rpt-notes'),

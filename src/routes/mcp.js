@@ -32,7 +32,7 @@ Dues run by calendar year; renewal season for next year opens in October.
 Use search_members or get_member (by callsign) to find a member_id before adding a note.
 To record attendance, call resolve_callsigns first to check who each callsign is, then record_meeting.
 Officers plan meetings on agendas: list_agendas finds one, get_agenda reads it, and add_agenda_item adds business or an announcement.
-The club's repeaters: list_repeaters and get_repeater read them, and add_repeater_report logs trouble on the air (noise, interference, unlicensed use, outages). Screen PINs are never shown here.
+The club's repeaters: list_repeaters and get_repeater read them, and add_repeater_report logs trouble on the air (noise, interference, unlicensed use, outages). Screen PINs and control frequencies are never shown here.
 You can read everything and add notes, meeting attendance, agenda items, and repeater reports, but you cannot change members, dues, donations, inventory, or repeater settings.`;
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export const TOOLS = [
   {
     name: 'list_repeaters',
     title: 'List repeaters',
-    description: 'The club repeaters with frequencies, tones, site, status, open report count, the site\'s last visit, and maintenance or listing renewals due within 60 days (or overdue). Screen PINs are left out.',
+    description: 'The club repeaters with frequencies, tones, site, status, open report count, the site\'s last visit, and maintenance or listing renewals due within 60 days (or overdue). Screen PINs and control frequencies are left out.',
     inputSchema: { type: 'object', properties: {} },
     annotations: READ,
     run: async (a, ctx) => {
@@ -243,7 +243,7 @@ export const TOOLS = [
   {
     name: 'get_repeater',
     title: 'Get repeater',
-    description: 'One repeater in full: listing details, site visits, reports, maintenance and renewals, site notes, and the titles of its photos and manuals. The screen PIN is left out.',
+    description: 'One repeater in full: listing details, site visits, reports, maintenance and renewals, site notes, and the titles of its photos and manuals. The screen PIN and control frequency are left out.',
     inputSchema: { type: 'object', properties: { repeater_id: int('Repeater id') }, required: ['repeater_id'] },
     annotations: READ,
     run: async (a, ctx) => {
@@ -391,9 +391,11 @@ function requireText(v, name) {
   return v.trim();
 }
 
+// The screen PIN and the control frequency would let someone take over a
+// repeater, so the agent never sees them
 function withoutPin(repeater) {
-  const { screen_pin, ...rest } = repeater;
-  return { ...rest, has_screen_pin: !!screen_pin };
+  const { screen_pin, control_freq, ...rest } = repeater;
+  return { ...rest, has_screen_pin: !!screen_pin, has_control_freq: !!control_freq };
 }
 
 // ── Calling the existing API handlers ────────────────────────────────────────
