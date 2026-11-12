@@ -4685,7 +4685,7 @@ async function startTwoStepSetup() {
     <p class="text-muted" style="font-size:12px;text-align:center;margin:0 0 16px">Can't scan? Enter this key by hand:<br>
       <span style="font-family:var(--mono);color:var(--text);user-select:all">${escHtml(data.secret.replace(/(.{4})/g, '$1 ').trim())}</span></p>
     <p style="font-size:13px;margin:0 0 8px"><strong>2.</strong> Type the 6-digit code the app shows now.</p>
-    <div class="form-group"><input type="text" id="ts-code" placeholder="123456" autocomplete="one-time-code" maxlength="8"></div>
+    <div class="form-group"><input type="text" id="ts-code" name="totp" placeholder="123456" autocomplete="one-time-code" maxlength="8"></div>
   `, 'Set Up Two-Step Sign-in', [
     { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
     { label: 'Turn On', cls: 'btn-primary', fn: 'finishTwoStepSetup()' },
