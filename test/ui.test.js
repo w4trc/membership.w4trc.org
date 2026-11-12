@@ -61,3 +61,39 @@ describe('fmtDate', () => {
     expect(fmtDate(null)).toBe('—');
   });
 });
+
+describe('repeater note Markdown', () => {
+  async function render() {
+    const script = await servedScript();
+    const grab = (name) => {
+      const start = script.indexOf(`function ${name}(`);
+      return script.slice(start, script.indexOf('\n}\n', start) + 2);
+    };
+    const esc = grab('escHtml');
+    return new Function(`${esc}${grab('rptSafeUrl')}${grab('rptInline')}${grab('rptMarkdown')}; return rptMarkdown;`)();
+  }
+
+  it('formats headings, emphasis, lists, checklists, code, and links', async () => {
+    const md = await render();
+    const html = md('# Internet\n**Spectrum** business, *static* IP `203.0.113.10`\n\n- [x] Modem in rack\n- [ ] Label the router\n\n1. One\n2. Two\n\nSee [portal](https://example.com/a?b=1&c=2) or https://example.org.');
+    expect(html).toContain('<h3>Internet</h3>');
+    expect(html).toContain('<strong>Spectrum</strong>');
+    expect(html).toContain('<em>static</em>');
+    expect(html).toContain('<code>203.0.113.10</code>');
+    expect(html).toContain('<li class="rpt-task done">☑ Modem in rack</li>');
+    expect(html).toContain('<li class="rpt-task">☐ Label the router</li>');
+    expect(html).toContain('<ol><li>One</li><li>Two</li></ol>');
+    expect(html).toContain('<a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noopener noreferrer">portal</a>');
+    expect(html).toContain('<a href="https://example.org" target="_blank"');
+    expect(html).toMatch(/example\.org<\/a>\.<\/p>$/);
+  });
+
+  it('keeps HTML and script out of the page', async () => {
+    const md = await render();
+    const html = md('<img src=x onerror=alert(1)> [click](javascript:alert(1)) `<b>` **<script>**\n```\n<script>alert(1)</script>\n```');
+    expect(html).not.toMatch(/<img|<script|<b>|href="javascript/i);
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('[click](javascript:alert(1))');
+    expect(html).toContain('<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>');
+  });
+});

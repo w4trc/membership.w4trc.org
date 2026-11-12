@@ -185,13 +185,14 @@ describe('MCP tools', () => {
   });
 
   it('reads repeaters without their screen PINs and logs reports', async () => {
-    const r = await env.DB.prepare(`INSERT INTO repeaters (name, output_freq, screen_pin) VALUES ('2m', '146.970', '4321')`).run();
+    const r = await env.DB.prepare(`INSERT INTO repeaters (name, output_freq, screen_pin, control_freq) VALUES ('2m', '146.970', '4321', '442.1375')`).run();
     const repeaterId = r.meta.last_row_id;
 
     const listed = await call('list_repeaters', {});
     expect(listed.data.repeaters).toHaveLength(1);
-    expect(listed.data.repeaters[0]).toMatchObject({ id: repeaterId, has_screen_pin: true });
+    expect(listed.data.repeaters[0]).toMatchObject({ id: repeaterId, has_screen_pin: true, has_control_freq: true });
     expect(listed.text).not.toContain('4321');
+    expect(listed.text).not.toContain('442.1375');
 
     const added = await call('add_repeater_report', { repeater_id: repeaterId, category: 'noise', description: 'Hum on the input' });
     expect(added.isError, added.text).toBe(false);
@@ -199,6 +200,7 @@ describe('MCP tools', () => {
 
     const got = await call('get_repeater', { repeater_id: repeaterId });
     expect(got.text).not.toContain('4321');
+    expect(got.text).not.toContain('442.1375');
     expect(got.data.reports.map(x => x.description)).toEqual(['Hum on the input']);
     expect((await call('add_repeater_report', { repeater_id: repeaterId, category: 'gossip', description: 'x' })).isError).toBe(true);
   });

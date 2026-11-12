@@ -555,6 +555,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `028_repeater_site.sql` — notes and photos for the whole repeater site (nullable `repeater_id`)
 - `029_repeater_contacts.sql` — repeater and site contacts
 - `030_repeater_visits_site.sql` — visits belong to the whole site; existing visits move there
+- `031_repeater_control_freq.sql` — control frequency on repeaters
 
 ---
 
@@ -843,7 +844,8 @@ in the next 60 days. The same list goes out in the Sunday roundup email every we
 item is logged done. Each repeater has these tabs:
 
 - **Info** — the listing (output = what the repeater transmits, input = what users transmit,
-  offset worked out from the two, access tone users send and any tone the repeater sends out),
+  offset worked out from the two, access tone users send and any tone the repeater sends out,
+  and the control frequency its control receiver listens on),
   callsign, band, mode, power, digital settings, screen PIN (hidden until **Show** is clicked),
   equipment, antenna, site, address (with a map link), and access directions
 - **Contacts** — who to call: name, title (landowner, tower climber, trustee, ...), phone and
@@ -858,7 +860,9 @@ item is logged done. Each repeater has these tabs:
   license, site lease, insurance). Give an entry a next-due date to see it in Coming Due. The
   latest entry with the same type and title is the one that counts, so logging a renewal again
   replaces the old due date; **Mark Done** does that for you, keeping the same interval
-- **Site Notes** — dated notes, which can be pinned to the top
+- **Site Notes** — dated notes, which can be pinned to the top. Notes are written in Markdown
+  (headings, bold and italic, lists and `- [ ]` checklists, links, code, quotes) with a preview
+  while typing; HTML in a note is shown as text, and links may only be web, email, or phone links
 - **Photos** — shrunk in the browser and stored in D1 like inventory photos, so they're in the
   daily backup
 
@@ -871,8 +875,8 @@ Editing a contact, note, or photo from a repeater page moves it between that rep
   next to (but not part of) the database backups, so no new bucket is needed. PDFs, pictures,
   and plain text open in the browser; anything else downloads
 
-The screen PIN is never written to the audit log (only that it changed), and the MCP tools
-leave it out.
+The screen PIN and control frequency are never written to the audit log (only that they
+changed), and the MCP tools leave them out, since either would let someone take over a repeater.
 
 ---
 
@@ -883,7 +887,7 @@ agent (such as Hermes) can look up club data and do a few board tasks. It uses t
 HTTP transport, stateless, with plain JSON responses.
 
 **What the agent can do.** Read members, dues, donations, the treasurer report, dashboard stats,
-meetings, officers, inventory, repeaters (without screen PINs), and local hams; look up callsigns.
+meetings, officers, inventory, repeaters (without screen PINs or control frequencies), and local hams; look up callsigns.
 It can also add notes to a member, record meeting attendance, add items to meeting agendas, and
 log reports against a repeater (`add_note`, `record_meeting`, `add_meeting_attendees`,
 `add_agenda_item`, `add_repeater_report`).

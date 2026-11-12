@@ -215,6 +215,7 @@ const REPEATER_RULES = {
   mode:         text('Mode', { max: 60 }),
   output_freq:  freq('Output frequency'),
   input_freq:   freq('Input frequency'),
+  control_freq: freq('Control frequency'),
   tone_in:      text('Access tone', { max: 40 }),
   tone_out:     text('Repeater tone', { max: 40 }),
   digital_info: text('Digital settings'),

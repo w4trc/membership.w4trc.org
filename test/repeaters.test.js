@@ -43,6 +43,17 @@ describe('repeaters', () => {
     expect((await auditActions()).map(a => a.action)).toEqual(['repeater.create']);
   });
 
+  it('keeps a control frequency, and only the fact that it changed in the audit log', async () => {
+    const r = await create({ control_freq: '442.1375' });
+    expect(r.control_freq).toBe('442.1375');
+    await call('PATCH', `/${r.id}`, { control_freq: '443.0500 MHz' });
+    expect((await get(r.id)).repeater.control_freq).toBe('443.0500');
+    const audits = JSON.stringify(await auditActions());
+    expect(audits).toContain('control_freq');
+    expect(audits).not.toContain('443.0500');
+    expect((await call('PATCH', `/${r.id}`, { control_freq: 'uhf' })).status).toBe(400);
+  });
+
   it('rejects a missing name and a bad frequency', async () => {
     expect((await call('POST', '', { output_freq: '146.97' })).status).toBe(400);
     expect((await call('POST', '', { name: 'x', output_freq: 'two meters' })).status).toBe(400);
