@@ -225,3 +225,67 @@ describe('documents', () => {
     expect((await call('POST', `/${r.id}/documents?filename=x.pdf`, null, board, { headers: { 'Content-Type': 'application/pdf' }, raw: '' })).status).toBe(400);
   });
 });
+
+describe('the whole site', () => {
+  it('keeps site notes and photos apart from any one repeater, and shows them with every repeater', async () => {
+    const a = await create({ name: 'A' });
+    const b = await create({ name: 'B' });
+    const note = await (await call('POST', '/site/notes', { note: 'Shelter key is in the lockbox', pinned: true })).json();
+    expect(note).toMatchObject({ repeater_id: null, pinned: 1 });
+    await call('POST', `/${a.id}/notes`, { note: 'Only about A' });
+    const photo = await (await call('POST', '/site/photos', { image: JPEG, thumb: JPEG, caption: 'Tower' })).json();
+
+    const site = await (await call('GET', '/site')).json();
+    expect(site.notes.map(n => n.note)).toEqual(['Shelter key is in the lockbox']);
+    expect(site.photos.map(p => p.caption)).toEqual(['Tower']);
+
+    const dataA = await get(a.id);
+    expect(dataA.notes.map(n => [n.note, n.repeater_id])).toEqual([['Shelter key is in the lockbox', null], ['Only about A', a.id]]);
+    expect((await get(b.id)).notes.map(n => n.note)).toEqual(['Shelter key is in the lockbox']);
+    expect((await get(b.id)).photos.map(p => p.id)).toEqual([photo.id]);
+
+    const list = await (await call('GET')).json();
+    expect(list.site).toEqual({ notes: 1, photos: 1 });
+
+    // A site photo is served from the site, not through a repeater
+    expect((await call('GET', `/site/photos/${photo.id}`)).status).toBe(200);
+    expect((await call('GET', `/${a.id}/photos/${photo.id}`)).status).toBe(404);
+    // and site notes are changed through the site
+    expect((await call('PATCH', `/${a.id}/notes/${note.id}`, { note: 'x' })).status).toBe(404);
+    expect((await (await call('PATCH', `/site/notes/${note.id}`, { pinned: false })).json()).pinned).toBe(0);
+  });
+
+  it('keeps site notes and photos when a repeater is deleted', async () => {
+    const a = await create();
+    await call('POST', '/site/notes', { note: 'Site note' });
+    await call('DELETE', `/${a.id}`, null, admin);
+    expect((await (await call('GET', '/site')).json()).notes).toHaveLength(1);
+  });
+
+  it('moves notes and photos between a repeater and the site', async () => {
+    const a = await create({ name: 'A' });
+    const b = await create({ name: 'B' });
+    const note = await (await call('POST', `/${a.id}/notes`, { note: 'Breaker 12 feeds the rack' })).json();
+    const moved = await (await call('PATCH', `/${a.id}/notes/${note.id}`, { site_wide: true })).json();
+    expect(moved.repeater_id).toBeNull();
+    expect((await get(b.id)).notes.map(n => n.note)).toEqual(['Breaker 12 feeds the rack']);
+    // Back to one repeater, through that repeater
+    expect((await call('PATCH', `/site/notes/${note.id}`, { site_wide: false })).status).toBe(400);
+    expect((await (await call('PATCH', `/${b.id}/notes/${note.id}`, { site_wide: false })).json()).repeater_id).toBe(b.id);
+    // Another repeater's own note is still out of reach
+    expect((await call('PATCH', `/${a.id}/notes/${note.id}`, { site_wide: true })).status).toBe(404);
+
+    const photo = await (await call('POST', `/${a.id}/photos`, { image: JPEG, thumb: JPEG })).json();
+    expect((await (await call('PATCH', `/${a.id}/photos/${photo.id}`, { site_wide: true })).json()).repeater_id).toBeNull();
+    expect((await call('GET', `/site/photos/${photo.id}`)).status).toBe(200);
+    // Visits and other lists stay with their repeater
+    const visit = await (await call('POST', `/${a.id}/visits`, { visitors: 'x', purpose: 'y' })).json();
+    await call('PATCH', `/${a.id}/visits/${visit.id}`, { site_wide: true, notes: 'z' });
+    expect((await get(a.id)).visits[0].repeater_id).toBe(a.id);
+  });
+
+  it('only has notes and photos', async () => {
+    expect((await call('POST', '/site/visits', { visitors: 'x', purpose: 'y' })).status).toBe(404);
+    expect((await call('PATCH', '/site', { name: 'x' })).status).toBe(405);
+  });
+});

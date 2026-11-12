@@ -3794,8 +3794,21 @@ async function repeaters() {
     </div>\`;
   };
 
+  const site = data.site || { notes: 0, photos: 0 };
+  const siteCard = \`
+    <div class="card rpt-card flex gap-8 align-center" style="flex-wrap:wrap" onclick="openSite()">
+      <span style="font-size:20px">🏔️</span>
+      <div>
+        <strong>Repeater Site</strong>
+        <div class="text-muted" style="font-size:13px">Notes and photos for the whole site, shown with every repeater</div>
+      </div>
+      <span class="spacer"></span>
+      <span class="text-muted" style="font-size:13px">\${site.notes} note\${site.notes !== 1 ? 's' : ''} · \${site.photos} photo\${site.photos !== 1 ? 's' : ''}</span>
+    </div>\`;
+
   setPage(\`
     \${dueCard}
+    \${siteCard}
     \${list.length
       ? \`<div class="rpt-grid">\${list.map(card).join('')}</div>\`
       : '<div class="card"><p class="text-muted" style="text-align:center;margin:12px 0">No repeaters yet. Add the club\\'s repeaters to keep their listings, visits, and reports in one place.</p></div>'}
@@ -3812,11 +3825,54 @@ async function openRepeater(id, tab) {
   catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
 }
 
+// The whole site: its notes and photos, on a page like a repeater's
+async function openSite(tab) {
+  state.currentPage = 'repeater';
+  if (tab || !state.rpt?.site) state.rptTab = tab || 'notes';
+  document.getElementById('topbar-actions').innerHTML = '';
+  setPage('<div class="spinner"></div>');
+  try { showRepeater({ site: true, ...(await api('GET', '/repeaters/site')) }); }
+  catch(e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); }
+}
+
 async function reloadRepeater() {
   if (state.currentPage !== 'repeater' || !state.rpt) return;
-  try { showRepeater(await api('GET', '/repeaters/' + state.rpt.repeater.id)); }
-  catch(e) { toast(e.data?.error || 'Failed to reload the repeater', 'error'); }
+  try {
+    if (state.rpt.site) showRepeater({ site: true, ...(await api('GET', '/repeaters/site')) });
+    else showRepeater(await api('GET', '/repeaters/' + state.rpt.repeater.id));
+  } catch(e) { toast(e.data?.error || 'Failed to reload', 'error'); }
 }
+
+// Where a note or photo is changed: the site's, or this repeater's
+function rptBase(e) {
+  if (state.rpt.site || (e && e.repeater_id == null)) return '/repeaters/site';
+  return '/repeaters/' + state.rpt.repeater.id;
+}
+
+// The "for" picker on a repeater's note and photo forms. \`e\` is the entry being edited.
+function rptScopeSelect(id, e = null) {
+  if (state.rpt.site) return '';
+  const own = e && e.repeater_id != null;
+  return \`<select id="\${id}" style="width:auto" title="Who this is for">
+    <option value="site">Whole site</option>
+    <option value="repeater" \${own ? 'selected' : ''}>\${escHtml(state.rpt.repeater.name)} only</option>
+  </select>\`;
+}
+
+// Saving an edited note or photo from a repeater page goes through the repeater,
+// which can also move it to or from the site
+function rptScopeEdit(selectId, e, body) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return rptBase(e);
+  body.site_wide = sel.value === 'site';
+  return '/repeaters/' + state.rpt.repeater.id;
+}
+
+function rptScopeBase(selectId) {
+  return gv(selectId) === 'repeater' ? '/repeaters/' + state.rpt.repeater.id : '/repeaters/site';
+}
+
+const rptSiteBadge = e => (!state.rpt.site && e.repeater_id == null ? '<span class="badge badge-purple" title="For the whole site, shown with every repeater">Site</span>' : '');
 
 function showRepeater(data) {
   state.currentPage = 'repeater';
@@ -3824,17 +3880,29 @@ function showRepeater(data) {
   state.rptPinShown = false;
   const r = data.repeater;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'repeaters'));
-  document.getElementById('page-title').textContent = r.name;
+  document.getElementById('page-title').textContent = data.site ? 'Repeater Site' : r.name;
   document.getElementById('topbar-actions').innerHTML = '<button class="btn btn-secondary" onclick="nav(\\'repeaters\\')">← All Repeaters</button>';
   const page = document.getElementById('page');
   const scroll = page.scrollTop;
-  setPage(rptPageHtml(data));
+  setPage(data.site ? rptSitePageHtml(data) : rptPageHtml(data));
   page.scrollTop = scroll;
 }
 
 function rptTab(key) {
   state.rptTab = key;
   showRepeater(state.rpt);
+}
+
+const RPT_SITE_TABS = [['notes', 'Site Notes'], ['photos', 'Photos']];
+
+function rptSitePageHtml(data) {
+  const tab = RPT_SITE_TABS.some(([k]) => k === state.rptTab) ? state.rptTab : 'notes';
+  const count = { notes: data.notes.length || '', photos: data.photos.length || '' };
+  return \`
+    <p class="text-muted" style="font-size:13px;margin:0 0 12px">Notes and photos here are for the whole site. They also show on every repeater's Site Notes and Photos tabs.</p>
+    <div class="tabs rpt-tabs">\${RPT_SITE_TABS.map(([k, label]) =>
+      \`<div class="tab\${k === tab ? ' active' : ''}" onclick="rptTab('\${k}')">\${label}\${count[k] ? ' <span class="badge badge-gray">' + count[k] + '</span>' : ''}</div>\`).join('')}</div>
+    \${tab === 'notes' ? rptNotesHtml(data) : rptPhotosHtml(data)}\`;
 }
 
 function rptPageHtml(data) {
@@ -4031,12 +4099,14 @@ function rptNotesHtml(data) {
       <div class="flex gap-8 align-center">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:0"><input type="checkbox" id="rpt-new-note-pin" style="width:auto"> Pin to top</label>
         <span class="spacer"></span>
+        \${rptScopeSelect('rpt-new-note-scope')}
         <button class="btn btn-sm btn-primary" onclick="addRptNote()">Add Note</button>
       </div>
     </div>
     \${data.notes.length === 0 ? '<p class="text-muted" style="text-align:center">No site notes yet.</p>' : data.notes.map(n => \`
       <div class="card" style="padding:14px 16px">
         <div class="flex gap-8 align-center">
+          \${rptSiteBadge(n)}
           \${n.pinned ? '<span class="badge badge-blue">Pinned</span>' : ''}
           <span class="note-meta" style="margin:0">\${escHtml(fmtDate(n.created_at))}\${rptBy(n)}\${n.updated_at !== n.created_at ? ' · edited' : ''}</span>
           <span class="spacer"></span>
@@ -4047,17 +4117,17 @@ function rptNotesHtml(data) {
       </div>\`).join('')}\`;
 }
 
-function rptPhotoUrl(id, photoId, thumb) {
-  return '/api/repeaters/' + id + '/photos/' + photoId + (thumb ? '?size=thumb' : '');
+function rptPhotoUrl(p, thumb) {
+  return '/api' + rptBase(p) + '/photos/' + p.id + (thumb ? '?size=thumb' : '');
 }
 
 function rptPhotosHtml(data) {
-  const id = data.repeater.id;
   return \`
     <div class="card">
       <div class="flex gap-8 align-center" style="flex-wrap:wrap">
         <input type="text" id="rpt-photo-caption" placeholder="Caption (optional)" style="flex:1;min-width:180px">
         <input type="date" id="rpt-photo-date" value="\${localToday()}" style="width:160px" title="Date taken">
+        \${rptScopeSelect('rpt-photo-scope')}
         <label class="btn btn-primary" style="margin:0">+ Add Photos
           <input type="file" accept="image/*" multiple style="display:none" onchange="uploadRptPhotos(this)">
         </label>
@@ -4067,12 +4137,13 @@ function rptPhotosHtml(data) {
     \${data.photos.length === 0 ? '<p class="text-muted" style="text-align:center">No site photos yet.</p>' : \`
     <div class="rpt-photos">\${data.photos.map(p => \`
       <div class="rpt-photo card" style="padding:8px;margin:0">
-        <a href="\${rptPhotoUrl(id, p.id)}" target="_blank" title="Open full size">
-          <img src="\${rptPhotoUrl(id, p.id, true)}" alt="\${escHtml(p.caption || 'Site photo')}" loading="lazy">
+        <a href="\${rptPhotoUrl(p)}" target="_blank" title="Open full size">
+          <img src="\${rptPhotoUrl(p, true)}" alt="\${escHtml(p.caption || 'Site photo')}" loading="lazy">
         </a>
         <div style="font-size:13px;margin-top:6px">\${escHtml(p.caption || '')}</div>
         <div class="flex gap-8 align-center" style="margin-top:4px">
-          <span class="text-muted" style="font-size:11px">\${p.taken_date ? escHtml(fmtDay(p.taken_date)) : ''}</span>
+          \${rptSiteBadge(p)}
+          <span class="text-muted" style="font-size:11px;white-space:nowrap">\${p.taken_date ? escHtml(fmtDate(p.taken_date)) : ''}</span>
           <span class="spacer"></span>
           <button class="btn btn-sm btn-secondary" onclick="editRptPhoto(\${p.id})">Edit</button>
           <button class="btn btn-sm btn-danger" onclick="deleteRptPhoto(\${p.id})">✕</button>
@@ -4254,6 +4325,7 @@ function openRptEntry(list, entryId = null, preset = null) {
   };
   showModal(\`
     <div class="form-grid">\${form.fields.map(f => rptField(list, f, val(f))).join('')}</div>
+    \${list === 'notes' && e && !state.rpt.site ? '<div class="form-group" style="margin-top:12px"><label>For</label>' + rptScopeSelect('rf-scope', e) + '</div>' : ''}
     \${list === 'reports' ? '<p class="form-hint" style="margin-top:12px">Marking a report resolved dates it today unless you give another date.</p>' : ''}
     \${list === 'maintenance' ? '<p class="form-hint" style="margin-top:12px">Give a next-due date for things that come around again, like a listing renewal. When you log the same thing again, its new due date replaces the old one.</p>' : ''}
   \`, (e ? 'Edit ' : 'Log ') + form.title, [
@@ -4270,9 +4342,10 @@ async function saveRptEntry(list, entryId) {
     if (opt.required && !v) { toast(label + ' is required', 'error'); return; }
     body[key] = v;
   }
-  const id = state.rpt.repeater.id;
+  const entry = entryId ? state.rpt[list].find(x => x.id === entryId) : null;
+  const base = list === 'notes' && entry ? rptScopeEdit('rf-scope', entry, body) : rptBase(entry);
   try {
-    await api(entryId ? 'PATCH' : 'POST', '/repeaters/' + id + '/' + list + (entryId ? '/' + entryId : ''), body);
+    await api(entryId ? 'PATCH' : 'POST', base + '/' + list + (entryId ? '/' + entryId : ''), body);
     closeModal();
     toast(form.noun + ' saved ✓');
     reloadRepeater();
@@ -4282,7 +4355,7 @@ async function saveRptEntry(list, entryId) {
 async function deleteRptEntry(list, entryId) {
   if (!confirm('Delete this ' + RPT_FORMS[list].noun.toLowerCase() + '?')) return;
   try {
-    await api('DELETE', '/repeaters/' + state.rpt.repeater.id + '/' + list + '/' + entryId);
+    await api('DELETE', rptBase(state.rpt[list].find(x => x.id === entryId)) + '/' + list + '/' + entryId);
     toast('Deleted');
     reloadRepeater();
   } catch(e) { toast(e.data?.error || 'Failed to delete', 'error'); }
@@ -4305,7 +4378,7 @@ async function addRptNote() {
   const note = gv('rpt-new-note').trim();
   if (!note) { toast('Note text is required', 'error'); return; }
   try {
-    await api('POST', '/repeaters/' + state.rpt.repeater.id + '/notes', { note, pinned: !!document.getElementById('rpt-new-note-pin')?.checked });
+    await api('POST', (state.rpt.site ? '/repeaters/site' : rptScopeBase('rpt-new-note-scope')) + '/notes', { note, pinned: !!document.getElementById('rpt-new-note-pin')?.checked });
     toast('Note added');
     reloadRepeater();
   } catch(e) { toast(e.data?.error || 'Failed to add note', 'error'); }
@@ -4313,7 +4386,7 @@ async function addRptNote() {
 
 async function pinRptNote(noteId, pinned) {
   try {
-    await api('PATCH', '/repeaters/' + state.rpt.repeater.id + '/notes/' + noteId, { pinned: !!pinned });
+    await api('PATCH', rptBase(state.rpt.notes.find(n => n.id === noteId)) + '/notes/' + noteId, { pinned: !!pinned });
     reloadRepeater();
   } catch(e) { toast(e.data?.error || 'Failed to change note', 'error'); }
 }
@@ -4323,7 +4396,8 @@ async function uploadRptPhotos(input) {
   const files = [...(input.files || [])];
   input.value = '';
   if (!files.length) return;
-  const id = state.rpt.repeater.id;
+  const base = state.rpt.site ? '/repeaters/site' : rptScopeBase('rpt-photo-scope');
+  const page = state.rpt;
   const caption = gv('rpt-photo-caption');
   const taken = gv('rpt-photo-date');
   const status = document.getElementById('rpt-photo-status');
@@ -4332,7 +4406,7 @@ async function uploadRptPhotos(input) {
     if (status) status.textContent = 'Uploading ' + (done + failed + 1) + ' of ' + files.length + '…';
     try {
       const { image, thumb } = await invReadPhoto(file);
-      await api('POST', '/repeaters/' + id + '/photos', { image, thumb, caption, taken_date: taken });
+      await api('POST', base + '/photos', { image, thumb, caption, taken_date: taken });
       done++;
     } catch(e) {
       failed++;
@@ -4340,17 +4414,18 @@ async function uploadRptPhotos(input) {
     }
   }
   if (done) toast(done + ' photo' + (done !== 1 ? 's' : '') + ' added ✓');
-  if (state.rpt?.repeater?.id === id) reloadRepeater();
+  if (state.rpt === page) reloadRepeater();
 }
 
 function editRptPhoto(photoId) {
   const p = state.rpt.photos.find(x => x.id === photoId);
   if (!p) return;
   showModal(\`
-    <img src="\${rptPhotoUrl(state.rpt.repeater.id, p.id, true)}" alt="" style="max-width:100%;max-height:200px;border-radius:6px;display:block;margin-bottom:12px">
+    <img src="\${rptPhotoUrl(p, true)}" alt="" style="max-width:100%;max-height:200px;border-radius:6px;display:block;margin-bottom:12px">
     <div class="form-grid">
       <div class="form-group full"><label>Caption</label><input type="text" id="rpt-photo-edit-caption" value="\${escHtml(p.caption || '')}"></div>
       \${fi('Date taken', 'rpt-photo-edit-date', p.taken_date || '', 'date')}
+      \${state.rpt.site ? '' : '<div class="form-group"><label>For</label>' + rptScopeSelect('rpt-photo-edit-scope', p) + '</div>'}
     </div>
   \`, 'Edit Photo', [
     { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
@@ -4360,7 +4435,9 @@ function editRptPhoto(photoId) {
 
 async function saveRptPhoto(photoId) {
   try {
-    await api('PATCH', '/repeaters/' + state.rpt.repeater.id + '/photos/' + photoId, { caption: gv('rpt-photo-edit-caption'), taken_date: gv('rpt-photo-edit-date') });
+    const body = { caption: gv('rpt-photo-edit-caption'), taken_date: gv('rpt-photo-edit-date') };
+    const base = rptScopeEdit('rpt-photo-edit-scope', state.rpt.photos.find(x => x.id === photoId), body);
+    await api('PATCH', base + '/photos/' + photoId, body);
     closeModal();
     toast('Photo saved ✓');
     reloadRepeater();
@@ -4370,7 +4447,7 @@ async function saveRptPhoto(photoId) {
 async function deleteRptPhoto(photoId) {
   if (!confirm('Delete this photo?')) return;
   try {
-    await api('DELETE', '/repeaters/' + state.rpt.repeater.id + '/photos/' + photoId);
+    await api('DELETE', rptBase(state.rpt.photos.find(x => x.id === photoId)) + '/photos/' + photoId);
     toast('Photo deleted');
     reloadRepeater();
   } catch(e) { toast(e.data?.error || 'Failed to delete photo', 'error'); }

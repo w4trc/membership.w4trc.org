@@ -521,8 +521,8 @@ repeaters              → club repeaters: frequencies, tones, screen PIN, equip
 repeater_visits        → site visits (date, times, who, why)
 repeater_reports       → reports of trouble on a repeater, with status and resolution
 repeater_maintenance   → maintenance done and renewals kept up, with next-due dates
-repeater_notes         → site notes
-repeater_photos        → site photos + thumbnails
+repeater_notes         → site notes (no repeater_id: the whole site)
+repeater_photos        → site photos + thumbnails (no repeater_id: the whole site)
 repeater_documents     → manuals and files (uploaded to R2, or a link)
 ```
 
@@ -551,6 +551,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `025_agendas.sql` — meeting agendas: checklist ticks, officer reports, business items, motions
 - `026_agenda_quorum.sql` — voting member count fixed when a meeting adjourns
 - `027_repeaters.sql` — repeaters, their visits, reports, maintenance, notes, photos, and documents
+- `028_repeater_site.sql` — notes and photos for the whole repeater site (nullable `repeater_id`)
 
 ---
 
@@ -643,8 +644,9 @@ DELETE /api/repeaters/:id             Delete a repeater and everything on it (ad
 POST   /api/repeaters/:id/visits      Log a site visit (PATCH/DELETE /visits/:entryId)
 POST   /api/repeaters/:id/reports     Log a report (PATCH/DELETE /reports/:entryId)
 POST   /api/repeaters/:id/maintenance Log maintenance or a renewal (PATCH/DELETE /maintenance/:entryId)
-POST   /api/repeaters/:id/notes       Add a site note (PATCH/DELETE /notes/:entryId)
+POST   /api/repeaters/:id/notes       Add a site note (PATCH/DELETE /notes/:entryId; PATCH { site_wide } moves it)
 POST   /api/repeaters/:id/photos      Add a photo { image, thumb, caption, taken_date } (GET/PATCH/DELETE /photos/:photoId)
+GET    /api/repeaters/site            Notes and photos for the whole site (POST/PATCH/DELETE /site/notes, /site/photos)
 POST   /api/repeaters/:id/documents   JSON { title, kind, url } adds a link; any other body uploads a file
                                       (?title=&kind=&filename=, up to 25 MB) (GET/PATCH/DELETE /documents/:docId)
 
@@ -851,6 +853,11 @@ item is logged done. Each repeater has these tabs:
 - **Site Notes** — dated notes, which can be pinned to the top
 - **Photos** — shrunk in the browser and stored in D1 like inventory photos, so they're in the
   daily backup
+
+Notes and photos can be for the **whole site** instead of one repeater (the default, since the
+club has one site). Site-wide ones show on every repeater's Site Notes and Photos tabs with a
+**Site** badge, and on the **Repeater Site** page reached from the top of the Repeaters list.
+Editing a note or photo from a repeater page moves it between that repeater and the site.
 - **Manuals & Files** — upload a file (PDF, programming file, license, ...) up to 25 MB, or add
   a link. Uploads are stored in R2 under `repeaters/` in the `karc-membership-backups` bucket,
   next to (but not part of) the database backups, so no new bucket is needed. PDFs, pictures,

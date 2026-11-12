@@ -24,6 +24,15 @@
  * PATCH  /api/repeaters/:id/documents/:docId     - { title, kind }
  * DELETE /api/repeaters/:id/documents/:docId
  *
+ * GET    /api/repeaters/site                     - notes and photos for the whole site
+ * POST   /api/repeaters/site/notes               - notes and photos routes as above, for the site
+ * PATCH/DELETE /api/repeaters/site/notes/:id      (GET/PATCH/DELETE /site/photos/:photoId too)
+ * PATCH  /api/repeaters/:id/notes/:noteId  { site_wide } moves a note between that repeater and the site
+ *                                          (photos the same way)
+ *
+ * A note or photo with no repeater_id belongs to the whole site (the club has
+ * one) and is listed with every repeater as well.
+ *
  * The screen PIN is in the repeater record. Every route here is board-only;
  * the MCP tools leave the PIN out.
  */
@@ -63,13 +72,23 @@ export async function handleRepeaters(request, env, path, user) {
     return jsonError('Method not allowed', 405);
   }
 
-  const id = parseInt(rawId, 10);
-  if (!id || String(id) !== rawId) return jsonError('Not found', 404);
-  const repeater = await env.DB.prepare(`SELECT * FROM repeaters WHERE id = ?`).bind(id).first();
-  if (!repeater) return jsonError('Not found', 404);
-
   const subId = rawSubId ? parseInt(rawSubId, 10) : null;
   if (rawSubId && !subId) return jsonError('Not found', 404);
+
+  // The whole site: only notes and photos
+  if (rawId === 'site') {
+    if (!sub) return method === 'GET' ? jsonResponse(await siteData(env)) : jsonError('Method not allowed', 405);
+    if (sub !== 'notes' && sub !== 'photos') return jsonError('Not found', 404);
+  }
+
+  let repeater = SITE;
+  if (rawId !== 'site') {
+    const id = parseInt(rawId, 10);
+    if (!id || String(id) !== rawId) return jsonError('Not found', 404);
+    repeater = await env.DB.prepare(`SELECT * FROM repeaters WHERE id = ?`).bind(id).first();
+    if (!repeater) return jsonError('Not found', 404);
+  }
+  const id = repeater.id;
   const ctx = { request, env, user, repeater, url };
 
   if (!sub) {
@@ -258,7 +277,7 @@ const LISTS = {
     summary: (e) => ({ kind: e.kind, title: e.title, done_date: e.done_date, next_due: e.next_due }),
   },
   notes: {
-    table: 'repeater_notes', label: 'note', orderBy: 'e.pinned DESC, e.created_at DESC, e.id DESC',
+    table: 'repeater_notes', label: 'note', siteWide: true, orderBy: 'e.pinned DESC, e.created_at DESC, e.id DESC',
     rules: {
       note:   text('Note', { required: true }),
       pinned: flag(),
@@ -271,6 +290,9 @@ const LISTS = {
 // Who did something, as a short label: the member's callsign, else the login email
 const WHO = (a) => `COALESCE(${a}m.callsign, ${a}u.email)`;
 const whoJoin = (a, col) => `LEFT JOIN users ${a}u ON ${a}u.id = ${col} LEFT JOIN members ${a}m ON ${a}m.id = ${a}u.member_id`;
+
+// Stands in for a repeater when a note or photo is for the whole site
+const SITE = Object.freeze({ id: null, name: 'Site' });
 
 const touch = (env, id) => env.DB.prepare(`UPDATE repeaters SET updated_at = datetime('now') WHERE id = ?`).bind(id);
 
@@ -313,7 +335,7 @@ export async function repeatersComingDue(env, today = clubToday()) {
 
 async function listRepeaters(env) {
   const today = clubToday();
-  const [repeaters, due] = await env.DB.batch([
+  const [repeaters, due, site] = await env.DB.batch([
     env.DB.prepare(`
       SELECT r.*,
         (SELECT COUNT(*) FROM repeater_reports x WHERE x.repeater_id = r.id AND x.status != 'resolved') AS open_reports,
@@ -324,8 +346,12 @@ async function listRepeaters(env) {
       ORDER BY r.status = 'retired', r.sort_order, r.id
     `),
     comingDueStatement(env, today),
+    env.DB.prepare(`
+      SELECT (SELECT COUNT(*) FROM repeater_notes WHERE repeater_id IS NULL) AS notes,
+             (SELECT COUNT(*) FROM repeater_photos WHERE repeater_id IS NULL) AS photos
+    `),
   ]);
-  return jsonResponse({ repeaters: repeaters.results, due: due.results, today, due_soon_days: DUE_SOON_DAYS });
+  return jsonResponse({ repeaters: repeaters.results, due: due.results, site: site.results[0], today, due_soon_days: DUE_SOON_DAYS });
 }
 
 async function createRepeater(request, env, user) {
@@ -349,7 +375,24 @@ async function createRepeater(request, env, user) {
   return jsonResponse(await repeaterData(env, id), 201);
 }
 
-/** Everything on one repeater. */
+const PHOTO_SELECT = `
+  SELECT p.id, p.repeater_id, p.caption, p.taken_date, p.created_at, ${WHO('c')} AS added_by
+  FROM repeater_photos p ${whoJoin('c', 'p.created_by')}`;
+const PHOTO_ORDER = 'COALESCE(p.taken_date, date(p.created_at)) DESC, p.id DESC';
+
+/** Notes and photos for the whole site. */
+export async function siteData(env) {
+  const [notes, photos] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT e.*, ${WHO('c')} AS added_by FROM repeater_notes e ${whoJoin('c', 'e.created_by')}
+      WHERE e.repeater_id IS NULL ORDER BY ${LISTS.notes.orderBy}
+    `),
+    env.DB.prepare(`${PHOTO_SELECT} WHERE p.repeater_id IS NULL ORDER BY ${PHOTO_ORDER}`),
+  ]);
+  return { notes: notes.results, photos: photos.results };
+}
+
+/** Everything on one repeater, with the site's notes and photos. */
 export async function repeaterData(env, id) {
   const [repeater, visits, reports, maintenance, notes, photos, documents, due] = await env.DB.batch([
     env.DB.prepare(`SELECT * FROM repeaters WHERE id = ?`).bind(id),
@@ -357,13 +400,12 @@ export async function repeaterData(env, id) {
       const l = LISTS[key];
       return env.DB.prepare(`
         SELECT e.*, ${WHO('c')} AS added_by FROM ${l.table} e ${whoJoin('c', 'e.created_by')}
-        WHERE e.repeater_id = ? ORDER BY ${l.orderBy}
+        WHERE (e.repeater_id = ?${l.siteWide ? ' OR e.repeater_id IS NULL' : ''}) ORDER BY ${l.orderBy}
       `).bind(id);
     }),
     env.DB.prepare(`
-      SELECT p.id, p.caption, p.taken_date, p.created_at, ${WHO('c')} AS added_by
-      FROM repeater_photos p ${whoJoin('c', 'p.created_by')}
-      WHERE p.repeater_id = ? ORDER BY COALESCE(p.taken_date, date(p.created_at)) DESC, p.id DESC
+      ${PHOTO_SELECT}
+      WHERE (p.repeater_id = ? OR p.repeater_id IS NULL) ORDER BY ${PHOTO_ORDER}
     `).bind(id),
     env.DB.prepare(`
       SELECT d.id, d.title, d.kind, d.url, d.filename, d.content_type, d.size, d.created_at, ${WHO('c')} AS added_by
@@ -442,7 +484,7 @@ async function createEntry({ request, env, user, repeater }, list) {
   const cols = Object.keys(values);
   const r = await env.DB.prepare(`
     INSERT INTO ${list.table} (repeater_id, ${cols.join(', ')}, created_by) VALUES (?, ${cols.map(() => '?').join(', ')}, ?)
-  `).bind(repeater.id, ...Object.values(values), user.id).run();
+  `).bind(repeater.id ?? null, ...Object.values(values), user.id).run();
   const id = r.meta.last_row_id;
   await touch(env, repeater.id).run();
   await audit(env, {
@@ -457,13 +499,32 @@ function stripEmpty(body) {
   return Object.fromEntries(Object.entries(body).filter(([, v]) => v !== '' && v !== null && v !== undefined));
 }
 
+/**
+ * A note or photo moves between one repeater and the whole site with
+ * { site_wide: true | false }, sent through that repeater's route (which can
+ * then also reach the site's entries). Returns the WHERE clause that finds the
+ * entry and, when moving, the repeater_id to set.
+ */
+function siteScope(body, repeater, allowed) {
+  const own = { where: 'repeater_id IS ?', binds: [repeater.id ?? null] };
+  if (!allowed || !body || !('site_wide' in body)) return own;
+  if (repeater.id == null) return { error: 'Move a site item to a repeater from that repeater' };
+  return {
+    where: '(repeater_id = ? OR repeater_id IS NULL)', binds: [repeater.id],
+    move: body.site_wide ? null : repeater.id,
+  };
+}
+
 async function updateEntry({ request, env, user, repeater }, list, entryId) {
-  const existing = await env.DB.prepare(`SELECT * FROM ${list.table} WHERE id = ? AND repeater_id = ?`).bind(entryId, repeater.id).first();
-  if (!existing) return jsonError('Not found', 404);
   const body = await readJson(request);
   if (!body) return jsonError('Invalid JSON', 400);
+  const scope = siteScope(body, repeater, list.siteWide);
+  if (scope.error) return jsonError(scope.error, 400);
+  const existing = await env.DB.prepare(`SELECT * FROM ${list.table} WHERE id = ? AND ${scope.where}`).bind(entryId, ...scope.binds).first();
+  if (!existing) return jsonError('Not found', 404);
   const { values, error } = pick(body, list.rules);
   if (error) return jsonError(error, 400);
+  if ('move' in scope) values.repeater_id = scope.move;
   list.adjust?.(values, existing);
   const cols = Object.keys(values);
   if (!cols.length) return jsonError('Nothing to change', 400);
@@ -488,7 +549,7 @@ async function updateEntry({ request, env, user, repeater }, list, entryId) {
 }
 
 async function deleteEntry({ request, env, user, repeater }, list, entryId) {
-  const existing = await env.DB.prepare(`SELECT * FROM ${list.table} WHERE id = ? AND repeater_id = ?`).bind(entryId, repeater.id).first();
+  const existing = await env.DB.prepare(`SELECT * FROM ${list.table} WHERE id = ? AND repeater_id IS ?`).bind(entryId, repeater.id ?? null).first();
   if (!existing) return jsonError('Not found', 404);
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM ${list.table} WHERE id = ?`).bind(entryId),
@@ -530,7 +591,7 @@ async function addPhoto({ request, env, user, repeater }) {
 
   const r = await env.DB.prepare(`
     INSERT INTO repeater_photos (repeater_id, caption, taken_date, image, thumb, created_by) VALUES (?, ?, ?, ?, ?, ?)
-  `).bind(repeater.id, values.caption, values.taken_date, image.buffer, thumb.buffer, user.id).run();
+  `).bind(repeater.id ?? null, values.caption, values.taken_date, image.buffer, thumb.buffer, user.id).run();
   const id = r.meta.last_row_id;
   await touch(env, repeater.id).run();
   await audit(env, {
@@ -542,8 +603,8 @@ async function addPhoto({ request, env, user, repeater }) {
 
 async function getPhoto({ env, url, repeater }, photoId) {
   const column = url.searchParams.get('size') === 'thumb' ? 'thumb' : 'image';
-  const row = await env.DB.prepare(`SELECT ${column} AS data FROM repeater_photos WHERE id = ? AND repeater_id = ?`)
-    .bind(photoId, repeater.id).first();
+  const row = await env.DB.prepare(`SELECT ${column} AS data FROM repeater_photos WHERE id = ? AND repeater_id IS ?`)
+    .bind(photoId, repeater.id ?? null).first();
   if (!row) return jsonError('Not found', 404);
   // A photo never changes once added (only its caption), so it can be cached
   return new Response(new Uint8Array(row.data), {
@@ -558,19 +619,22 @@ async function getPhoto({ env, url, repeater }, photoId) {
 async function updatePhoto({ request, env, user, repeater }, photoId) {
   const body = await readJson(request);
   if (!body) return jsonError('Invalid JSON', 400);
+  const scope = siteScope(body, repeater, true);
+  if (scope.error) return jsonError(scope.error, 400);
   const { values, error } = pick(body, PHOTO_RULES);
   if (error) return jsonError(error, 400);
+  if ('move' in scope) values.repeater_id = scope.move;
   const cols = Object.keys(values);
   if (!cols.length) return jsonError('Nothing to change', 400);
   const res = await env.DB.prepare(`
-    UPDATE repeater_photos SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ? AND repeater_id = ?
-  `).bind(...Object.values(values), photoId, repeater.id).run();
+    UPDATE repeater_photos SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ? AND ${scope.where}
+  `).bind(...Object.values(values), photoId, ...scope.binds).run();
   if (!res.meta.changes) return jsonError('Not found', 404);
-  return jsonResponse(await env.DB.prepare(`SELECT id, caption, taken_date FROM repeater_photos WHERE id = ?`).bind(photoId).first());
+  return jsonResponse(await env.DB.prepare(`SELECT id, repeater_id, caption, taken_date FROM repeater_photos WHERE id = ?`).bind(photoId).first());
 }
 
 async function deletePhoto({ request, env, user, repeater }, photoId) {
-  const photo = await env.DB.prepare(`SELECT id, caption FROM repeater_photos WHERE id = ? AND repeater_id = ?`).bind(photoId, repeater.id).first();
+  const photo = await env.DB.prepare(`SELECT id, caption FROM repeater_photos WHERE id = ? AND repeater_id IS ?`).bind(photoId, repeater.id ?? null).first();
   if (!photo) return jsonError('Not found', 404);
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM repeater_photos WHERE id = ?`).bind(photoId),
