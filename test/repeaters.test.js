@@ -61,16 +61,17 @@ describe('repeaters', () => {
     expect(JSON.stringify(updates)).not.toContain('9999');
   });
 
-  it('lists repeaters in order with open reports and the last visit', async () => {
+  it('lists repeaters in order with open reports, and the site\'s last visit', async () => {
     const a = await create({ name: 'A' });
     const b = await create({ name: 'B' });
     await call('POST', `/${a.id}/reports`, { category: 'noise', description: 'Hum' });
-    await call('POST', `/${a.id}/visits`, { visit_date: '2026-10-01', visitors: 'KT4AAA', purpose: 'Check duplexer' });
-    await call('POST', `/${a.id}/visits`, { visit_date: '2026-11-01', visitors: 'KT4AAA', purpose: 'Swap fan' });
-    const { repeaters } = await (await call('GET')).json();
+    await call('POST', '/site/visits', { visit_date: '2026-10-01', visitors: 'KT4AAA', purpose: 'Check duplexer' });
+    await call('POST', '/site/visits', { visit_date: '2026-11-01', visitors: 'KT4AAA', purpose: 'Swap fan' });
+    const { repeaters, site } = await (await call('GET')).json();
     expect(repeaters.map(r => r.name)).toEqual(['A', 'B']);
-    expect(repeaters[0]).toMatchObject({ open_reports: 1, last_visit: '2026-11-01' });
-    expect(repeaters[1]).toMatchObject({ id: b.id, open_reports: 0, last_visit: null });
+    expect(repeaters[0]).toMatchObject({ open_reports: 1 });
+    expect(repeaters[1]).toMatchObject({ id: b.id, open_reports: 0 });
+    expect(site).toMatchObject({ visits: 2, last_visit: '2026-11-01' });
   });
 
   it('deletes a repeater and everything on it, for admins only', async () => {
@@ -87,13 +88,30 @@ describe('repeaters', () => {
 });
 
 describe('visits, reports, notes', () => {
-  it('logs a visit, dated today if no date is given', async () => {
-    const r = await create();
-    const res = await call('POST', `/${r.id}/visits`, { visitors: 'KT4AAA, KT4BBB', purpose: 'Replace battery', time_in: '09:30' });
+  it('logs a visit for the site, dated today if no date is given', async () => {
+    const res = await call('POST', '/site/visits', { visitors: 'KT4AAA, KT4BBB', purpose: 'Replace battery', time_in: '09:30' });
     expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({ visit_date: clubToday(), time_in: '09:30', visitors: 'KT4AAA, KT4BBB' });
-    expect((await call('POST', `/${r.id}/visits`, { visitors: 'x' })).status).toBe(400);
-    expect((await call('POST', `/${r.id}/visits`, { visitors: 'x', purpose: 'y', time_in: '25:00' })).status).toBe(400);
+    expect(await res.json()).toMatchObject({ repeater_id: null, visit_date: clubToday(), time_in: '09:30', visitors: 'KT4AAA, KT4BBB' });
+    expect((await call('POST', '/site/visits', { visitors: 'x' })).status).toBe(400);
+    expect((await call('POST', '/site/visits', { visitors: 'x', purpose: 'y', time_in: '25:00' })).status).toBe(400);
+  });
+
+  it('shows site visits on every repeater, and does not log a visit against one repeater', async () => {
+    const a = await create({ name: 'A' });
+    const b = await create({ name: 'B' });
+    const visit = await (await call('POST', '/site/visits', { visitors: 'KT4AAA', purpose: 'Swap fan' })).json();
+    expect((await get(a.id)).visits.map(v => v.id)).toEqual([visit.id]);
+    expect((await get(b.id)).visits.map(v => v.id)).toEqual([visit.id]);
+    expect((await (await call('GET', '/site')).json()).visits.map(v => v.id)).toEqual([visit.id]);
+
+    const refused = await call('POST', `/${a.id}/visits`, { visitors: 'x', purpose: 'y' });
+    expect(refused.status).toBe(404);
+    expect((await refused.json()).error).toMatch(/whole site/);
+    expect((await call('PATCH', `/${a.id}/visits/${visit.id}`, { notes: 'z' })).status).toBe(404);
+    expect((await call('PATCH', `/site/visits/${visit.id}`, { notes: 'Fan was seized' })).status).toBe(200);
+    // Deleting a repeater leaves the site's visits
+    await call('DELETE', `/${a.id}`, null, admin);
+    expect((await get(b.id)).visits).toHaveLength(1);
   });
 
   it('resolves a report with today\'s date and clears it when reopened', async () => {
@@ -245,7 +263,7 @@ describe('the whole site', () => {
     expect((await get(b.id)).photos.map(p => p.id)).toEqual([photo.id]);
 
     const list = await (await call('GET')).json();
-    expect(list.site).toEqual({ notes: 1, photos: 1, contacts: 0 });
+    expect(list.site).toEqual({ notes: 1, photos: 1, contacts: 0, visits: 0, last_visit: null });
 
     // A site photo is served from the site, not through a repeater
     expect((await call('GET', `/site/photos/${photo.id}`)).status).toBe(200);
@@ -278,14 +296,14 @@ describe('the whole site', () => {
     const photo = await (await call('POST', `/${a.id}/photos`, { image: JPEG, thumb: JPEG })).json();
     expect((await (await call('PATCH', `/${a.id}/photos/${photo.id}`, { site_wide: true })).json()).repeater_id).toBeNull();
     expect((await call('GET', `/site/photos/${photo.id}`)).status).toBe(200);
-    // Visits and other lists stay with their repeater
-    const visit = await (await call('POST', `/${a.id}/visits`, { visitors: 'x', purpose: 'y' })).json();
-    await call('PATCH', `/${a.id}/visits/${visit.id}`, { site_wide: true, notes: 'z' });
-    expect((await get(a.id)).visits[0].repeater_id).toBe(a.id);
+    // Reports and other lists stay with their repeater
+    const report = await (await call('POST', `/${a.id}/reports`, { category: 'noise', description: 'Hum' })).json();
+    await call('PATCH', `/${a.id}/reports/${report.id}`, { site_wide: true, resolution: 'z' });
+    expect((await get(a.id)).reports[0].repeater_id).toBe(a.id);
   });
 
-  it('only has notes and photos', async () => {
-    expect((await call('POST', '/site/visits', { visitors: 'x', purpose: 'y' })).status).toBe(404);
+  it('only has visits, contacts, notes, and photos', async () => {
+    expect((await call('POST', '/site/reports', { category: 'noise', description: 'y' })).status).toBe(404);
     expect((await call('PATCH', '/site', { name: 'x' })).status).toBe(405);
   });
 });

@@ -518,7 +518,7 @@ inventory_events       → item move / check-out / note history
 google_group_members   → addresses the Google Groups sync has placed in each year's group
 officers               → who held which position in which year
 repeaters              → club repeaters: frequencies, tones, screen PIN, equipment, site
-repeater_visits        → site visits (date, times, who, why)
+repeater_visits        → site visits (date, times, who, why); always for the whole site
 repeater_reports       → reports of trouble on a repeater, with status and resolution
 repeater_maintenance   → maintenance done and renewals kept up, with next-due dates
 repeater_notes         → site notes (no repeater_id: the whole site)
@@ -554,6 +554,7 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `027_repeaters.sql` — repeaters, their visits, reports, maintenance, notes, photos, and documents
 - `028_repeater_site.sql` — notes and photos for the whole repeater site (nullable `repeater_id`)
 - `029_repeater_contacts.sql` — repeater and site contacts
+- `030_repeater_visits_site.sql` — visits belong to the whole site; existing visits move there
 
 ---
 
@@ -643,13 +644,13 @@ POST   /api/repeaters                 Add a repeater
 GET    /api/repeaters/:id             One repeater with visits, reports, maintenance, notes, photos, documents
 PATCH  /api/repeaters/:id             Change repeater fields (only the fields sent)
 DELETE /api/repeaters/:id             Delete a repeater and everything on it (admin only)
-POST   /api/repeaters/:id/visits      Log a site visit (PATCH/DELETE /visits/:entryId)
 POST   /api/repeaters/:id/reports     Log a report (PATCH/DELETE /reports/:entryId)
 POST   /api/repeaters/:id/maintenance Log maintenance or a renewal (PATCH/DELETE /maintenance/:entryId)
 POST   /api/repeaters/:id/notes       Add a site note (PATCH/DELETE /notes/:entryId; PATCH { site_wide } moves it)
 POST   /api/repeaters/:id/contacts    Add a contact { name, title, phone, email, has_key, notes } (same as notes)
 POST   /api/repeaters/:id/photos      Add a photo { image, thumb, caption, taken_date } (GET/PATCH/DELETE /photos/:photoId)
-GET    /api/repeaters/site            Contacts, notes, and photos for the whole site (/site/contacts, /site/notes, /site/photos)
+GET    /api/repeaters/site            Visits, contacts, notes, and photos for the whole site
+POST   /api/repeaters/site/visits     Log a site visit (PATCH/DELETE /site/visits/:entryId; also /site/contacts, /site/notes, /site/photos)
 POST   /api/repeaters/:id/documents   JSON { title, kind, url } adds a link; any other body uploads a file
                                       (?title=&kind=&filename=, up to 25 MB) (GET/PATCH/DELETE /documents/:docId)
 
@@ -836,7 +837,7 @@ re-synced in the background if data is older than 7 days.
 ## Repeaters
 
 The **Repeaters** tab (board+) keeps everything about the club's repeaters in one place. The
-list shows each machine's output frequency, input and offset, tone, site, last visit, and open
+list shows each machine's output frequency, input and offset, tone, site, and open
 reports, with a **Coming Due** box on top for maintenance and renewals that are overdue or due
 in the next 60 days. The same list goes out in the Sunday roundup email every week until each
 item is logged done. Each repeater has these tabs:
@@ -850,7 +851,9 @@ item is logged done. Each repeater has these tabs:
 - **Reports** — noise, interference, unlicensed use, kerchunking, conduct, outages, audio, and
   coverage reports, each open, investigating, or resolved. Resolving one dates it today unless
   another date is given
-- **Visit Log** — date, arrive and leave times, who went, why, and what was done
+- **Visit Log** — date, arrive and leave times, who went, why, and what was done. Visits are
+  for the whole site (one trip, whichever repeaters were worked on), so every repeater and the
+  Repeater Site page show the same log
 - **Maintenance & Renewals** — work done and paperwork kept up (coordination, listing renewals,
   license, site lease, insurance). Give an entry a next-due date to see it in Coming Due. The
   latest entry with the same type and title is the one that counts, so logging a renewal again

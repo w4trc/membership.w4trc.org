@@ -1,17 +1,16 @@
 /**
  * Club repeater routes (board+)
- * GET    /api/repeaters                          - every repeater with open reports, last visit, and what is coming due
+ * GET    /api/repeaters                          - every repeater with open reports, what is coming due, and the site's last visit
  * POST   /api/repeaters                          - add a repeater
- * GET    /api/repeaters/:id                      - one repeater with its visits, reports, maintenance, notes, photos, documents
+ * GET    /api/repeaters/:id                      - one repeater with its reports, maintenance, notes, photos, documents, and the site's visits
  * PATCH  /api/repeaters/:id                      - change repeater fields; only the fields sent are changed
  * DELETE /api/repeaters/:id                      - delete a repeater and everything on it (admin only)
  *
- * POST   /api/repeaters/:id/visits               - log a site visit { visit_date, time_in, time_out, visitors, purpose, notes }
  * POST   /api/repeaters/:id/reports              - log a report { report_date, category, reported_by, description, status, resolution, resolved_date }
  * POST   /api/repeaters/:id/maintenance          - log maintenance or a renewal { kind, title, done_date, next_due, done_by, cost, notes }
  * POST   /api/repeaters/:id/notes                - add a site note { note, pinned }
  * POST   /api/repeaters/:id/contacts             - add a contact { name, title, phone, email, has_key, notes }
- * PATCH  /api/repeaters/:id/<list>/:entryId      - change an entry in any of the five lists above
+ * PATCH  /api/repeaters/:id/<list>/:entryId      - change an entry in any of the four lists above
  * DELETE /api/repeaters/:id/<list>/:entryId
  *
  * POST   /api/repeaters/:id/photos               - add a site photo { image, thumb, caption, taken_date } (JPEG data URLs)
@@ -25,7 +24,9 @@
  * PATCH  /api/repeaters/:id/documents/:docId     - { title, kind }
  * DELETE /api/repeaters/:id/documents/:docId
  *
- * GET    /api/repeaters/site                     - notes and photos for the whole site
+ * GET    /api/repeaters/site                     - visits, contacts, notes, and photos for the whole site
+ * POST   /api/repeaters/site/visits              - log a site visit { visit_date, time_in, time_out, visitors, purpose, notes }
+ *                                                  (PATCH/DELETE /site/visits/:id). Visits are only ever for the site.
  * POST   /api/repeaters/site/notes               - notes, contacts, and photos routes as above, for the site
  * PATCH/DELETE /api/repeaters/site/notes/:id      (GET/PATCH/DELETE /site/photos/:photoId too)
  * PATCH  /api/repeaters/:id/notes/:noteId  { site_wide } moves a note between that repeater and the site
@@ -76,10 +77,12 @@ export async function handleRepeaters(request, env, path, user) {
   const subId = rawSubId ? parseInt(rawSubId, 10) : null;
   if (rawSubId && !subId) return jsonError('Not found', 404);
 
-  // The whole site: only notes and photos
+  // The whole site: visits, notes, contacts, and photos
   if (rawId === 'site') {
     if (!sub) return method === 'GET' ? jsonResponse(await siteData(env)) : jsonError('Method not allowed', 405);
-    if (!['notes', 'photos', 'contacts'].includes(sub)) return jsonError('Not found', 404);
+    if (!['visits', 'notes', 'photos', 'contacts'].includes(sub)) return jsonError('Not found', 404);
+  } else if (LISTS[sub]?.siteOnly) {
+    return jsonError(`${LISTS[sub].label[0].toUpperCase() + LISTS[sub].label.slice(1)}s are logged for the whole site: use /api/repeaters/site/${sub}`, 404);
   }
 
   let repeater = SITE;
@@ -229,7 +232,8 @@ const REPEATER_RULES = {
 // The four dated lists on a repeater share create/update/delete
 const LISTS = {
   visits: {
-    table: 'repeater_visits', label: 'visit', orderBy: 'e.visit_date DESC, e.id DESC',
+    // A trip to the site is one visit, whichever repeaters were worked on
+    table: 'repeater_visits', label: 'visit', siteWide: true, siteOnly: true, orderBy: 'e.visit_date DESC, e.id DESC',
     rules: {
       visit_date: day('Visit date', { required: true }),
       time_in:    time('Time in'),
@@ -357,7 +361,6 @@ async function listRepeaters(env) {
     env.DB.prepare(`
       SELECT r.*,
         (SELECT COUNT(*) FROM repeater_reports x WHERE x.repeater_id = r.id AND x.status != 'resolved') AS open_reports,
-        (SELECT MAX(visit_date) FROM repeater_visits x WHERE x.repeater_id = r.id) AS last_visit,
         (SELECT COUNT(*) FROM repeater_photos x WHERE x.repeater_id = r.id) AS photo_count,
         (SELECT COUNT(*) FROM repeater_documents x WHERE x.repeater_id = r.id) AS document_count
       FROM repeaters r
@@ -367,7 +370,9 @@ async function listRepeaters(env) {
     env.DB.prepare(`
       SELECT (SELECT COUNT(*) FROM repeater_notes WHERE repeater_id IS NULL) AS notes,
              (SELECT COUNT(*) FROM repeater_photos WHERE repeater_id IS NULL) AS photos,
-             (SELECT COUNT(*) FROM repeater_contacts WHERE repeater_id IS NULL) AS contacts
+             (SELECT COUNT(*) FROM repeater_contacts WHERE repeater_id IS NULL) AS contacts,
+             (SELECT COUNT(*) FROM repeater_visits WHERE repeater_id IS NULL) AS visits,
+             (SELECT MAX(visit_date) FROM repeater_visits WHERE repeater_id IS NULL) AS last_visit
     `),
   ]);
   return jsonResponse({ repeaters: repeaters.results, due: due.results, site: site.results[0], today, due_soon_days: DUE_SOON_DAYS });
@@ -399,21 +404,22 @@ const PHOTO_SELECT = `
   FROM repeater_photos p ${whoJoin('c', 'p.created_by')}`;
 const PHOTO_ORDER = 'COALESCE(p.taken_date, date(p.created_at)) DESC, p.id DESC';
 
-/** Notes and photos for the whole site. */
+/** Visits, contacts, notes, and photos for the whole site. */
 export async function siteData(env) {
   const siteList = (key) => env.DB.prepare(`
     SELECT e.*, ${WHO('c')} AS added_by FROM ${LISTS[key].table} e ${whoJoin('c', 'e.created_by')}
     WHERE e.repeater_id IS NULL ORDER BY ${LISTS[key].orderBy}
   `);
-  const [notes, photos, contacts] = await env.DB.batch([
+  const [notes, photos, contacts, visits] = await env.DB.batch([
     siteList('notes'),
     env.DB.prepare(`${PHOTO_SELECT} WHERE p.repeater_id IS NULL ORDER BY ${PHOTO_ORDER}`),
     siteList('contacts'),
+    siteList('visits'),
   ]);
-  return { notes: notes.results, photos: photos.results, contacts: contacts.results };
+  return { notes: notes.results, photos: photos.results, contacts: contacts.results, visits: visits.results };
 }
 
-/** Everything on one repeater, with the site's notes and photos. */
+/** Everything on one repeater, with the site's visits, contacts, notes, and photos. */
 export async function repeaterData(env, id) {
   const [repeater, visits, reports, maintenance, notes, contacts, photos, documents, due] = await env.DB.batch([
     env.DB.prepare(`SELECT * FROM repeaters WHERE id = ?`).bind(id),
