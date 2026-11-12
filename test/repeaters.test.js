@@ -245,7 +245,7 @@ describe('the whole site', () => {
     expect((await get(b.id)).photos.map(p => p.id)).toEqual([photo.id]);
 
     const list = await (await call('GET')).json();
-    expect(list.site).toEqual({ notes: 1, photos: 1 });
+    expect(list.site).toEqual({ notes: 1, photos: 1, contacts: 0 });
 
     // A site photo is served from the site, not through a repeater
     expect((await call('GET', `/site/photos/${photo.id}`)).status).toBe(200);
@@ -287,5 +287,30 @@ describe('the whole site', () => {
   it('only has notes and photos', async () => {
     expect((await call('POST', '/site/visits', { visitors: 'x', purpose: 'y' })).status).toBe(404);
     expect((await call('PATCH', '/site', { name: 'x' })).status).toBe(405);
+  });
+});
+
+describe('contacts', () => {
+  it('adds site contacts, shown with every repeater, and contacts for one repeater', async () => {
+    const a = await create({ name: 'A' });
+    const b = await create({ name: 'B' });
+    const owner = await (await call('POST', '/site/contacts', { name: 'Pat Owner', title: 'Landowner', phone: '423-555-0100', email: 'pat@example.com', has_key: true })).json();
+    expect(owner).toMatchObject({ repeater_id: null, name: 'Pat Owner', has_key: 1 });
+    await call('POST', `/${a.id}/contacts`, { name: 'Alex Tech', title: 'Controller programmer' });
+
+    expect((await get(a.id)).contacts.map(c => c.name)).toEqual(['Alex Tech', 'Pat Owner']);
+    expect((await get(b.id)).contacts.map(c => c.name)).toEqual(['Pat Owner']);
+    expect((await (await call('GET', '/site')).json()).contacts.map(c => c.name)).toEqual(['Pat Owner']);
+    expect((await (await call('GET')).json()).site.contacts).toBe(1);
+
+    const changed = await (await call('PATCH', `/site/contacts/${owner.id}`, { has_key: false })).json();
+    expect(changed.has_key).toBe(0);
+    expect((await call('PATCH', `/${a.id}/contacts/${owner.id}`, { site_wide: false })).status).toBe(200);
+    expect((await get(b.id)).contacts).toEqual([]);
+  });
+
+  it('needs a name and a real-looking email', async () => {
+    expect((await call('POST', '/site/contacts', { phone: '555' })).status).toBe(400);
+    expect((await call('POST', '/site/contacts', { name: 'x', email: 'not an email' })).status).toBe(400);
   });
 });

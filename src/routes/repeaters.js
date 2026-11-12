@@ -10,7 +10,8 @@
  * POST   /api/repeaters/:id/reports              - log a report { report_date, category, reported_by, description, status, resolution, resolved_date }
  * POST   /api/repeaters/:id/maintenance          - log maintenance or a renewal { kind, title, done_date, next_due, done_by, cost, notes }
  * POST   /api/repeaters/:id/notes                - add a site note { note, pinned }
- * PATCH  /api/repeaters/:id/<list>/:entryId      - change an entry in any of the four lists above
+ * POST   /api/repeaters/:id/contacts             - add a contact { name, title, phone, email, has_key, notes }
+ * PATCH  /api/repeaters/:id/<list>/:entryId      - change an entry in any of the five lists above
  * DELETE /api/repeaters/:id/<list>/:entryId
  *
  * POST   /api/repeaters/:id/photos               - add a site photo { image, thumb, caption, taken_date } (JPEG data URLs)
@@ -25,7 +26,7 @@
  * DELETE /api/repeaters/:id/documents/:docId
  *
  * GET    /api/repeaters/site                     - notes and photos for the whole site
- * POST   /api/repeaters/site/notes               - notes and photos routes as above, for the site
+ * POST   /api/repeaters/site/notes               - notes, contacts, and photos routes as above, for the site
  * PATCH/DELETE /api/repeaters/site/notes/:id      (GET/PATCH/DELETE /site/photos/:photoId too)
  * PATCH  /api/repeaters/:id/notes/:noteId  { site_wide } moves a note between that repeater and the site
  *                                          (photos the same way)
@@ -78,7 +79,7 @@ export async function handleRepeaters(request, env, path, user) {
   // The whole site: only notes and photos
   if (rawId === 'site') {
     if (!sub) return method === 'GET' ? jsonResponse(await siteData(env)) : jsonError('Method not allowed', 405);
-    if (sub !== 'notes' && sub !== 'photos') return jsonError('Not found', 404);
+    if (!['notes', 'photos', 'contacts'].includes(sub)) return jsonError('Not found', 404);
   }
 
   let repeater = SITE;
@@ -285,6 +286,23 @@ const LISTS = {
     defaults: () => ({ pinned: 0 }),
     summary: (e) => ({ note: e.note.length > 80 ? e.note.slice(0, 77) + '…' : e.note }),
   },
+  contacts: {
+    table: 'repeater_contacts', label: 'contact', siteWide: true, orderBy: 'e.name COLLATE NOCASE, e.id',
+    rules: {
+      name:    text('Name', { required: true, max: 200 }),
+      title:   text('Title', { max: 200 }),
+      phone:   text('Phone', { max: 60 }),
+      email:   (v) => {
+        const r = text('Email', { max: 200 })(v);
+        if (r.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.value)) return { error: 'Email does not look like an email address' };
+        return r;
+      },
+      has_key: flag(),
+      notes:   text('Notes'),
+    },
+    defaults: () => ({ has_key: 0 }),
+    summary: (e) => ({ contact: e.name, has_key: !!e.has_key }),
+  },
 };
 
 // Who did something, as a short label: the member's callsign, else the login email
@@ -348,7 +366,8 @@ async function listRepeaters(env) {
     comingDueStatement(env, today),
     env.DB.prepare(`
       SELECT (SELECT COUNT(*) FROM repeater_notes WHERE repeater_id IS NULL) AS notes,
-             (SELECT COUNT(*) FROM repeater_photos WHERE repeater_id IS NULL) AS photos
+             (SELECT COUNT(*) FROM repeater_photos WHERE repeater_id IS NULL) AS photos,
+             (SELECT COUNT(*) FROM repeater_contacts WHERE repeater_id IS NULL) AS contacts
     `),
   ]);
   return jsonResponse({ repeaters: repeaters.results, due: due.results, site: site.results[0], today, due_soon_days: DUE_SOON_DAYS });
@@ -382,21 +401,23 @@ const PHOTO_ORDER = 'COALESCE(p.taken_date, date(p.created_at)) DESC, p.id DESC'
 
 /** Notes and photos for the whole site. */
 export async function siteData(env) {
-  const [notes, photos] = await env.DB.batch([
-    env.DB.prepare(`
-      SELECT e.*, ${WHO('c')} AS added_by FROM repeater_notes e ${whoJoin('c', 'e.created_by')}
-      WHERE e.repeater_id IS NULL ORDER BY ${LISTS.notes.orderBy}
-    `),
+  const siteList = (key) => env.DB.prepare(`
+    SELECT e.*, ${WHO('c')} AS added_by FROM ${LISTS[key].table} e ${whoJoin('c', 'e.created_by')}
+    WHERE e.repeater_id IS NULL ORDER BY ${LISTS[key].orderBy}
+  `);
+  const [notes, photos, contacts] = await env.DB.batch([
+    siteList('notes'),
     env.DB.prepare(`${PHOTO_SELECT} WHERE p.repeater_id IS NULL ORDER BY ${PHOTO_ORDER}`),
+    siteList('contacts'),
   ]);
-  return { notes: notes.results, photos: photos.results };
+  return { notes: notes.results, photos: photos.results, contacts: contacts.results };
 }
 
 /** Everything on one repeater, with the site's notes and photos. */
 export async function repeaterData(env, id) {
-  const [repeater, visits, reports, maintenance, notes, photos, documents, due] = await env.DB.batch([
+  const [repeater, visits, reports, maintenance, notes, contacts, photos, documents, due] = await env.DB.batch([
     env.DB.prepare(`SELECT * FROM repeaters WHERE id = ?`).bind(id),
-    ...['visits', 'reports', 'maintenance', 'notes'].map(key => {
+    ...['visits', 'reports', 'maintenance', 'notes', 'contacts'].map(key => {
       const l = LISTS[key];
       return env.DB.prepare(`
         SELECT e.*, ${WHO('c')} AS added_by FROM ${l.table} e ${whoJoin('c', 'e.created_by')}
@@ -421,6 +442,7 @@ export async function repeaterData(env, id) {
     reports: reports.results,
     maintenance: maintenance.results,
     notes: notes.results,
+    contacts: contacts.results,
     photos: photos.results,
     documents: documents.results,
     due: due.results,
@@ -460,7 +482,7 @@ async function deleteRepeater({ request, env, user, repeater }) {
   }
   const del = (table) => env.DB.prepare(`DELETE FROM ${table} WHERE repeater_id = ?`).bind(repeater.id);
   await env.DB.batch([
-    ...['repeater_visits', 'repeater_reports', 'repeater_maintenance', 'repeater_notes', 'repeater_photos', 'repeater_documents'].map(del),
+    ...['repeater_visits', 'repeater_reports', 'repeater_maintenance', 'repeater_notes', 'repeater_contacts', 'repeater_photos', 'repeater_documents'].map(del),
     env.DB.prepare(`DELETE FROM repeaters WHERE id = ?`).bind(repeater.id),
   ]);
   await audit(env, {

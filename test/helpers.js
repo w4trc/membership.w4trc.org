@@ -11,6 +11,7 @@ export async function resetDb() {
     env.DB.prepare('DELETE FROM repeater_reports'),
     env.DB.prepare('DELETE FROM repeater_maintenance'),
     env.DB.prepare('DELETE FROM repeater_notes'),
+    env.DB.prepare('DELETE FROM repeater_contacts'),
     env.DB.prepare('DELETE FROM repeater_photos'),
     env.DB.prepare('DELETE FROM repeater_documents'),
     env.DB.prepare('DELETE FROM repeaters'),
