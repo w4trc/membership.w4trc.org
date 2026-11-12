@@ -88,6 +88,8 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   const count  = newPayments.length;
   const showYear = memberCounts.length > 1;
+  // Each row links to its page in the admin section (officers sign in first if they need to)
+  const link = (path, html) => `<a href="https://${domain}${path}" style="color:inherit">${html}</a>`;
 
   const tiles = memberCounts.map(({ year, count: n }) => `
     <td style="background:#f0f4ff;border-radius:8px;padding:16px 20px;width:${Math.floor(100 / memberCounts.length)}%">
@@ -102,7 +104,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
     const method  = escHtml(p.payment_method  || 'manual');
     const amount  = p.amount_paid != null ? `$${Number(p.amount_paid).toFixed(2)}` : '—';
     return `<tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-weight:600">${call}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-weight:600">${p.member_id ? link(`/admin/members/${p.member_id}/dues`, call) : call}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee">${name}</td>
       ${showYear ? `<td style="padding:8px 12px;border-bottom:1px solid #eee">${Number(p.year)}</td>` : ''}
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${type}</td>
@@ -123,7 +125,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
   const th = 'padding:8px 12px;text-align:left;font-weight:600';
   const prospectsSection = newProspects.length ? `
   <h3 style="margin:28px 0 12px">New local hams this week (${newProspects.length})</h3>
-  <p style="color:#777;margin:0 0 12px;font-size:14px">Added to Local Hams from the FCC's daily license files.</p>
+  <p style="color:#777;margin:0 0 12px;font-size:14px">Added to <a href="https://${domain}/admin/prospects" style="color:#3b7dd8">Local Hams</a> from the FCC's daily license files.</p>
   <table style="width:100%;border-collapse:collapse;font-size:14px">
     <thead><tr style="background:#f5f5f5">
       <th style="${th}">Callsign</th><th style="${th}">Name</th><th style="${th}">City</th><th style="${th}">Class</th><th style="${th}">Why</th>
@@ -143,7 +145,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
     const amount = d.donation_kind === 'monetary' && d.amount != null ? money(d.amount) : '—';
     return `<tr>
       <td style="${cell}">${escHtml(d.donation_date || '')}</td>
-      <td style="${cell}">${d.callsign ? `<span style="font-family:monospace;font-weight:600">${escHtml(d.callsign)}</span> ` : ''}${escHtml(donor)}</td>
+      <td style="${cell}">${d.callsign ? `<span style="font-family:monospace;font-weight:600">${d.member_id ? link(`/admin/members/${d.member_id}/donations`, escHtml(d.callsign)) : escHtml(d.callsign)}</span> ` : ''}${escHtml(donor)}</td>
       <td style="${cell}">${what}</td>
       <td style="${cell};text-align:right">${amount}</td>
     </tr>`;
@@ -170,7 +172,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
     return `<tr>
       <td style="${cell};white-space:nowrap${overdue ? ';color:#c0392b;font-weight:600' : ''}">${escHtml(d.next_due)}${overdue ? ' (overdue)' : ''}</td>
       <td style="${cell}">${escHtml(d.repeater_name)}</td>
-      <td style="${cell}">${escHtml(d.title)}</td>
+      <td style="${cell}">${d.repeater_id ? link(`/admin/repeaters/${d.repeater_id}/maintenance`, escHtml(d.title)) : escHtml(d.title)}</td>
       <td style="${cell};color:#777;white-space:nowrap">${escHtml(d.done_date ? 'last done ' + d.done_date : '')}</td>
     </tr>`;
   }).join('');

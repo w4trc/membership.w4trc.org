@@ -253,7 +253,8 @@ yourself and pass it in with `npm run db:backfill:prospects -- --zip path/to/l_a
 # Build the local D1 database (applies every migration not yet applied)
 npm run db:migrate:local
 
-# (Optional) seed with a sample admin and the local-ham list
+# (Optional) seed sample logins and records (see seeds/dev_admin.sql for the
+# logins and their password), and the local-ham list
 npm run db:seed:local
 npm run db:seed:prospects:local
 

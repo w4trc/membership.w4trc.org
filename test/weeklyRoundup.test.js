@@ -46,6 +46,8 @@ describe('weekly roundup', () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].html).toContain('W4AAA');
     expect(emails[0].html).toContain('W4BBB');
+    // each payment links to that member's dues
+    expect(emails[0].html.match(/href="https:\/\/[^"/]+\/admin\/members\/\d+\/dues"/g)).toHaveLength(2);
   });
 
   it('counts this year and next year members during renewal season', async () => {
@@ -189,6 +191,7 @@ describe('Sunday cron', () => {
       const html = emails[0].html;
       expect(html).toContain('Repeater maintenance &amp; renewals due (2)');
       expect(html).toContain('2m Bays Mountain');
+      expect(html).toContain(`/admin/repeaters/${id}/maintenance"`);
       expect(html.indexOf('SERA coordination')).toBeLessThan(html.indexOf('RepeaterBook listing'));
       expect(html).toContain('2026-06-01 (overdue)');
       expect(html).not.toContain('2026-07-20 (overdue)');

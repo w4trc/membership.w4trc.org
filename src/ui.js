@@ -125,6 +125,8 @@ nav { flex: 1; padding: 12px 0; }
   border-left-color: var(--accent);
 }
 .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.row-link { color: inherit; text-decoration: none; }
+.row-link:hover { text-decoration: underline; }
 .nav-section {
   padding: 16px 16px 4px; font-size: 10px; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: .08em;
@@ -749,8 +751,7 @@ textarea { resize: vertical; min-height: 80px; }
 const state = {
   user: null,
   currentPage: 'dashboard',
-  memberSearch: '',
-  memberPage: 1,
+  memberFilters: { q: '', status: 'all', arrl: 'all', eastman: 'all', class: 'all', page: 1 },
   memberYear: new Date().getFullYear(),
 };
 
@@ -960,7 +961,7 @@ async function doLogout() {
   await api('POST', '/auth/logout').catch(() => {});
   state.user = null;
   state.pagePath = null;
-  history.replaceState(null, '', '/');
+  writeUrl('/');
   document.title = APP_TITLE;
   sessionStorage.removeItem('view');
   document.getElementById('main-shell').classList.add('hidden');
@@ -1012,7 +1013,7 @@ async function doResetPassword() {
     msg.textContent = 'Password updated! Redirecting to sign in…';
     msg.style.color = 'var(--success)';
     msg.classList.remove('hidden');
-    setTimeout(() => { history.replaceState(null, '', '/'); showLogin(); }, 1800);
+    setTimeout(() => { writeUrl('/'); showLogin(); }, 1800);
   } catch (e) {
     msg.textContent = e.data?.error || 'Something went wrong';
     msg.style.color = 'var(--danger)';
@@ -1068,11 +1069,45 @@ function parseRoute(pathname) {
   return { shell, page: page === 'google-groups' ? 'googleGroups' : page || 'dashboard', id, tab };
 }
 
+// Each history entry remembers its position, so a Back that would throw away
+// a half-filled form can be undone.
+let histIdx = history.state?.i ?? 0;
+function writeUrl(path, push) {
+  if (push) histIdx++;
+  history[push ? 'pushState' : 'replaceState']({ i: histIdx }, '', path);
+}
+
 // Moving between pages adds to the browser history; arriving from anywhere
 // else (the bare site address, a scanned label) replaces that entry instead.
 function setUrl(path, replace) {
-  if (DEMO || urlQuiet || !state.user || location.pathname === path) return;
-  history[replace || !parseRoute(location.pathname) ? 'replaceState' : 'pushState'](null, '', path);
+  if (DEMO || urlQuiet || !state.user || location.pathname + location.search === path) return;
+  writeUrl(path, !replace && !!parseRoute(location.pathname));
+}
+
+// List filters ride in the address after "?", leaving out anything at its default
+const MEMBER_FILTERS = { q: '', status: 'all', arrl: 'all', eastman: 'all', class: 'all', page: 1 };
+
+function pageQuery(page) {
+  const p = new URLSearchParams();
+  if (page === 'members') {
+    for (const k in MEMBER_FILTERS) {
+      if (String(state.memberFilters[k]) !== String(MEMBER_FILTERS[k])) p.set(k, state.memberFilters[k]);
+    }
+  }
+  if (page === 'memberships' && state.memberYear !== new Date().getFullYear()) p.set('year', state.memberYear);
+  const q = p.toString();
+  return q ? '?' + q : '';
+}
+
+function readPageQuery(page, search) {
+  const p = new URLSearchParams(search);
+  if (page === 'members') {
+    state.memberFilters = { ...MEMBER_FILTERS };
+    for (const k in MEMBER_FILTERS) {
+      if (p.has(k)) state.memberFilters[k] = k === 'page' ? Math.max(1, parseInt(p.get(k), 10) || 1) : p.get(k);
+    }
+  }
+  if (page === 'memberships') state.memberYear = parseInt(p.get('year'), 10) || new Date().getFullYear();
 }
 
 // The address of the page under any open window, which closing it returns to
@@ -1090,11 +1125,12 @@ function route() {
   const u = state.user;
   const officer = ['board','admin'].includes(u.role);
   document.getElementById('modal-root').innerHTML = '';
+  modalDirty = false;
 
   // A scanned equipment label (/i/:id) opens that item in the inventory
   const itemId = location.pathname.startsWith('/i/') ? parseInt(location.pathname.slice(3), 10) : 0;
   if (itemId) {
-    history.replaceState(null, '', officer ? adminPath('inventory', itemId) : '/');
+    writeUrl(officer ? adminPath('inventory', itemId) : '/');
     if (!officer) toast('That label opens the club inventory, which is for officers.', 'warn');
   }
 
@@ -1108,7 +1144,7 @@ function route() {
   // Anywhere else: officers with a member record land on the same portal as
   // members, unless they were last in the admin section. Coming back from
   // Stripe checkout (/?payment=...) always returns to the portal.
-  if (location.pathname !== '/') history.replaceState(null, '', '/');
+  if (location.pathname !== '/') writeUrl('/');
   const fromCheckout = new URLSearchParams(location.search).has('payment');
   const lastView = sessionStorage.getItem('view');
   if (!officer || (u.memberId && (fromCheckout || lastView !== 'admin'))) {
@@ -1124,14 +1160,43 @@ function routeAdmin(r) {
   if (r.page === 'agendas' && id) return openAgenda(id);
   if (r.page === 'repeaters' && r.id === 'site') return openSite(r.tab);
   if (r.page === 'repeaters' && id) return openRepeater(id, r.tab);
+  if (r.page === 'members' && id) return viewMember(id, r.tab);
+  readPageQuery(r.page, location.search);
   nav(ADMIN_TITLES[r.page] ? r.page : 'dashboard');
   if (!id) return;
-  if (r.page === 'members') viewMember(id);
   if (r.page === 'attendance') openMeeting(id);
   if (r.page === 'inventory') openInvItem(id);
 }
 
-window.addEventListener('popstate', () => { if (!DEMO && state.user) route(); });
+let popIgnore = false;
+window.addEventListener('popstate', e => {
+  if (DEMO || !state.user) return;
+  const to = e.state?.i ?? 0;
+  if (popIgnore) { popIgnore = false; histIdx = to; return; }
+  if (modalDirty && !confirm(DISCARD_MSG)) {
+    // Step back to where the form is
+    if (histIdx !== to) { popIgnore = true; history.go(histIdx - to); }
+    return;
+  }
+  histIdx = to;
+  route();
+});
+
+// Leaving the site or reloading with a half-filled form asks first
+window.addEventListener('beforeunload', e => {
+  if (!modalDirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// Names in lists are real links too. A plain click runs the row's own handler;
+// a ctrl/shift/middle click is left to the browser to open in a new tab.
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a.row-link');
+  if (!a) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) e.stopPropagation();
+  else e.preventDefault();
+}, true);
 
 // Sidebar links are real links (open in a new tab, copy the address), but a
 // plain click switches pages without reloading.
@@ -1181,7 +1246,7 @@ const ADMIN_TITLES = { dashboard: 'Dashboard', members: 'Members', memberships: 
 
 function nav(page) {
   state.currentPage = page;
-  pageUrl(adminPath(page));
+  pageUrl(adminPath(page) + pageQuery(page));
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
@@ -1288,7 +1353,7 @@ async function dashboard() {
           <tbody>
             \${notRenewed.map(m => \`
               <tr>
-                <td><strong>\${escHtml(m.callsign || '—')}</strong></td>
+                <td><a class="row-link" href="\${adminPath('members', m.id)}" onclick="viewMember(\${m.id})"><strong>\${escHtml(m.callsign || '—')}</strong></a></td>
                 <td>\${escHtml(m.first_name + ' ' + m.last_name)}</td>
                 <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
                 <td><button class="btn btn-sm btn-secondary" onclick="viewMember(\${m.id})">View</button></td>
@@ -1315,7 +1380,7 @@ async function dashboard() {
               const label = expired ? 'Expired' : \`\${daysLeft}d\`;
               return \`
               <tr>
-                <td><strong>\${escHtml(m.callsign || '—')}</strong></td>
+                <td><a class="row-link" href="\${adminPath('members', m.id)}" onclick="viewMember(\${m.id})"><strong>\${escHtml(m.callsign || '—')}</strong></a></td>
                 <td>\${escHtml(m.first_name + ' ' + m.last_name)}</td>
                 <td>\${licenseBadge(m.license_class)}</td>
                 <td><span style="color:\${color};font-weight:600">\${escHtml(m.license_expiry)} (\${label})</span></td>
@@ -1405,25 +1470,25 @@ async function members() {
   setPage(\`
     <div class="search-bar">
       <input type="text" id="member-search" placeholder="Search callsign, name, email…"
-        value="\${escHtml(state.memberSearch)}"
-        oninput="state.memberSearch=this.value; state.memberPage=1; loadMembersTable()">
-      <select id="status-filter" onchange="loadMembersTable()" style="width:140px">
+        value="\${escHtml(state.memberFilters.q)}"
+        oninput="memberFilter()">
+      <select id="status-filter" onchange="memberFilter()" style="width:140px">
         <option value="all">All Status</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
         <option value="silent_key">Silent Key</option>
       </select>
-      <select id="arrl-filter" onchange="loadMembersTable()" style="width:140px">
+      <select id="arrl-filter" onchange="memberFilter()" style="width:140px">
         <option value="all">All Members</option>
         <option value="arrl">ARRL Only</option>
         <option value="nonarrl">Non-ARRL</option>
       </select>
-      <select id="eastman-filter" onchange="loadMembersTable()" style="width:150px">
+      <select id="eastman-filter" onchange="memberFilter()" style="width:150px">
         <option value="all">All Sponsors</option>
         <option value="eastman">Eastman Only</option>
         <option value="noneastman">Non-Eastman</option>
       </select>
-      <select id="class-filter" onchange="loadMembersTable()" style="width:160px">
+      <select id="class-filter" onchange="memberFilter()" style="width:160px">
         <option value="all">All Classes</option>
         <option value="Amateur Extra">Amateur Extra</option>
         <option value="General">General</option>
@@ -1437,20 +1502,33 @@ async function members() {
       <div id="members-pagination" style="padding:12px 16px;display:flex;gap:8px;align-items:center"></div>
     </div>
   \`);
+  // Show the filters the address asked for; anything it got wrong falls back to "all"
+  const f = state.memberFilters;
+  for (const k of ['status', 'arrl', 'eastman', 'class']) {
+    const el = document.getElementById(k + '-filter');
+    el.value = f[k];
+    if (el.value !== f[k]) el.value = f[k] = 'all';
+  }
+  loadMembersTable();
+}
+
+function memberFilter() {
+  const v = id => document.getElementById(id)?.value;
+  state.memberFilters = {
+    q: v('member-search') || '', status: v('status-filter') || 'all', arrl: v('arrl-filter') || 'all',
+    eastman: v('eastman-filter') || 'all', class: v('class-filter') || 'all', page: 1,
+  };
   loadMembersTable();
 }
 
 async function loadMembersTable() {
-  const search  = document.getElementById('member-search')?.value  || '';
-  const status  = document.getElementById('status-filter')?.value  || 'all';
-  const arrl    = document.getElementById('arrl-filter')?.value    || 'all';
-  const eastman = document.getElementById('eastman-filter')?.value || 'all';
-  const licClass = document.getElementById('class-filter')?.value  || 'all';
   const tbl = document.getElementById('members-table');
   if (!tbl) return;
+  const f = state.memberFilters;
+  if (state.currentPage === 'members') pageUrl(adminPath('members') + pageQuery('members'), true);
   tbl.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api('GET', \`/members?q=\${encodeURIComponent(search)}&status=\${status}&arrl=\${arrl}&eastman=\${eastman}&class=\${encodeURIComponent(licClass)}&page=\${state.memberPage}\`);
+    const data = await api('GET', '/members?' + new URLSearchParams(f));
     const { members: list, pagination: pg } = data;
 
     if (!list.length) {
@@ -1470,8 +1548,8 @@ async function loadMembersTable() {
         <tbody>
           \${list.map(m => \`
             <tr>
-              <td><span class="callsign">\${escHtml(m.callsign || '—')}</span>\${m.callsign_mismatch ? ' <span class="badge badge-yellow" title="Callsign may have changed hands — open record to review">⚠</span>' : ''}</td>
-              <td>\${escHtml(m.first_name)} \${escHtml(m.last_name)}</td>
+              <td><a class="row-link" href="\${adminPath('members', m.id)}" onclick="viewMember(\${m.id})"><span class="callsign">\${escHtml(m.callsign || '—')}</span></a>\${m.callsign_mismatch ? ' <span class="badge badge-yellow" title="Callsign may have changed hands — open record to review">⚠</span>' : ''}</td>
+              <td><a class="row-link" href="\${adminPath('members', m.id)}" onclick="viewMember(\${m.id})">\${escHtml(m.first_name)} \${escHtml(m.last_name)}</a></td>
               <td style="color:var(--text-muted)">\${escHtml(m.email || '—')}</td>
               <td>\${licenseBadge(m.license_class)}</td>
               <td>\${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : m.membership_type === 'lifetime_honorary' ? '<span class="badge badge-purple">Life Honorary</span>' : '<span class="badge badge-gray">Individual</span>'} \${m.is_arrl_member ? '<span class="badge badge-green">ARRL</span>' : ''} \${m.is_eastman_member ? '<span class="badge badge-blue">Eastman</span>' : ''}</td>
@@ -1491,9 +1569,9 @@ async function loadMembersTable() {
     const pagEl = document.getElementById('members-pagination');
     if (pg && pg.pages > 1) {
       pagEl.innerHTML = \`
-        <button class="btn btn-sm btn-secondary" \${pg.page<=1?'disabled':''} onclick="state.memberPage--; loadMembersTable()">‹ Prev</button>
+        <button class="btn btn-sm btn-secondary" \${pg.page<=1?'disabled':''} onclick="state.memberFilters.page--; loadMembersTable()">‹ Prev</button>
         <span style="font-size:12px;color:var(--text-muted)">Page \${pg.page} of \${pg.pages} (\${pg.total} total)</span>
-        <button class="btn btn-sm btn-secondary" \${pg.page>=pg.pages?'disabled':''} onclick="state.memberPage++; loadMembersTable()">Next ›</button>
+        <button class="btn btn-sm btn-secondary" \${pg.page>=pg.pages?'disabled':''} onclick="state.memberFilters.page++; loadMembersTable()">Next ›</button>
       \`;
     } else {
       pagEl.innerHTML = \`<span style="font-size:12px;color:var(--text-muted)">\${pg?.total || 0} members</span>\`;
@@ -1521,17 +1599,48 @@ async function exportMembersCSV() {
   } catch(e) { toast('Export failed: ' + e.message, 'error'); }
 }
 
-async function viewMember(id) {
-  setUrl(adminPath('members', id), true);
-  showModal('<div class="spinner"></div>', 'Member Detail', []);
+const MEMBER_TABS = [['info', 'Info'], ['dues', 'Dues History'], ['donations', 'Donations'], ['notes', 'Notes']];
+
+// A member's own page. Called again after a save, it redraws in place and
+// stays on the tab the officer was using.
+async function viewMember(id, tab) {
+  const same = state.currentPage === 'member' && state.memberId === id;
+  if (tab) state.memberTab = tab;
+  else if (!same) state.memberTab = 'info';
+  if (!MEMBER_TABS.some(([k]) => k === state.memberTab)) state.memberTab = 'info';
+  state.currentPage = 'member';
+  state.memberId = id;
+  pageUrl(adminPath('members', id, state.memberTab));
+  closeModal();
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === 'members'));
+  const back = '<button class="btn btn-secondary" onclick="nav(\\'members\\')">← All Members</button>';
+  if (!same) {
+    document.getElementById('page-title').textContent = 'Member';
+    setTitle('Member');
+    document.getElementById('topbar-actions').innerHTML = back;
+    setPage('<div class="spinner"></div>');
+  }
+  const here = () => state.currentPage === 'member' && state.memberId === id;
   try {
     const m = await api('GET', '/members/' + id);
+    if (!here()) return;
     const currentYear = new Date().getFullYear();
     const curMs = (m.memberships || []).find(ms => ms.year === currentYear);
     const renewalYear = duesYear();
     const renewalMs = (m.memberships || []).find(ms => ms.year === renewalYear);
+    const name = (m.callsign ? m.callsign + ' — ' : '') + m.first_name + ' ' + m.last_name;
+    const shown = k => (k === state.memberTab ? '' : 'hidden');
 
-    document.querySelector('.modal-body').innerHTML = \`
+    document.getElementById('page-title').textContent = name;
+    setTitle(name);
+    document.getElementById('topbar-actions').innerHTML = back + \`
+      <button class="btn btn-secondary" onclick="lookupCallsign('\${escHtml(m.callsign||'')}', \${m.id})" \${m.callsign?'':'disabled'}>↻ Sync License</button>
+      <button class="btn btn-primary" onclick="openEditMember(\${m.id})">Edit Member</button>\`;
+
+    const page = document.getElementById('page');
+    const scroll = same ? page.scrollTop : 0;
+    setPage(\`
+      <div class="card" style="max-width:900px">
       \${m.callsign_mismatch ? mismatchWarning(m) : ''}
       <div class="flex gap-16 align-center" style="margin-bottom:20px">
         <div>
@@ -1546,14 +1655,11 @@ async function viewMember(id) {
       </div>
 
       <div class="tabs">
-        <div class="tab active" onclick="switchTab(this,'tab-info')">Info</div>
-        <div class="tab" onclick="switchTab(this,'tab-dues')">Dues History</div>
-        <div class="tab" onclick="switchTab(this,'tab-donations')">Donations</div>
-        <div class="tab" onclick="switchTab(this,'tab-notes')">Notes</div>
+        \${MEMBER_TABS.map(([k, label]) => \`<div class="tab\${k === state.memberTab ? ' active' : ''}" onclick="memberTab(this,'\${k}')">\${label}</div>\`).join('')}
       </div>
 
       <!-- Info tab -->
-      <div id="tab-info">
+      <div id="tab-info" class="\${shown('info')}">
         <div class="detail-section">
           <h4>Contact</h4>
           <div class="detail-grid">
@@ -1590,7 +1696,7 @@ async function viewMember(id) {
       </div>
 
       <!-- Dues tab (hidden) -->
-      <div id="tab-dues" class="hidden">
+      <div id="tab-dues" class="\${shown('dues')}">
         <button class="btn btn-sm btn-primary" style="margin-bottom:12px" onclick="openAddDues(\${m.id}, '\${escHtml(m.first_name)} \${escHtml(m.last_name)}', '\${m.membership_type}')">+ Record Payment</button>
         \${(m.memberships || []).length === 0 ? '<p class="text-muted">No membership records yet.</p>' :
           m.memberships.map(ms => \`
@@ -1612,7 +1718,7 @@ async function viewMember(id) {
       </div>
 
       <!-- Donations tab (hidden) -->
-      <div id="tab-donations" class="hidden">
+      <div id="tab-donations" class="\${shown('donations')}">
         <button class="btn btn-sm btn-primary" style="margin-bottom:12px" onclick="openAddDonation(\${m.id}, '\${escHtml(m.first_name)} \${escHtml(m.last_name)}')">+ Record Donation</button>
         \${(m.donations || []).length === 0 ? '<p class="text-muted">No donations recorded yet.</p>' :
           (m.donations || []).map(d => \`
@@ -1634,7 +1740,7 @@ async function viewMember(id) {
       </div>
 
       <!-- Notes tab (hidden) -->
-      <div id="tab-notes" class="hidden">
+      <div id="tab-notes" class="\${shown('notes')}">
         <div class="form-group" style="margin-bottom:12px">
           <textarea id="new-note" placeholder="Add a note about this member…"></textarea>
         </div>
@@ -1651,16 +1757,18 @@ async function viewMember(id) {
           }
         </div>
       </div>
-    \`;
-
-    document.querySelector('.modal-footer').innerHTML = \`
-      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
-      <button class="btn btn-secondary" onclick="lookupCallsign('\${escHtml(m.callsign||'')}', \${m.id})" \${m.callsign?'':'disabled'}>↻ Sync License</button>
-      <button class="btn btn-primary" onclick="openEditMember(\${m.id})">Edit Member</button>
-    \`;
+      </div>
+    \`);
+    page.scrollTop = scroll;
   } catch(e) {
-    document.querySelector('.modal-body').innerHTML = '<p class="text-muted">Error: ' + escHtml(e.message) + '</p>';
+    if (here()) setPage('<p class="text-muted" style="padding:24px">Error: ' + escHtml(e.data?.error || e.message) + '</p>');
   }
+}
+
+function memberTab(el, key) {
+  state.memberTab = key;
+  pageUrl(adminPath('members', state.memberId, key), true);
+  switchTab(el, 'tab-' + key);
 }
 
 function switchTab(el, tabId) {
@@ -2004,6 +2112,7 @@ async function memberships() {
 
 async function loadDuesTable() {
   const yr = state.memberYear;
+  if (state.currentPage === 'memberships') pageUrl(adminPath('memberships') + pageQuery('memberships'), true);
   document.querySelectorAll('.year-pill').forEach(p => p.classList.toggle('active', p.textContent == yr));
 
   let duesData, statsData;
@@ -2694,7 +2803,7 @@ async function loadMeetingsTable() {
         <tbody>
           \${list.map(mt => \`<tr style="cursor:pointer" onclick="openMeeting(\${mt.id})">
             <td style="color:var(--text-muted)">\${escHtml(fmtDay(mt.meeting_date))}</td>
-            <td>\${meetingLabel(mt)}</td>
+            <td><a class="row-link" href="\${adminPath('attendance', mt.id)}">\${meetingLabel(mt)}</a></td>
             <td>\${mt.member_count || 0}</td>
             <td>\${mt.visitor_count || 0}</td>
             <td>\${mt.guest_count || 0}</td>
@@ -2903,7 +3012,7 @@ async function agendas() {
   const none = '<span class="text-muted">—</span>';
   const row = a => \`<tr style="cursor:pointer" onclick="openAgenda(\${a.id})">
       <td style="color:var(--text-muted);white-space:nowrap">\${escHtml(fmtDay(a.meeting_date))}</td>
-      <td>\${meetingLabel(a)}</td>
+      <td><a class="row-link" href="\${adminPath('agendas', a.id)}">\${meetingLabel(a)}</a></td>
       <td>\${a.business_count ? a.business_count + (a.open_count ? ' <span class="text-muted">(' + a.open_count + ' open)</span>' : '') : none}</td>
       <td>\${a.motion_count || none}</td>
       <td>\${a.attendee_count || none}</td>
@@ -3461,7 +3570,7 @@ async function loadInvTable() {
             <td style="width:56px">\${it.photo_updated_at
               ? \`<img src="\${invPhotoUrl(it, true)}" alt="" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block">\`
               : '<div style="width:44px;height:44px;border-radius:6px;background:var(--surface2);border:1px solid var(--border)"></div>'}</td>
-            <td><strong>\${escHtml(it.name)}</strong></td>
+            <td><a class="row-link" href="\${adminPath('inventory', it.id)}"><strong>\${escHtml(it.name)}</strong></a></td>
             <td>\${escHtml(it.manufacturer || '—')}</td>
             <td>\${escHtml(it.model || '—')}</td>
             <td style="font-family:var(--mono)">\${escHtml(it.serial_number || '—')}</td>
@@ -3977,7 +4086,7 @@ async function repeaters() {
       \${due.map(d => \`
         <div class="flex gap-8 align-center" style="padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;flex-wrap:wrap" onclick="openRepeater(\${d.repeater_id}, 'maintenance')">
           \${rptDue(d, data.today)}
-          <strong>\${escHtml(d.title)}</strong>
+          <a class="row-link" href="\${adminPath('repeaters', d.repeater_id, 'maintenance')}"><strong>\${escHtml(d.title)}</strong></a>
           <span class="text-muted">\${escHtml(RPT_MAINT_KINDS[d.kind] || d.kind)} · \${escHtml(d.repeater_name)}</span>
           <span class="spacer"></span>
           <span style="white-space:nowrap">\${escHtml(fmtDay(d.next_due))}</span>
@@ -3989,7 +4098,7 @@ async function repeaters() {
     return \`
     <div class="card rpt-card" onclick="openRepeater(\${r.id})">
       <div class="flex gap-8 align-center" style="margin-bottom:8px">
-        <strong style="font-size:15px">\${escHtml(r.name)}</strong>
+        <a class="row-link" href="\${adminPath('repeaters', r.id)}"><strong style="font-size:15px">\${escHtml(r.name)}</strong></a>
         <span class="spacer"></span>
         \${rptBadge(RPT_STATUS, r.status)}
       </div>
@@ -4011,7 +4120,7 @@ async function repeaters() {
     <div class="card rpt-card flex gap-8 align-center" style="flex-wrap:wrap" onclick="openSite()">
       <span style="font-size:20px">🏔️</span>
       <div>
-        <strong>Repeater Site</strong>
+        <a class="row-link" href="\${adminPath('repeaters', 'site')}"><strong>Repeater Site</strong></a>
         <div class="text-muted" style="font-size:13px">Visit log, contacts, notes, and photos for the whole site, shown with every repeater</div>
       </div>
       <span class="spacer"></span>
@@ -5691,14 +5800,29 @@ function auditDetail(r) {
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────
+// True once something in the open window has been typed or changed. Closing
+// it by accident (a click outside, Escape, ✕, Back) asks first; Cancel and
+// a finished save do not.
+let modalDirty = false;
+const DISCARD_MSG = 'Discard the changes you have not saved?';
+for (const type of ['input', 'change']) {
+  document.getElementById('modal-root').addEventListener(type, () => { modalDirty = true; });
+}
+
+function dismissModal() {
+  if (modalDirty && !confirm(DISCARD_MSG)) return;
+  closeModal();
+}
+
 function showModal(bodyHtml, title, buttons) {
+  modalDirty = false;
   const btns = buttons.map(b => \`<button class="btn \${b.cls}" onclick="\${b.fn}">\${b.label}</button>\`).join('');
   document.getElementById('modal-root').innerHTML = \`
-    <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+    <div class="modal-backdrop" onclick="if(event.target===this)dismissModal()">
       <div class="modal">
         <div class="modal-header">
           <h3>\${escHtml(title)}</h3>
-          <button class="btn btn-sm btn-secondary" onclick="closeModal()">✕</button>
+          <button class="btn btn-sm btn-secondary" onclick="dismissModal()">✕</button>
         </div>
         <div class="modal-body">\${bodyHtml}</div>
         <div class="modal-footer">\${btns}</div>
@@ -5709,6 +5833,7 @@ function showModal(bodyHtml, title, buttons) {
 
 function closeModal() {
   document.getElementById('modal-root').innerHTML = '';
+  modalDirty = false;
   if (state.pagePath) setUrl(state.pagePath, true);
 }
 
@@ -5719,7 +5844,7 @@ document.addEventListener('keydown', e => {
 
   const modalOpen = !!document.querySelector('.modal-backdrop');
 
-  if (e.key === 'Escape' && modalOpen) { closeModal(); return; }
+  if (e.key === 'Escape' && modalOpen) { dismissModal(); return; }
 
   if (!modalOpen && state.currentPage === 'members') {
     if (e.key === '/') { e.preventDefault(); document.getElementById('member-search')?.focus(); return; }
@@ -6164,7 +6289,7 @@ function showPortal(page) {
   document.getElementById('portal-avatar').textContent = state.user.email[0].toUpperCase();
 
   const payStatus = new URL(window.location.href).searchParams.get('payment');
-  if (payStatus) history.replaceState({}, '', DEMO ? '/demo' : '/');
+  if (payStatus) writeUrl(DEMO ? '/demo' : '/');
   if (payStatus === 'success') toast('Payment received! Your dues record has been updated.', 'success');
   else if (payStatus === 'cancelled') toast('Payment cancelled — you can pay any time.', 'warn');
   else if (payStatus === 'donation-success') toast('Thank you! Your donation has been received.', 'success');

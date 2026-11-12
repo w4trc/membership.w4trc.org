@@ -675,7 +675,7 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
   // year: during renewal season most payments are for next year.
   const { results: newPayments } = await env.DB.prepare(`
     SELECT ms.id, ms.year, ms.membership_type, ms.amount_paid, ms.payment_method, ms.paid_date,
-           m.callsign, m.first_name, m.last_name
+           m.id AS member_id, m.callsign, m.first_name, m.last_name
     FROM memberships ms
     JOIN members m ON m.id = ms.member_id
     WHERE ms.amount_paid IS NOT NULL
@@ -699,7 +699,7 @@ export async function sendWeeklyRoundupEmail(env, now = new Date()) {
   const { results: newDonations } = await env.DB.prepare(`
     SELECT d.donor_type, d.donation_kind, d.amount, d.item_description, d.estimated_value,
            d.donation_date, d.payment_method, d.organization_name, d.donor_name,
-           m.callsign, m.first_name, m.last_name
+           m.id AS member_id, m.callsign, m.first_name, m.last_name
     FROM donations d
     LEFT JOIN members m ON m.id = d.member_id
     WHERE d.created_at >= datetime('now', '-7 days')
