@@ -9,6 +9,7 @@
  * DELETE /api/admin/sessions/:ref  - revoke a session (ref from the list, not the session ID)
  * POST   /api/admin/password       - change own password
  * POST   /api/admin/users/:id/reset-password - send a member a password reset link
+ * DELETE /api/admin/users/:id/two-step - turn off two-step sign-in for someone who lost their phone
  * POST   /api/admin/sync-hamdb    - bulk sync HamDB license data (?force=1, ?limit=N)
  * POST   /api/admin/backup        - back up the database to R2 now
  * GET    /api/admin/google-sync   - what the Google Groups sync would change
@@ -25,6 +26,7 @@ import { fetchHamDB, updateMemberFromHamDB } from './lookup.js';
 import { repeatersComingDue } from './repeaters.js';
 import { sendWeeklyRoundup, sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
+import { clearTwoStep }               from '../lib/twoStep.js';
 import { backupDatabase }             from '../lib/backup.js';
 import { clubToday, clubYear }        from '../lib/clubDate.js';
 import { duesYear }                   from '../lib/duesYear.js';
@@ -88,6 +90,8 @@ export async function handleAdmin(request, env, path, user) {
       if (method === 'POST') return createUser(request, env, user);
     } else if (segments[5] === 'reset-password') {
       if (method === 'POST') return resetUserPassword(request, env, user, resId);
+    } else if (segments[5] === 'two-step') {
+      if (method === 'DELETE') return resetUserTwoStep(request, env, user, resId);
     } else {
       if (method === 'PUT')    return updateUser(request, env, user, resId);
       if (method === 'DELETE') return deleteUser(request, env, user, resId);
@@ -184,6 +188,7 @@ async function runBackup(request, env, user) {
 async function listUsers(env) {
   const { results } = await env.DB.prepare(`
     SELECT u.id, u.email, u.role, u.is_active, u.created_at, u.last_login,
+           u.totp_enabled AS two_step,
            m.callsign, m.first_name, m.last_name
     FROM users u
     LEFT JOIN members m ON m.id = u.member_id
@@ -295,6 +300,20 @@ async function resetUserPassword(request, env, user, targetId) {
   await audit(env, { userId: user.id, action: 'admin.password_reset', targetType: 'user', targetId: target.id, request });
 
   return jsonResponse({ ok: true, message: `Password reset email sent to ${target.email}` });
+}
+
+// DELETE /api/admin/users/:id/two-step
+// For an officer who lost their phone and their recovery codes. Their password
+// still works; signing them out makes sure whoever asked is who signs back in.
+async function resetUserTwoStep(request, env, user, targetId) {
+  const target = await env.DB.prepare('SELECT id, email, totp_enabled FROM users WHERE id = ?').bind(targetId).first();
+  if (!target) return jsonError('User not found', 404);
+  if (!target.totp_enabled) return jsonError('Two-step sign-in is not on for this account', 409);
+
+  await clearTwoStep(env, target.id);
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(target.id).run();
+  await audit(env, { userId: user.id, action: 'two_step.reset', targetType: 'user', targetId: target.id, detail: { email: target.email }, request });
+  return jsonResponse({ ok: true });
 }
 
 async function getAuditLog(env, url) {

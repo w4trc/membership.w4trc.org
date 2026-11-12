@@ -49,6 +49,7 @@ const OFFICER_READS = {
     '/api/memberships/stats',
     '/api/donations',
     '/api/donations/stats',
+    '/api/reminders',
     `/api/notes?member_id=${OFFICER_READS.other}`,
     '/api/meetings',
     '/api/agendas',

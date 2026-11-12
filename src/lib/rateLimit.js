@@ -11,7 +11,7 @@ const LIMITS = {
 };
 
 // Calls that carry a password or code, or send an email: the strict bucket
-const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/portal/request-token', '/portal/claim'];
+const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/auth/two-step/', '/portal/request-token', '/portal/claim'];
 // The other calls anyone can make without logging in
 const PUBLIC_PATHS = ['/auth/reset-password', '/portal/lookup', '/portal/register', '/portal/callsign-lookup/'];
 

@@ -21,6 +21,7 @@ export async function resetDb() {
     env.DB.prepare('UPDATE agenda_items SET carried_from_id = NULL'),
     env.DB.prepare('DELETE FROM agenda_items'),
     env.DB.prepare('DELETE FROM agendas'),
+    env.DB.prepare('DELETE FROM renewal_reminders'),
     env.DB.prepare('DELETE FROM donations'),
     env.DB.prepare('DELETE FROM memberships'),
     env.DB.prepare('DELETE FROM google_group_members'),

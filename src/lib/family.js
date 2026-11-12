@@ -9,7 +9,7 @@
 
 // Who covers `m` for a given year: that year's record if it names a payer,
 // otherwise the most recent earlier record. Binds: year, year.
-const COVERED_BY_FOR_YEAR = `
+export const COVERED_BY_FOR_YEAR = `
   COALESCE(
     (SELECT ms.covered_by_member_id FROM memberships ms
      WHERE ms.member_id = m.id AND ms.year = ?),

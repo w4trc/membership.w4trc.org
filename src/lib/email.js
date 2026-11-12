@@ -23,6 +23,53 @@ export async function sendEmail(env, { to, subject, html }) {
   }
 }
 
+const RESEND_BATCH_MAX = 100;
+
+/**
+ * Send many separate emails in as few calls as possible (Resend's batch
+ * endpoint, 100 emails a call). Each message is { to, subject, html, replyTo }.
+ * Returns one entry per message, in order: { ok: true } or { ok: false, error }.
+ * A call that fails stops the run; the messages after it are not attempted.
+ */
+export async function sendEmailBatch(env, messages) {
+  if (!env.RESEND_API_KEY) {
+    throw new Error('Email not configured: run `wrangler secret put RESEND_API_KEY`');
+  }
+  const fromAddr = env.FROM_EMAIL || `membership@${env.CLUB_DOMAIN || 'w4trc.org'}`;
+  const from = `KARC Membership <${fromAddr}>`;
+  const results = messages.map(() => ({ ok: false, error: 'Not sent: an earlier batch failed' }));
+
+  for (let start = 0; start < messages.length; start += RESEND_BATCH_MAX) {
+    const chunk = messages.slice(start, start + RESEND_BATCH_MAX);
+    const resp = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+        // One bad address is reported for that email instead of failing the call
+        'x-batch-validation': 'permissive',
+      },
+      body: JSON.stringify(chunk.map(m => ({
+        from, to: [m.to], subject: m.subject, html: m.html,
+        ...(m.replyTo ? { reply_to: m.replyTo } : {}),
+      }))),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const error = body?.message || `Resend API error ${resp.status}`;
+      chunk.forEach((_, i) => { results[start + i] = { ok: false, error }; });
+      break;
+    }
+    chunk.forEach((_, i) => { results[start + i] = { ok: true }; });
+    for (const e of body?.errors || []) {
+      if (Number.isInteger(e?.index) && e.index < chunk.length) {
+        results[start + e.index] = { ok: false, error: e.message || 'Rejected' };
+      }
+    }
+  }
+  return results;
+}
+
 export async function sendVerificationCode(env, { to, code, name }) {
   const club = env.CLUB_NAME || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
@@ -73,6 +120,46 @@ export async function sendPasswordResetEmail(env, { to, resetUrl }) {
 </body>
 </html>`,
   });
+}
+
+/**
+ * The renewal reminder a member gets when an officer sends reminders.
+ * Returns { subject, html }. `note` is an optional line from the officer.
+ */
+export function renewalReminderEmail(env, { member, year, note = '' }) {
+  const club    = env.CLUB_NAME   || 'Kingsport Amateur Radio Club';
+  const domain  = env.CLUB_DOMAIN || 'members.w4trc.org';
+  const contact = env.CONTACT_EMAIL || 'contact@w4trc.org';
+  const family  = member.membership_type === 'family';
+  const amount  = family ? 30 : 20;
+  const noteHtml = note.trim()
+    ? `<p style="background:#f7f7f9;border-left:3px solid #3b7dd8;padding:10px 14px;margin:20px 0">${escHtml(note.trim()).replace(/\r?\n/g, '<br>')}</p>`
+    : '';
+
+  return {
+    subject: `${club}: ${Number(year)} dues reminder`,
+    html: `
+<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a2e">
+  <div style="text-align:center;margin-bottom:16px">
+    <img src="https://${domain}/logo.png" alt="KARC" style="height:64px">
+  </div>
+  <p>Hi ${escHtml(member.first_name || 'there')},</p>
+  <p>This is a friendly reminder that we have not yet received your ${escHtml(club)} dues for <strong>${Number(year)}</strong>${member.callsign ? ` (${escHtml(member.callsign)})` : ''}.</p>
+  <p>Your dues are <strong>$${amount}</strong> for ${family ? 'a family' : 'an individual'} membership.</p>
+${noteHtml}
+  <div style="text-align:center;margin:28px 0">
+    <a href="https://${domain}/portal" style="background:#3b7dd8;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;display:inline-block">Pay ${Number(year)} dues online</a>
+  </div>
+  <p style="color:#555;font-size:14px">Paying online adds a $1 processing fee. If you have never signed in, choose &ldquo;Register or claim your account&rdquo; on that page and use this email address. You can also pay a club officer by cash or check.</p>
+  <p style="color:#555;font-size:14px">Already paid, or have a question? Reply to this email or write to <a href="mailto:${escHtml(contact)}" style="color:#3b7dd8">${escHtml(contact)}</a> and we will sort it out.</p>
+  <p>73,<br>${escHtml(club)}</p>
+  <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+  <p style="color:#aaa;font-size:12px">You are getting this because you are on the ${escHtml(club)} membership roll. &mdash; <a href="https://${domain}" style="color:#3b7dd8">${domain}</a></p>
+</body>
+</html>`,
+  };
 }
 
 // memberCounts: [{ year, count }] members in good standing, one entry per year

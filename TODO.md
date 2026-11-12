@@ -14,15 +14,11 @@ What's already built is described in [README.md](README.md). This file only list
 
 ## Ideas
 
-### Money
-- [ ] **Donation receipts** — year-end emailed receipt per donor (monetary and item donations), sent via Resend.
-
 ### Inventory
 - [ ] **Loan due dates** — items can be checked out to a member, but there is no due date or overdue reminder.
 
 ### Members & Outreach
 - [ ] **Certificate and card for members** — officers can print a membership certificate and card from a member's detail view. Let members print their own from the portal: buttons on the dues card for each paid year, and open `/print/certificate` and `/print/card` to a member for their own record.
-- [ ] **Email reminders** — automated renewal notices to members. Not started; on hold for now. Resend and the daily cron are already in place, so this is a new email template plus a schedule (e.g. October, January, mid-March before the grace period ends). Should skip members covered under a family membership.
 - [ ] **Prospect outreach** — the local-ham list is synced from HamDB and new area licensees are added from the FCC daily. Add mailing labels.
 
 ### Under the Hood
@@ -32,5 +28,7 @@ What's already built is described in [README.md](README.md). This file only list
 ---
 
 ## Not Doing
+- Renewal reminders sent on a schedule (officers send them by hand from Dues → Renewal Reminders)
+- Year-end donation receipts by email
 - Meeting self check-in (QR at the door)
 - VE session → member pipeline

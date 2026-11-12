@@ -1,5 +1,7 @@
 /**
  * Auth routes: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
+ * Login takes { email, password } and, for a login with two-step sign-in on,
+ * { code } as well; without it the answer is 401 with details.two_step = true.
  */
 
 import { verifyPassword, hashPassword, createSession, destroySession, requireAuth, DUMMY_HASH, withD1Retry } from '../lib/auth.js';
@@ -7,9 +9,16 @@ import { jsonResponse, jsonError, setCookieHeader, clearCookieHeader } from '../
 import { audit } from '../lib/audit.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
 import { generateId, generateToken, hashToken } from '../lib/tokens.js';
+import { TWO_STEP_COLUMNS, checkSecondStep } from '../lib/twoStep.js';
+import { handleTwoStep } from './twoStep.js';
 
 export async function handleAuth(request, env, path) {
   const method = request.method;
+
+  // Setting up two-step sign-in for your own login
+  if (path === '/api/auth/two-step' || path.startsWith('/api/auth/two-step/')) {
+    return handleTwoStep(request, env, path);
+  }
 
   // POST /api/auth/login
   if (path === '/api/auth/login' && method === 'POST') {
@@ -21,7 +30,7 @@ export async function handleAuth(request, env, path) {
 
     // Look up user
     const user = await withD1Retry(() => env.DB.prepare(
-      `SELECT id, email, password_hash, role, is_active, member_id
+      `SELECT id, email, password_hash, role, is_active, member_id, ${TWO_STEP_COLUMNS}
        FROM users WHERE email = ? COLLATE NOCASE`
     ).bind(email.trim()).first());
 
@@ -40,8 +49,29 @@ export async function handleAuth(request, env, path) {
       return jsonError('Invalid email or password', 401);
     }
 
+    // Second step, for a login that has it turned on: the same request again
+    // with a code from the authenticator app (or a recovery code)
+    let usedRecovery = false;
+    if (user.totp_enabled) {
+      const code = String(body.code ?? '').trim();
+      if (!code) {
+        return jsonError('Enter the 6-digit code from your authenticator app', 401, { two_step: true });
+      }
+      const check = await checkSecondStep(env, user, code);
+      if (!check.ok) {
+        await audit(env, { userId: user.id, action: 'login.failed', detail: { reason: check.locked ? 'two_step_locked' : 'bad_code' }, request });
+        return check.locked
+          ? jsonError('Too many wrong codes. Try again in 15 minutes.', 429, { two_step: true })
+          : jsonError('That code is not right', 401, { two_step: true });
+      }
+      usedRecovery = check.recovery;
+    }
+
     const { sessionId, maxAge } = await createSession(user.id, request, env, user.role);
-    await audit(env, { userId: user.id, action: 'login.success', request });
+    await audit(env, {
+      userId: user.id, action: 'login.success', request,
+      detail: usedRecovery ? { recovery_code: true } : undefined,
+    });
 
     const response = jsonResponse({
       ok: true,

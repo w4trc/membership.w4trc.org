@@ -28,9 +28,12 @@ describe('rate limiter', () => {
   });
 
   it('puts passwords, codes and emails in the strict bucket', () => {
-    for (const path of ['/api/auth/login', '/api/auth/forgot-password', '/api/portal/request-token', '/api/portal/claim']) {
+    for (const path of ['/api/auth/login', '/api/auth/forgot-password', '/api/portal/request-token', '/api/portal/claim',
+      '/api/auth/two-step/setup', '/api/auth/two-step/enable', '/api/auth/two-step/disable']) {
       expect(rateLimitBucket(path), path).toBe('login');
     }
+    // Looking at whether two-step sign-in is on is an ordinary page load
+    expect(rateLimitBucket('/api/auth/two-step')).toBeNull();
   });
 
   it('counts the other forms that need no login', () => {

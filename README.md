@@ -11,6 +11,7 @@ A Cloudflare Workers-based membership management system.
 **For admins and board members**
 - **Members** — add/edit records with HamDB callsign auto-fill, notes, family linking, ARRL / Eastman / silent key / lifetime honorary flags, filters, CSV export, and a print-friendly directory (`/print`)
 - **Dues** — record payments per year (amount, method, date, check number); a family payment covers everyone linked under the payer
+- **Renewal reminders** — an email to each member who has not paid for the year, with their amount and a link to pay online. An officer picks who gets one and presses Send; nothing goes out on a schedule (see [Renewal reminders](#renewal-reminders))
 - **Dashboard** — paid counts and revenue with year-over-year comparison, charts, "not yet renewed" list, and license expiry warnings
 - **Donations** — monetary and item donations from members, non-member individuals, organizations, or anonymous donors
 - **Treasurer report** — the money received in a year: dues and donations by payment method, every payment listed, as a page, a printout, or a CSV
@@ -29,6 +30,7 @@ A Cloudflare Workers-based membership management system.
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
 - **Member portal** — dues status, profile (contact info, bio, interests, emergency contact), membership history
 - **Online dues** and **online donations** through Stripe Checkout
+- **Two-step sign-in** — optional for any login, officers especially: a 6-digit code from an authenticator app after the password (see [Two-step sign-in](#two-step-sign-in))
 - **Public directory** (`/directory`) — opt-in, no login required; also lists the club's officers year by year
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
@@ -562,6 +564,8 @@ Schema migrations in `schema/` (seed data lives in `seeds/` and is not a migrati
 - `029_repeater_contacts.sql` — repeater and site contacts
 - `030_repeater_visits_site.sql` — visits belong to the whole site; existing visits move there
 - `031_repeater_control_freq.sql` — control frequency on repeaters
+- `032_two_step.sql` — two-step sign-in columns on `users` (key, recovery code hashes, wrong-code lock)
+- `033_renewal_reminders.sql` — record of the renewal reminder emails officers have sent
 
 ---
 
@@ -593,6 +597,10 @@ POST   /api/auth/logout               Logout
 GET    /api/auth/me                   Current session info
 POST   /api/auth/forgot-password      Email a password reset link
 POST   /api/auth/reset-password       Set a new password from a reset link
+GET    /api/auth/two-step             Whether two-step sign-in is on for your login
+POST   /api/auth/two-step/setup       Start setup: { password } → a key and its QR code
+POST   /api/auth/two-step/enable      Turn it on: { code } → recovery codes, shown once
+POST   /api/auth/two-step/disable     Turn it off: { password, code }
 
 GET    /api/officers                  Officer history, newest year first (board+)
 POST   /api/officers                  Add an officer (board+)
@@ -614,6 +622,11 @@ POST   /api/memberships               Record payment (board+)
 GET    /api/memberships/:id           Single membership record
 PUT    /api/memberships/:id           Update payment record (board+)
 GET    /api/memberships/stats         Stats (count, revenue) for a year
+
+GET    /api/reminders                 Who would get a renewal reminder, and who is left out and why (?year, board+)
+POST   /api/reminders/preview         The reminder email as it will look: { year, note } (board+)
+POST   /api/reminders/test            Send one copy to your own login address (board+)
+POST   /api/reminders/send            Send to { year, member_ids, note } (board+)
 
 GET    /api/notes                     Notes for a member (board+)
 POST   /api/notes                     Add note (board+)
@@ -708,6 +721,7 @@ POST   /api/admin/users               Create user account (admin)
 PUT    /api/admin/users/:id           Update user (admin)
 DELETE /api/admin/users/:id           Delete user (admin)
 POST   /api/admin/users/:id/reset-password  Send a user a password reset link (admin)
+DELETE /api/admin/users/:id/two-step  Turn off two-step sign-in for a user who lost their phone (admin)
 GET    /api/admin/audit               Audit log (admin)
 GET    /api/admin/sessions            Active sessions (admin)
 DELETE /api/admin/sessions/:ref       Revoke a session, by the id from the list (admin)
@@ -744,6 +758,28 @@ detail, dues list, and audit log. When the payer pays family dues online, everyo
 linked under them is marked covered for that year, and the link carries forward from
 each dependent's most recent dues record. Covered members see "Covered by a Family
 Membership" in the portal instead of a pay button.
+
+### Renewal reminders
+
+**Dues & Memberships → Renewal Reminders** (`/admin/reminders`, board and admin) lists the members
+who have not paid for the dues year: everyone still on the roll (active, or in good standing the
+year before) with no paid or exempt record for it. The year is next year during renewal season
+and this year otherwise, and can be switched.
+
+An officer ticks who gets one, can add a line of their own, can look at the email or send a test
+copy to themselves, and presses **Send**. **Nothing is sent on a schedule**: there is no cron for
+reminders. Each member gets one email with their amount ($20 or $30) and a button to the portal;
+replies go to `CONTACT_EMAIL`.
+
+Left out, and listed with the reason: members covered under someone else's family membership
+(the payer gets the reminder), Eastman members, and members with no usable email address.
+Silent keys and lifetime honorary members never appear. Someone reminded in the last 14 days is
+listed but not ticked, and a second press of Send within 10 minutes does not email anyone twice.
+
+Each email sent is recorded (`renewal_reminders`) and shown as **Last Reminded**; the send is in
+the audit log. Emails go through Resend's batch endpoint, so a send is one request per 100
+members. Resend's free plan allows 100 emails a day: if a send runs into that, the page lists who
+did not get theirs and they can be sent the next day.
 
 ---
 
@@ -934,6 +970,7 @@ To cut the agent off, deactivate that login account or change `MCP_TOKEN`.
 - Passwords hashed with PBKDF2 (100,000 iterations, SHA-256)
 - Sessions stored server-side in D1 (not JWT — no token theft risk); 30 days for admin and board, 8 hours for members
 - Rate limiting on login, password reset, and portal verification (10 attempts/15 min per IP), and 40 per 15 min on the other forms that need no login (registration, member lookup, callsign lookup). Ordinary page loads are not counted, which keeps the limiter inside the free plan's daily KV writes
+- Optional two-step sign-in (TOTP) for any login; see below
 - Full audit trail on all significant actions
 - Members can call only their portal, online payment and password change; every other API area is checked for an officer login in one place (`mayCallApi` in `src/lib/auth.js`), so a new route is closed to members by default
 - Admin-only endpoints protected at route level
@@ -941,6 +978,22 @@ To cut the agent off, deactivate that login account or change `MCP_TOKEN`.
 - `HttpOnly`, `Secure`, `SameSite=Strict` session cookies
 - Stripe webhook requests are signature-verified
 - The `/mcp` agent endpoint needs a bearer token and is capped at board permissions with a fixed set of tools
+
+### Two-step sign-in
+
+Any login can turn it on from the **Password** button in the sidebar: scan a QR code with an
+authenticator app (Google Authenticator, Microsoft Authenticator, Authy, 1Password…), type the
+code it shows, and save the eight recovery codes. From then on signing in asks for the password
+and then a 6-digit code. It is worth having on every admin and board login, since those can read
+every member's phone and email.
+
+- Standard TOTP (RFC 6238: SHA-1, 6 digits, 30 seconds), checked one step either side of now for a phone clock that is a little off. Each code works once.
+- Five wrong codes in a row lock the second step for 15 minutes, whatever address they come from, on top of the per-address login limit.
+- A recovery code signs in once in place of the app. Only their hashes are stored. Turning two-step sign-in off and on again makes new ones.
+- Turning it on signs that login out everywhere else. Turning it off needs the password and a code.
+- A password reset by email does not turn it off.
+- **Lost phone and recovery codes:** an admin opens User Accounts → Edit → **Turn Off 2-Step**. The user is signed out and signs back in with their password alone. If the only admin is the one locked out, clear it in the database: `wrangler d1 execute karc-membership --remote --command "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_recovery = NULL WHERE email = 'you@example.com'"`.
+- The key is stored in the `users` table as authenticator apps need it, so it is in the R2 backups too. Keep the backup bucket private.
 
 ---
 

@@ -10,6 +10,7 @@ import { handleAuth }        from './routes/auth.js';
 import { handleMembers }     from './routes/members.js';
 import { handleMemberships } from './routes/memberships.js';
 import { handleDonations }   from './routes/donations.js';
+import { handleReminders }   from './routes/reminders.js';
 import { handleNotes }       from './routes/notes.js';
 import { handleAdmin, handleWeeklyRoundup, sendWeeklyRoundupEmail } from './routes/admin.js';
 import { handleLookup }      from './routes/lookup.js';
@@ -229,6 +230,11 @@ export default Sentry.withSentry(
       // Memberships — must be checked before /api/members (prefix overlap)
       if (path.startsWith('/api/memberships')) {
         return handleMemberships(request, env, path, user);
+      }
+
+      // Renewal reminder emails (sent by an officer, never on a schedule)
+      if (path.startsWith('/api/reminders')) {
+        return handleReminders(request, env, path, user);
       }
 
       // Donations

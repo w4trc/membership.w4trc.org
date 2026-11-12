@@ -26,6 +26,12 @@
         <label>Password</label>
         <input type="password" id="login-pass" placeholder="••••••••••" autocomplete="current-password">
       </div>
+      <!-- Shown after the password is accepted, for a login with two-step sign-in on -->
+      <div class="form-group mt-8 hidden" id="login-code-group">
+        <label>Code from your authenticator app</label>
+        <input type="text" id="login-code" placeholder="123456" autocomplete="one-time-code" maxlength="16">
+        <div class="form-hint">No phone? Type one of your recovery codes instead.</div>
+      </div>
       <button class="btn btn-primary mt-16" style="width:100%;justify-content:center" onclick="doLogin()">Sign In</button>
       <div id="login-err" class="hidden mt-8" style="color:var(--danger);font-size:13px;text-align:center"></div>
       <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">

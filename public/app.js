@@ -199,17 +199,41 @@ async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
   const err   = document.getElementById('login-err');
+  // The code box appears once the server says this login has two-step sign-in on
+  const codeGroup = document.getElementById('login-code-group');
+  const codeInput = document.getElementById('login-code');
+  const asked = !codeGroup.classList.contains('hidden');
+  const code  = asked ? codeInput.value.trim() : '';
   err.classList.add('hidden');
   try {
-    const data = await api('POST', '/auth/login', { email, password: pass });
+    const data = await api('POST', '/auth/login', { email, password: pass, ...(code ? { code } : {}) });
+    resetLoginCode();
+    document.getElementById('login-pass').value = '';
     state.user = data.user;
     showApp();
   } catch (e) {
+    const twoStep = !!e.data?.details?.two_step;
+    if (twoStep && !asked) {
+      codeGroup.classList.remove('hidden');
+      codeInput.focus();
+      return;
+    }
+    if (!twoStep) resetLoginCode();
+    else { codeInput.value = ''; codeInput.focus(); }
     err.textContent = e.data?.error || 'Login failed';
     err.classList.remove('hidden');
   }
 }
-document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function resetLoginCode() {
+  document.getElementById('login-code-group').classList.add('hidden');
+  document.getElementById('login-code').value = '';
+}
+for (const id of ['login-pass', 'login-code']) {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+// A different email starts over at the password
+document.getElementById('login-email').addEventListener('input', resetLoginCode);
 
 async function doLogout() {
   if (!leavePageOk()) return;
@@ -503,7 +527,7 @@ function adminShell() {
 }
 
 // ── Navigation ────────────────────────────────────────────────────────
-const ADMIN_TITLES = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', repeaters: 'Repeaters', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report' };
+const ADMIN_TITLES = { dashboard: 'Dashboard', members: 'Members', memberships: 'Dues & Memberships', donations: 'Donations', treasurer: 'Treasurer Report', attendance: 'Attendance', agendas: 'Meeting Agendas', inventory: 'Inventory', repeaters: 'Repeaters', officers: 'Officers', prospects: 'Local Hams', users: 'User Accounts', audit: 'Audit Log', sessions: 'Active Sessions', googleGroups: 'Google Groups', cutoff: 'Membership Cutoff', callsigns: 'Callsign Report', reminders: 'Renewal Reminders' };
 
 function nav(page) {
   state.currentPage = page;
@@ -521,13 +545,13 @@ function nav(page) {
     return;
   }
 
-  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'agendas', 'inventory', 'repeaters', 'treasurer', 'officers']);
+  const boardOnly = new Set(['prospects', 'callsigns', 'attendance', 'agendas', 'inventory', 'repeaters', 'treasurer', 'officers', 'reminders']);
   if (boardOnly.has(page) && !['board','admin'].includes(state.user?.role)) {
     setPage('<p class="text-muted" style="padding:24px">Access restricted to board members and administrators.</p>');
     return;
   }
 
-  const pages = { dashboard, members, memberships, donations, treasurer, attendance, agendas, inventory, repeaters, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns };
+  const pages = { dashboard, members, memberships, donations, treasurer, attendance, agendas, inventory, repeaters, officers, prospects, users, audit, sessions, googleGroups, cutoff, callsigns, reminders };
   (pages[page] || (() => setPage('<p>Coming soon</p>') ))();
 }
 
@@ -608,7 +632,7 @@ async function dashboard() {
         <p style="color:var(--text-muted);margin:0 0 12px">${inGrace
           ? `Active in ${yr - 1} — still in grace period through March 31. Send renewal reminders now.`
           : `Active in ${yr - 1} but have not renewed for ${yr}. Grace period ended April 1.`
-        }</p>
+        } <a href="${adminPath('reminders')}" class="row-link" onclick="nav('reminders')" style="color:var(--accent)">Renewal reminders →</a></p>
         <table>
           <thead><tr><th>Callsign</th><th>Name</th><th>Email</th><th></th></tr></thead>
           <tbody>
@@ -1350,6 +1374,8 @@ async function lookupCallsign(callsign, memberId) {
 
 // ── MEMBERSHIPS page ──────────────────────────────────────────────────
 async function memberships() {
+  document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary" onclick="nav(\'reminders\')">✉ Renewal Reminders</button>';
   setPage('<div class="spinner"></div>');
   const yr = new Date().getFullYear();
   const years = [yr, yr-1, yr-2, yr-3];
@@ -4284,6 +4310,160 @@ async function executeCutoff(year, count) {
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 
+// ── RENEWAL REMINDERS ─────────────────────────────────────────────────
+// Emails to members who have not paid. Nothing is sent until an officer
+// presses Send here; there is no schedule.
+const REMINDER_SKIP = {
+  family:    m => 'Covered under the family membership of ' + (m.payer || 'another member') + ', who gets the reminder',
+  eastman:   () => 'Eastman member — owes no dues',
+  no_email:  () => 'No email address on file',
+  bad_email: () => 'The email address on file is not a usable one',
+};
+const REMINDER_QUIET_DAYS = 14; // reminded this recently: listed, but not ticked
+
+async function reminders() {
+  document.getElementById('topbar-actions').innerHTML =
+    '<button class="btn btn-secondary" onclick="nav(\'memberships\')">← Dues</button>';
+  setPage('<div class="spinner"></div>');
+  const yr = new Date().getFullYear();
+  const years = [...new Set([yr, duesYear()])];
+  if (!years.includes(state.reminderYear)) state.reminderYear = duesYear();
+
+  let data;
+  try { data = await api('GET', '/reminders?year=' + state.reminderYear); }
+  catch (e) { setPage('<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'); return; }
+  if (state.currentPage !== 'reminders') return;
+
+  const year = data.year;
+  const list = data.recipients || [];
+  const skipped = data.skipped || [];
+  const quietSince = Date.now() - REMINDER_QUIET_DAYS * 86400000;
+  const recent = m => m.last_reminded && new Date(m.last_reminded.replace(' ', 'T') + 'Z').getTime() > quietSince;
+
+  setPage(`
+    ${years.length > 1 ? `<div class="year-row">
+      ${years.map(y => `<div class="year-pill ${y === year ? 'active' : ''}" onclick="state.reminderYear=${y};reminders()">${y}</div>`).join('')}
+    </div>` : ''}
+    ${data.email_ready ? '' : `<div class="card" style="border-color:var(--danger)"><strong style="color:var(--danger)">Email is not set up.</strong> <span class="text-muted">The RESEND_API_KEY secret is missing, so nothing can be sent.</span></div>`}
+    <div class="card">
+      <div class="card-title">${year} Dues Reminder</div>
+      <p class="text-muted" style="font-size:13px;margin:0 0 12px">Each member ticked below gets one email saying their ${year} dues have not been received, with their amount and a button to pay online. Replies go to the club's contact address. <strong>Nothing is sent until you press Send</strong>, and reminders never go out on their own.</p>
+      <div class="form-group">
+        <label>Add a line of your own (optional)</label>
+        <textarea id="rem-note" maxlength="1000" placeholder="For example: Dues can also be paid at the December meeting."></textarea>
+      </div>
+      <div class="flex gap-8" style="margin-top:12px">
+        <button class="btn btn-secondary" onclick="previewReminder(${year})">Preview Email</button>
+        <button class="btn btn-secondary" onclick="testReminder(${year})" ${data.email_ready ? '' : 'disabled'}>Send a Test to Me</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px">
+        <div style="flex:1"><strong>Have not paid for ${year}</strong> <span class="text-muted" id="rem-count"></span></div>
+        <button class="btn btn-primary" id="rem-send" onclick="sendReminders(${year})" ${data.email_ready ? '' : 'disabled'}>Send</button>
+      </div>
+      ${list.length === 0
+        ? `<p class="text-muted" style="padding:0 16px 20px">Nobody with an email address needs a ${year} reminder.</p>`
+        : `<div class="tbl-wrap"><table>
+          <thead><tr>
+            <th style="width:32px"><input type="checkbox" id="rem-all" onchange="document.querySelectorAll('.rem-pick').forEach(c => c.checked = this.checked);reminderCount()" aria-label="Tick all"></th>
+            <th>Callsign</th><th>Name</th><th>Email</th><th>Type</th><th>Last Reminded</th>
+          </tr></thead>
+          <tbody>
+            ${list.map(m => `<tr>
+              <td><input type="checkbox" class="rem-pick" value="${m.id}" ${recent(m) ? '' : 'checked'} onchange="reminderCount()" aria-label="Send to ${escHtml(m.callsign || m.last_name)}"></td>
+              <td><a class="row-link" href="${adminPath('members', m.id, 'dues')}" onclick="viewMember(${m.id}, 'dues')"><span class="callsign">${escHtml(m.callsign || '—')}</span></a></td>
+              <td>${escHtml(m.first_name)} ${escHtml(m.last_name)}</td>
+              <td style="color:var(--text-muted)">${escHtml(m.email)}</td>
+              <td>${m.membership_type === 'family' ? '<span class="badge badge-blue">Family</span>' : '<span class="badge badge-gray">Individual</span>'}</td>
+              <td style="color:var(--text-muted)">${m.last_reminded ? fmtDate(m.last_reminded) : 'Never'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>`}
+    </div>
+    <div id="rem-result"></div>
+    ${skipped.length ? `<div class="card" style="padding:0">
+      <div style="padding:14px 16px"><strong>Not getting an email</strong> <span class="text-muted">${skipped.length} unpaid member${skipped.length !== 1 ? 's' : ''}</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Callsign</th><th>Name</th><th>Why</th></tr></thead>
+        <tbody>
+          ${skipped.map(m => `<tr>
+            <td><a class="row-link" href="${adminPath('members', m.id)}" onclick="viewMember(${m.id})"><span class="callsign">${escHtml(m.callsign || '—')}</span></a></td>
+            <td>${escHtml(m.first_name)} ${escHtml(m.last_name)}</td>
+            <td style="color:var(--text-muted)">${escHtml((REMINDER_SKIP[m.reason] || (() => m.reason))(m))}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>` : ''}
+  `);
+  reminderCount();
+}
+
+function reminderPicks() {
+  return [...document.querySelectorAll('.rem-pick:checked')].map(c => Number(c.value));
+}
+
+function reminderCount() {
+  const all = document.querySelectorAll('.rem-pick').length;
+  const n = reminderPicks().length;
+  const count = document.getElementById('rem-count');
+  const send = document.getElementById('rem-send');
+  const box = document.getElementById('rem-all');
+  if (count) count.textContent = all ? `${n} of ${all} ticked` : '';
+  if (send) send.textContent = n ? `Send to ${n} Member${n !== 1 ? 's' : ''}` : 'Send';
+  if (box) { box.checked = n > 0 && n === all; box.indeterminate = n > 0 && n < all; }
+}
+
+async function previewReminder(year) {
+  let data;
+  try { data = await api('POST', '/reminders/preview', { year, note: gv('rem-note') }); }
+  catch (e) { return toast(e.data?.error || e.message, 'error'); }
+  showModal(`
+    <div class="text-muted" style="font-size:12px;margin-bottom:8px">Subject: <span style="color:var(--text)">${escHtml(data.subject)}</span></div>
+    <iframe id="rem-preview" sandbox="" title="Email preview" style="width:100%;height:480px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
+  `, 'Email Preview', [{ label: 'Close', cls: 'btn-secondary', fn: 'closeModal()' }]);
+  document.getElementById('rem-preview').srcdoc = data.html;
+}
+
+async function testReminder(year) {
+  try {
+    const data = await api('POST', '/reminders/test', { year, note: gv('rem-note') });
+    toast('Test sent to ' + data.to + ' ✓');
+  } catch (e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+async function sendReminders(year) {
+  const ids = reminderPicks();
+  if (!ids.length) return toast('Tick at least one member', 'error');
+  if (!confirm(`Email a ${year} dues reminder to ${ids.length} member${ids.length !== 1 ? 's' : ''} now?`)) return;
+  const btn = document.getElementById('rem-send');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  let data;
+  try { data = await api('POST', '/reminders/send', { year, member_ids: ids, note: gv('rem-note') }); }
+  catch (e) {
+    toast(e.data?.error || e.message, 'error');
+    btn.disabled = false;
+    reminderCount();
+    return;
+  }
+  const failed = data.failed || [];
+  toast(`${data.sent} reminder${data.sent !== 1 ? 's' : ''} sent` + (failed.length ? `, ${failed.length} failed` : ' ✓'), failed.length ? 'error' : 'success');
+  const note = gv('rem-note');
+  await reminders();
+  const noteBox = document.getElementById('rem-note');
+  if (noteBox) noteBox.value = note;
+  const res = document.getElementById('rem-result');
+  if (!res) return;
+  res.innerHTML = `
+    <div class="card" style="border-color:${failed.length ? 'var(--danger)' : 'var(--success)'}">
+      <div style="font-weight:600;margin-bottom:6px;color:${data.sent ? 'var(--success)' : 'var(--danger)'}">${data.sent} reminder${data.sent !== 1 ? 's' : ''} sent for ${year}</div>
+      ${data.not_sent ? `<p class="text-muted" style="font-size:13px;margin:0 0 6px">${data.not_sent} left out: paid in the meantime, or reminded a few minutes ago.</p>` : ''}
+      ${failed.length ? `<p style="font-size:13px;margin:0 0 6px">${failed.length} did not go out and can be sent again:</p>
+        <ul style="font-size:13px;margin:0;padding-left:18px">${failed.map(f => `<li><span class="callsign">${escHtml(f.callsign || '')}</span> ${escHtml(f.name)} — <span class="text-muted">${escHtml(f.error)}</span></li>`).join('')}</ul>` : ''}
+    </div>`;
+}
+
 // ── CALLSIGN REPORT ───────────────────────────────────────────────────
 async function callsigns() {
   setPage('<div class="spinner"></div>');
@@ -4330,7 +4510,7 @@ async function users() {
     setPage(`
       <div class="card" style="padding:0">
         <div class="tbl-wrap"><table>
-          <thead><tr><th>Email</th><th>Callsign</th><th>Name</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+          <thead><tr><th>Email</th><th>Callsign</th><th>Name</th><th>Role</th><th>Status</th><th>2-Step</th><th>Last Login</th><th></th></tr></thead>
           <tbody>
             ${data.users.map(u => `<tr>
               <td>${escHtml(u.email)}</td>
@@ -4338,6 +4518,7 @@ async function users() {
               <td>${escHtml(u.first_name||'')} ${escHtml(u.last_name||'')}</td>
               <td>${roleBadge(u.role)}</td>
               <td>${u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Disabled</span>'}</td>
+              <td>${u.two_step ? '<span class="badge badge-green">On</span>' : '<span class="text-muted">Off</span>'}</td>
               <td style="color:var(--text-muted)">${u.last_login ? fmtDate(u.last_login) : 'Never'}</td>
               <td>
                 ${u.id !== state.user?.id ? `<button class="btn btn-sm btn-secondary" onclick="editUser(${u.id})">Edit</button>` : '<span class="text-muted" style="font-size:12px">You</span>'}
@@ -4413,6 +4594,7 @@ async function editUser(id) {
   `, 'Edit User: ' + u.email, [
     { label: 'Cancel',         cls: 'btn-secondary', fn: 'closeModal()' },
     { label: 'Delete',         cls: 'btn-danger',    fn: 'deleteUser(' + id + ')' },
+    ...(u.two_step ? [{ label: 'Turn Off 2-Step', cls: 'btn-secondary', fn: 'adminResetTwoStep(' + id + ')' }] : []),
     { label: 'Reset Password', cls: 'btn-secondary', fn: 'adminResetPassword(' + id + ')' },
     { label: 'Save',           cls: 'btn-primary',   fn: 'saveEditUser(' + id + ')' },
   ]);
@@ -4453,10 +4635,118 @@ function openChangePassword() {
       ${fi('New Password (10+ chars)','cp-new','','password')}
       ${fi('Confirm New Password','cp-confirm','','password')}
     </div>
-  `, 'Change My Password', [
+    <div class="divider"></div>
+    <div id="two-step-status" style="font-size:13px"></div>
+  `, 'Password & Sign-in', [
     { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
     { label: 'Update Password', cls: 'btn-primary', fn: 'changeMyPassword()' },
   ]);
+  loadTwoStepStatus();
+}
+
+// ── Two-step sign-in (a code from an authenticator app after the password) ──
+async function loadTwoStepStatus() {
+  let status;
+  try { status = await api('GET', '/auth/two-step'); } catch { return; }
+  const el = document.getElementById('two-step-status');
+  if (!el) return;
+  const left = status.recovery_left;
+  el.innerHTML = status.enabled
+    ? `<div style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1"><strong>Two-step sign-in is on.</strong>
+          <div class="text-muted">Signing in asks for a code from your authenticator app. ${left} recovery code${left !== 1 ? 's' : ''} left.</div></div>
+        <button class="btn btn-sm btn-secondary" onclick="openTwoStepOff()">Turn off…</button>
+      </div>`
+    : `<div style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1"><strong>Two-step sign-in is off.</strong>
+          <div class="text-muted">Turn it on and signing in also asks for a 6-digit code from an authenticator app on your phone, so a stolen password is not enough.</div></div>
+        <button class="btn btn-sm btn-primary" onclick="openTwoStepSetup()">Set up…</button>
+      </div>`;
+}
+
+function openTwoStepSetup() {
+  showModal(`
+    <p style="font-size:13px;margin:0 0 12px">You need an authenticator app on your phone: Google Authenticator, Microsoft Authenticator, Authy, 1Password and the like all work. Type your password to start.</p>
+    ${fi('Current Password','ts-pass','','password')}
+  `, 'Set Up Two-Step Sign-in', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Continue', cls: 'btn-primary', fn: 'startTwoStepSetup()' },
+  ]);
+  document.getElementById('ts-pass').focus();
+}
+
+async function startTwoStepSetup() {
+  let data;
+  try { data = await api('POST', '/auth/two-step/setup', { password: gv('ts-pass') }); }
+  catch (e) { return toast(e.data?.error || e.message, 'error'); }
+  showModal(`
+    <p style="font-size:13px;margin:0 0 12px"><strong>1.</strong> In your authenticator app, add an account and scan this code.</p>
+    <div style="width:190px;margin:0 auto 10px;padding:8px;background:#fff;border-radius:8px">${data.qr}</div>
+    <p class="text-muted" style="font-size:12px;text-align:center;margin:0 0 16px">Can't scan? Enter this key by hand:<br>
+      <span style="font-family:var(--mono);color:var(--text);user-select:all">${escHtml(data.secret.replace(/(.{4})/g, '$1 ').trim())}</span></p>
+    <p style="font-size:13px;margin:0 0 8px"><strong>2.</strong> Type the 6-digit code the app shows now.</p>
+    <div class="form-group"><input type="text" id="ts-code" placeholder="123456" autocomplete="one-time-code" maxlength="8"></div>
+  `, 'Set Up Two-Step Sign-in', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Turn On', cls: 'btn-primary', fn: 'finishTwoStepSetup()' },
+  ]);
+  const code = document.getElementById('ts-code');
+  code.addEventListener('keydown', e => { if (e.key === 'Enter') finishTwoStepSetup(); });
+  code.focus();
+}
+
+async function finishTwoStepSetup() {
+  let data;
+  try { data = await api('POST', '/auth/two-step/enable', { code: gv('ts-code') }); }
+  catch (e) { return toast(e.data?.error || e.message, 'error'); }
+  const codes = data.recovery_codes || [];
+  showModal(`
+    <p style="font-size:13px;margin:0 0 12px"><strong>Two-step sign-in is on.</strong> Other browsers signed in to this login have been signed out.</p>
+    <p style="font-size:13px;margin:0 0 12px">Save these recovery codes somewhere safe, away from your phone. Each one signs you in once if you lose the phone. <strong>They are not shown again.</strong></p>
+    <div id="ts-recovery" style="font-family:var(--mono);font-size:15px;display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;padding:14px;border:1px solid var(--border);border-radius:8px;user-select:all">
+      ${codes.map(c => `<div>${escHtml(c)}</div>`).join('')}
+    </div>
+  `, 'Recovery Codes', [
+    { label: 'Copy', cls: 'btn-secondary', fn: 'copyRecoveryCodes()' },
+    { label: 'I Saved Them', cls: 'btn-primary', fn: 'closeModal()' },
+  ]);
+  toast('Two-step sign-in is on ✓');
+}
+
+function copyRecoveryCodes() {
+  const text = [...document.querySelectorAll('#ts-recovery div')].map(d => d.textContent).join('\n');
+  navigator.clipboard.writeText(text).then(() => toast('Copied ✓'), () => toast('Could not copy; select the codes instead', 'error'));
+}
+
+function openTwoStepOff() {
+  showModal(`
+    <p style="font-size:13px;margin:0 0 12px">After this, your password alone signs you in.</p>
+    <div class="form-grid">
+      ${fi('Current Password','ts-pass','','password')}
+      ${fi('Code from your app, or a recovery code','ts-code','','text')}
+    </div>
+  `, 'Turn Off Two-Step Sign-in', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'closeModal()' },
+    { label: 'Turn Off', cls: 'btn-danger', fn: 'turnOffTwoStep()' },
+  ]);
+}
+
+async function turnOffTwoStep() {
+  try {
+    await api('POST', '/auth/two-step/disable', { password: gv('ts-pass'), code: gv('ts-code') });
+    toast('Two-step sign-in is off');
+    closeModal();
+  } catch (e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+async function adminResetTwoStep(id) {
+  if (!confirm('Turn off two-step sign-in for this user? Use this when they have lost their phone and their recovery codes. They are signed out and can sign in with their password alone.')) return;
+  try {
+    await api('DELETE', '/admin/users/' + id + '/two-step');
+    toast('Two-step sign-in turned off for this user ✓');
+    closeModal();
+    users();
+  } catch (e) { toast(e.data?.error || e.message, 'error'); }
 }
 
 async function changeMyPassword() {
@@ -5050,6 +5340,10 @@ function auditDetail(r) {
     case 'member.renewal_activated': return d?.activated_count != null ? d.activated_count + ' renewed member' + (d.activated_count !== 1 ? 's' : '') + ' activated for ' + d.year : '';
     case 'member.cutoff':      return d?.deactivated_count != null ? d.deactivated_count + ' member' + (d.deactivated_count !== 1 ? 's' : '') + ' set inactive for ' + d.year : '';
     case 'login.failed':       return [d.email, d.reason?.replace(/_/g, ' ')].filter(Boolean).join(' — ');
+    case 'login.success':      return d.recovery_code ? 'Signed in with a recovery code' : '';
+    case 'two_step.reset':     return d.email ? 'Two-step sign-in turned off for ' + d.email : '';
+    case 'reminder.sent':      return d.sent_count + ' renewal reminder' + (d.sent_count !== 1 ? 's' : '') + ' emailed for ' + d.year + (d.failed_count ? ', ' + d.failed_count + ' failed' : '');
+    case 'reminder.test':      return 'Test reminder for ' + d.year;
     case 'user.create':        return [d.email, d.role ? 'role: ' + d.role : ''].filter(Boolean).join(', ');
     case 'user.update': {
       const skip = new Set(['password_hash', 'updated_at', 'created_at', 'id']);
