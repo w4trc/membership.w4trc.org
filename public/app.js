@@ -195,45 +195,57 @@ function toast(msg, type = 'success') {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────
+// The sign-in form. The second step (a code, for a login with two-step
+// sign-in on) is a screen of its own: the email and password boxes come off
+// the page while it shows, because a password manager that can still see them
+// fills the code box as if it were part of that form.
+const loginEls = {
+  creds: document.getElementById('login-creds'),
+  email: document.getElementById('login-email'),
+  pass:  document.getElementById('login-pass'),
+  codeGroup: document.getElementById('login-code-group'),
+  code:  document.getElementById('login-code'),
+};
+
 async function doLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const pass  = document.getElementById('login-pass').value;
+  const { email, pass, codeGroup, code } = loginEls;
   const err   = document.getElementById('login-err');
-  // The code box appears once the server says this login has two-step sign-in on
-  const codeGroup = document.getElementById('login-code-group');
-  const codeInput = document.getElementById('login-code');
   const asked = !codeGroup.classList.contains('hidden');
-  const code  = asked ? codeInput.value.trim() : '';
+  const typed = asked ? code.value.trim() : '';
   err.classList.add('hidden');
   try {
-    const data = await api('POST', '/auth/login', { email, password: pass, ...(code ? { code } : {}) });
+    const data = await api('POST', '/auth/login', { email: email.value.trim(), password: pass.value, ...(typed ? { code: typed } : {}) });
     resetLoginCode();
-    document.getElementById('login-pass').value = '';
+    pass.value = '';
     state.user = data.user;
     showApp();
   } catch (e) {
     const twoStep = !!e.data?.details?.two_step;
     if (twoStep && !asked) {
+      document.getElementById('login-code-who').textContent = email.value.trim();
+      loginEls.creds.remove();
       codeGroup.classList.remove('hidden');
-      codeInput.focus();
+      code.focus();
       return;
     }
     if (!twoStep) resetLoginCode();
-    else { codeInput.value = ''; codeInput.focus(); }
+    else { code.value = ''; code.focus(); }
     err.textContent = e.data?.error || 'Login failed';
     err.classList.remove('hidden');
   }
 }
 
+// Back to the email and password boxes
 function resetLoginCode() {
-  document.getElementById('login-code-group').classList.add('hidden');
-  document.getElementById('login-code').value = '';
+  const { creds, codeGroup, code } = loginEls;
+  codeGroup.classList.add('hidden');
+  code.value = '';
+  document.getElementById('login-err').classList.add('hidden');
+  if (!creds.isConnected) codeGroup.before(creds);
 }
-for (const id of ['login-pass', 'login-code']) {
-  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+for (const el of [loginEls.pass, loginEls.code]) {
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 }
-// A different email starts over at the password
-document.getElementById('login-email').addEventListener('input', resetLoginCode);
 
 async function doLogout() {
   if (!leavePageOk()) return;
