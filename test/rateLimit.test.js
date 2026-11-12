@@ -28,12 +28,22 @@ describe('rate limiter', () => {
   });
 
   it('puts passwords, codes and emails in the strict bucket', () => {
-    for (const path of ['/api/auth/login', '/api/auth/forgot-password', '/api/portal/request-token', '/api/portal/claim',
-      '/api/auth/two-step/setup', '/api/auth/two-step/enable', '/api/auth/two-step/disable']) {
+    for (const path of ['/api/auth/login', '/api/auth/forgot-password', '/api/portal/request-token', '/api/portal/claim']) {
       expect(rateLimitBucket(path), path).toBe('login');
+    }
+    for (const path of ['/api/auth/two-step/setup', '/api/auth/two-step/enable', '/api/auth/two-step/disable']) {
+      expect(rateLimitBucket(path), path).toBe('twostep');
     }
     // Looking at whether two-step sign-in is on is an ordinary page load
     expect(rateLimitBucket('/api/auth/two-step')).toBeNull();
+  });
+
+  it('lets someone who used up their sign-in attempts still set up two-step', async () => {
+    const env = { RATE_LIMIT_KV: fakeKv() };
+    for (let i = 0; i < 10; i++) await rateLimit(req('/api/auth/login'), env);
+    expect((await rateLimit(req('/api/auth/login'), env)).status).toBe(429);
+    expect(await rateLimit(req('/api/auth/two-step/setup'), env)).toBeNull();
+    expect(await rateLimit(req('/api/auth/two-step/enable'), env)).toBeNull();
   });
 
   it('counts the other forms that need no login', () => {

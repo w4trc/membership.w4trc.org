@@ -5,13 +5,18 @@
 
 const LIMITS = {
   login:  { window: 900,  max: 10  }, // 10 attempts per 15 min
+  twostep:{ window: 900,  max: 20  }, // 20 two-step setup calls per 15 min, apart from sign-ins
   public: { window: 900,  max: 40  }, // 40 per 15 min for the other no-login forms
   donate: { window: 900,  max: 10  }, // 10 public donation checkouts per 15 min
   demo:   { window: 900,  max: 30  }, // 30 renewal demo checkouts per 15 min
 };
 
 // Calls that carry a password or code, or send an email: the strict bucket
-const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/auth/two-step/', '/portal/request-token', '/portal/claim'];
+const LOGIN_PATHS = ['/auth/login', '/auth/forgot-password', '/portal/request-token', '/portal/claim'];
+// Setting two-step sign-in up or turning it off (a password or code, from
+// someone already signed in). Counted apart from sign-ins, so a few wrong
+// passwords at the door don't lock an officer out of setting it up.
+const TWO_STEP_PATHS = ['/auth/two-step/'];
 // The other calls anyone can make without logging in
 const PUBLIC_PATHS = ['/auth/reset-password', '/portal/lookup', '/portal/register', '/portal/callsign-lookup/'];
 
@@ -22,6 +27,7 @@ const PUBLIC_PATHS = ['/auth/reset-password', '/portal/lookup', '/portal/registe
 export function rateLimitBucket(pathname, type) {
   if (LIMITS[type]) return type;
   if (LOGIN_PATHS.some(p => pathname.includes(p))) return 'login';
+  if (TWO_STEP_PATHS.some(p => pathname.includes(p))) return 'twostep';
   if (PUBLIC_PATHS.some(p => pathname.includes(p))) return 'public';
   return null;
 }
