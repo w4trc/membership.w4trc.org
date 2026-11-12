@@ -33,7 +33,7 @@ A Cloudflare Workers-based membership management system.
 - **Public donate page** (`/donate`) — anyone can give through Stripe Checkout, no login required
 
 **Automated**
-- Weekly email roundup of new dues payments, online donations and newly added local hams to the board (Sunday evening cron)
+- Weekly email roundup of new dues payments, online donations and newly added local hams to the board, plus repeater maintenance and renewals that are overdue or due in the next 60 days (Sunday evening cron)
 - Daily check of the FCC's license files for new local licensees, added to Local Hams (see [New local licensees](#11-new-local-licensees))
 - Daily cron: expired session cleanup, and January reactivation of members who renewed in advance
 - `/health` endpoint for uptime monitoring
@@ -833,7 +833,8 @@ re-synced in the background if data is older than 7 days.
 The **Repeaters** tab (board+) keeps everything about the club's repeaters in one place. The
 list shows each machine's output frequency, input and offset, tone, site, last visit, and open
 reports, with a **Coming Due** box on top for maintenance and renewals that are overdue or due
-in the next 60 days. Each repeater has these tabs:
+in the next 60 days. The same list goes out in the Sunday roundup email every week until each
+item is logged done. Each repeater has these tabs:
 
 - **Info** — the listing (output = what the repeater transmits, input = what users transmit,
   offset worked out from the two, access tone users send and any tone the repeater sends out),

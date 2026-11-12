@@ -299,6 +299,16 @@ function dueSql(where = '') {
   `;
 }
 
+// Maintenance and renewals overdue or due within DUE_SOON_DAYS of `today`, on repeaters still in use
+const comingDueStatement = (env, today) =>
+  env.DB.prepare(dueSql(`AND x.next_due <= ? AND r.status != 'retired'`)).bind(addDays(today, DUE_SOON_DAYS));
+
+/** What is coming due across every repeater, soonest first. Used by the weekly roundup. */
+export async function repeatersComingDue(env, today = clubToday()) {
+  const { results } = await comingDueStatement(env, today).all();
+  return results;
+}
+
 // ── Repeaters ────────────────────────────────────────────────────────────────
 
 async function listRepeaters(env) {
@@ -313,7 +323,7 @@ async function listRepeaters(env) {
       FROM repeaters r
       ORDER BY r.status = 'retired', r.sort_order, r.id
     `),
-    env.DB.prepare(dueSql(`AND x.next_due <= ? AND r.status != 'retired'`)).bind(addDays(today, DUE_SOON_DAYS)),
+    comingDueStatement(env, today),
   ]);
   return jsonResponse({ repeaters: repeaters.results, due: due.results, today, due_soon_days: DUE_SOON_DAYS });
 }

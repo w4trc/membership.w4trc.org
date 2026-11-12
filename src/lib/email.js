@@ -83,7 +83,7 @@ const PROSPECT_REASONS = {
   new_to_list:  'New to the area',
 };
 
-export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects = [], newDonations = [], memberCounts, weekOf }) {
+export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newProspects = [], newDonations = [], memberCounts, weekOf, repeaterDue = [], today = '' }) {
   const club   = env.CLUB_NAME   || 'KARC';
   const domain = env.CLUB_DOMAIN || 'members.w4trc.org';
   const count  = newPayments.length;
@@ -165,6 +165,25 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
     </tr></tfoot>` : ''}
   </table>` : '';
 
+  const dueRows = repeaterDue.map(d => {
+    const overdue = today && d.next_due < today;
+    return `<tr>
+      <td style="${cell};white-space:nowrap${overdue ? ';color:#c0392b;font-weight:600' : ''}">${escHtml(d.next_due)}${overdue ? ' (overdue)' : ''}</td>
+      <td style="${cell}">${escHtml(d.repeater_name)}</td>
+      <td style="${cell}">${escHtml(d.title)}</td>
+      <td style="${cell};color:#777;white-space:nowrap">${escHtml(d.done_date ? 'last done ' + d.done_date : '')}</td>
+    </tr>`;
+  }).join('');
+  const repeatersSection = repeaterDue.length ? `
+  <h3 style="margin:28px 0 12px">Repeater maintenance &amp; renewals due (${repeaterDue.length})</h3>
+  <p style="color:#777;margin:0 0 12px;font-size:14px">Overdue or due in the next 60 days. Log each one under Repeaters when it's done and it drops off this list.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead><tr style="background:#f5f5f5">
+      <th style="${th}">Due</th><th style="${th}">Repeater</th><th style="${th}">What</th><th style="${th}"></th>
+    </tr></thead>
+    <tbody>${dueRows}</tbody>
+  </table>` : '';
+
   const paymentsSection = count ? `
   <h3 style="margin:0 0 12px">New dues payments this week (${count})</h3>
   <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -199,6 +218,7 @@ export async function sendWeeklyRoundup(env, { boardEmails, newPayments, newPros
 ${paymentsSection}
 ${donationsSection}
 ${prospectsSection}
+${repeatersSection}
 
   <hr style="border:none;border-top:1px solid #eee;margin:28px 0">
   <p style="color:#aaa;font-size:12px">${escHtml(club)} &mdash; <a href="https://${domain}" style="color:#3b7dd8">${domain}</a></p>
