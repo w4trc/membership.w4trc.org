@@ -145,6 +145,18 @@ export { withD1Retry };
 
 export function isAdmin(user)       { return user.role === 'admin'; }
 export function isBoardOrAbove(user){ return user.role === 'admin' || user.role === 'board'; }
+
+// The API areas a plain member may call: paying dues or donating online, and
+// changing their own password. The member portal's own routes (/api/portal/)
+// are handled before this check. Everything else under /api/ is for officers,
+// so a new route is closed to members unless it is added here.
+const MEMBER_API = ['/api/stripe/', '/api/admin/password'];
+
+export function mayCallApi(user, path) {
+  if (isBoardOrAbove(user)) return true;
+  return MEMBER_API.some(p => (p.endsWith('/') ? path.startsWith(p) : path === p));
+}
+
 export function requireRole(user, role) {
   if (role === 'admin' && !isAdmin(user))       return false;
   if (role === 'board' && !isBoardOrAbove(user)) return false;

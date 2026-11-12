@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { serveUI } from '../src/ui.js';
 import appScript from '../public/app.js?raw';
 
-// The app's script as the browser gets it
+// The app's script as the browser gets it (a Windows checkout has CRLF line ends)
 async function servedScript() {
-  return appScript;
+  return appScript.replace(/\r\n/g, '\n');
 }
 
 // Pull one top-level function out of the served script and make it callable

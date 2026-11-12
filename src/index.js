@@ -30,7 +30,7 @@ import { handleRepeaters }   from './routes/repeaters.js';
 import { handleMcp }         from './routes/mcp.js';
 import { serveUI }           from './ui.js';
 import { corsHeaders, jsonError } from './lib/response.js';
-import { requireAuth, cleanExpiredSessions } from './lib/auth.js';
+import { requireAuth, mayCallApi, cleanExpiredSessions } from './lib/auth.js';
 import { rateLimit }         from './lib/rateLimit.js';
 import { activateRenewedMembers } from './lib/duesYear.js';
 import { backupDatabase, backupStatus } from './lib/backup.js';
@@ -81,9 +81,10 @@ async function handleHealth(env) {
 export default Sentry.withSentry(
   (env) => ({
     dsn: 'https://63f0e4b4c18a33b74a050a76b04b9678@o4509799469547520.ingest.us.sentry.io/4511391391809536',
-    tracesSampleRate: 1.0,
+    tracesSampleRate: 0.1,
     enableLogs: true,
-    sendDefaultPii: true,
+    // Errors are reported without visitors' IP addresses, cookies or headers
+    sendDefaultPii: false,
   }),
   {
   async fetch(request, env, ctx) {
@@ -208,6 +209,12 @@ export default Sentry.withSentry(
         return jsonError(authResult.error, 401);
       }
       const user = authResult.user;
+
+      // Members get only the few areas listed in mayCallApi(); the rest is for
+      // officers. Each route still makes its own finer checks (admin-only, etc.).
+      if (!mayCallApi(user, path)) {
+        return jsonError('Forbidden', 403);
+      }
 
       // Stripe authenticated routes (e.g. create-checkout)
       if (path.startsWith('/api/stripe/')) {

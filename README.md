@@ -57,7 +57,8 @@ Open work is tracked in [TODO.md](TODO.md).
 | Callsign API | HamDB (free, no key needed) |
 | Email | Resend |
 | Payments | Stripe Checkout |
-| Error tracking | Sentry |
+| Error tracking | Sentry (no visitor IPs or cookies; 10% of requests traced) |
+| Charts | Chart.js, a pinned copy in `public/vendor/` |
 
 ---
 
@@ -934,6 +935,7 @@ To cut the agent off, deactivate that login account or change `MCP_TOKEN`.
 - Sessions stored server-side in D1 (not JWT — no token theft risk); 30 days for admin and board, 8 hours for members
 - Rate limiting on login, password reset, and portal verification (10 attempts/15 min per IP); 120 requests/min on the rest of the auth and portal API
 - Full audit trail on all significant actions
+- Members can call only their portal, online payment and password change; every other API area is checked for an officer login in one place (`mayCallApi` in `src/lib/auth.js`), so a new route is closed to members by default
 - Admin-only endpoints protected at route level
 - CORS locked to `members.w4trc.org` only
 - `HttpOnly`, `Secure`, `SameSite=Strict` session cookies
