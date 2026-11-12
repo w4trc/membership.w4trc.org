@@ -236,8 +236,14 @@ tr:last-child td { border-bottom: none; }
 .rpt-kv > span:nth-child(odd) { color: var(--text-muted); }
 .rpt-tabs { overflow-x: auto; overflow-y: hidden; flex-shrink: 0; scrollbar-width: thin; }
 .rpt-tabs .tab { white-space: nowrap; flex-shrink: 0; }
-.rpt-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rpt-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+/* A column, so the buttons sit at the bottom of every card in a row however long its caption */
+.rpt-photo.card { display: flex; flex-direction: column; gap: 6px; padding: 8px; margin: 0; min-width: 0; }
 .rpt-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; }
+.rpt-photo-caption { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.rpt-photo-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rpt-photo-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; }
+@media (max-width: 640px) { .rpt-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } }
 .rpt-md { white-space: normal; line-height: 1.55; overflow-wrap: anywhere; }
 .rpt-md > :first-child { margin-top: 0; }
 .rpt-md > :last-child { margin-bottom: 0; }
@@ -4283,17 +4289,18 @@ function rptPhotosHtml(data) {
     </div>
     \${data.photos.length === 0 ? '<p class="text-muted" style="text-align:center">No site photos yet.</p>' : \`
     <div class="rpt-photos">\${data.photos.map(p => \`
-      <div class="rpt-photo card" style="padding:8px;margin:0">
+      <div class="rpt-photo card">
         <a href="\${rptPhotoUrl(p)}" target="_blank" title="Open full size">
           <img src="\${rptPhotoUrl(p, true)}" alt="\${escHtml(p.caption || 'Site photo')}" loading="lazy">
         </a>
-        <div style="font-size:13px;margin-top:6px">\${escHtml(p.caption || '')}</div>
-        <div class="flex gap-8 align-center" style="margin-top:4px">
+        \${p.caption ? \`<div class="rpt-photo-caption">\${escHtml(p.caption)}</div>\` : ''}
+        <div class="rpt-photo-meta">
           \${rptSiteBadge(p)}
           <span class="text-muted" style="font-size:11px;white-space:nowrap">\${p.taken_date ? escHtml(fmtDate(p.taken_date)) : ''}</span>
-          <span class="spacer"></span>
+        </div>
+        <div class="rpt-photo-actions">
           <button class="btn btn-sm btn-secondary" onclick="editRptPhoto(\${p.id})">Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteRptPhoto(\${p.id})">✕</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRptPhoto(\${p.id})" title="Delete photo">✕</button>
         </div>
       </div>\`).join('')}
     </div>\`}\`;
