@@ -931,6 +931,7 @@ async function viewMember(id, tab) {
     document.getElementById('page-title').textContent = name;
     setTitle(name);
     document.getElementById('topbar-actions').innerHTML = back + `
+      ${state.user?.role === 'admin' ? `<button class="btn btn-secondary" onclick="openMergeMember(${m.id})" title="This is a duplicate of another member record">Merge…</button>` : ''}
       <button class="btn btn-secondary" onclick="lookupCallsign('${escHtml(m.callsign||'')}', ${m.id})" ${m.callsign?'':'disabled'}>↻ Sync License</button>
       <button class="btn btn-primary" onclick="openEditMember(${m.id})">Edit Member</button>`;
 
@@ -5300,6 +5301,8 @@ function auditDetail(r) {
         .map(k => k.replace(/_/g, ' '));
       return changed.length ? `Changed: ${changed.join(', ')}` : '';
     }
+    case 'member.merge':
+      return d.merged && d.into ? `${d.merged} merged into ${d.into}` : '';
     case 'membership.update': {
       const c = d.changes || {};
       const parts = [];
@@ -5482,6 +5485,153 @@ async function resolveCallsign(memberId, action) {
     await api('POST', `/members/${memberId}/resolve-callsign`, { action });
     toast(action === 'keep' ? 'Record kept — flag cleared ✓' : 'Record updated from HamDB ✓');
     viewMember(memberId);
+  } catch(e) { toast(e.data?.error || e.message, 'error'); }
+}
+
+// ── Merging a duplicate member record ─────────────────────────────────
+// Starts on the duplicate's page: pick the record to keep, review what
+// moves, then merge. The duplicate is deleted.
+let mergeFrom = null;
+
+async function openMergeMember(id) {
+  const m = await api('GET', '/members/' + id).catch(() => null);
+  if (!m) return;
+  mergeFrom = m;
+  showModal(`
+    <p style="font-size:13px;margin-bottom:12px">
+      Use this when <strong>${escHtml(mergeName(m))}</strong> is a second record for someone who is already
+      in the list (a new callsign, for example). Pick the record to <strong>keep</strong>. This one's dues
+      history, donations, notes and attendance move to it, and this record is deleted.
+    </p>
+    <div class="form-group">
+      <label>Record to keep</label>
+      <input type="text" id="merge-q" value="${escHtml(m.last_name || '')}" placeholder="Search callsign or name…"
+        oninput="clearTimeout(window._mergeT);window._mergeT=setTimeout(searchMergeTargets,250)">
+    </div>
+    <div id="merge-results"></div>
+  `, 'Merge Duplicate Record', [
+    { label: 'Cancel', cls: 'btn-secondary', fn: 'dismissModal()' },
+  ]);
+  searchMergeTargets();
+}
+
+function mergeName(m) {
+  return ((m.callsign ? m.callsign + ' ' : '') + m.first_name + ' ' + m.last_name).trim();
+}
+
+async function searchMergeTargets() {
+  const box = document.getElementById('merge-results');
+  const q = gv('merge-q').trim();
+  if (!box || !mergeFrom) return;
+  if (q.length < 2) { box.innerHTML = '<p class="text-muted" style="font-size:13px">Type at least two letters.</p>'; return; }
+  try {
+    const data = await api('GET', '/members?q=' + encodeURIComponent(q));
+    if (gv('merge-q').trim() !== q) return;
+    const others = (data.members || []).filter(o => o.id !== mergeFrom.id).slice(0, 12);
+    box.innerHTML = others.length ? others.map(o => `
+      <div class="card" style="margin-bottom:6px;padding:10px 12px">
+        <div class="flex align-center gap-8">
+          <span class="callsign" style="font-size:13px">${escHtml(o.callsign || '—')}</span>
+          <span>${escHtml(o.first_name)} ${escHtml(o.last_name)}</span>
+          ${memberStatusBadge(o.is_active, o.is_silent_key)}
+          <div class="spacer"></div>
+          <button class="btn btn-sm btn-primary" onclick="previewMerge(${o.id})">Keep this one</button>
+        </div>
+        ${o.email || o.city ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escHtml([o.email, o.city].filter(Boolean).join(' · '))}</div>` : ''}
+      </div>`).join('') : '<p class="text-muted" style="font-size:13px">No other member records match.</p>';
+  } catch(e) { box.innerHTML = '<p class="text-muted">Error: ' + escHtml(e.data?.error || e.message) + '</p>'; }
+}
+
+// What a merge plan from the API does, as a list of plain sentences
+function mergeSummary(p) {
+  const who = m => ((m.callsign ? m.callsign + ' ' : '') + m.first_name + ' ' + m.last_name).trim();
+  const from = who(p.from), into = who(p.into);
+  const money = ms => ms.amount_paid != null
+    ? '$' + Number(ms.amount_paid).toFixed(2) + ' paid' + (ms.payment_method ? ' by ' + ms.payment_method : '')
+    : ms.status + ', nothing paid';
+  const n = (count, one, many) => count + ' ' + (count === 1 ? one : many);
+  const lines = [];
+
+  const fields = Object.keys(p.fill || {});
+  if (fields.length) {
+    lines.push(into + ' gains: ' + fields.map(f =>
+      f === 'is_active' ? 'active status' :
+      f === 'membership_type' ? 'lifetime honorary' :
+      f.replace(/_/g, ' ') + ' (' + p.fill[f] + ')').join(', '));
+  }
+  if (p.dues.move.length) lines.push('Dues records move: ' + p.dues.move.join(', '));
+  for (const c of p.dues.conflicts) {
+    lines.push(c.year + ': both records have dues. Keeping the one from ' + (c.keep === 'from' ? from : into) +
+      ' (' + money(c.kept) + '); the other (' + money(c.dropped) + ') is dropped');
+  }
+  const c = p.counts;
+  const moved = [
+    c.donations && n(c.donations, 'donation', 'donations'),
+    c.notes && n(c.notes, 'note', 'notes'),
+    c.attendance && n(c.attendance, 'meeting attended', 'meetings attended'),
+    c.officers && n(c.officers, 'officer position', 'officer positions'),
+    c.inventory && n(c.inventory, 'piece of equipment', 'pieces of equipment'),
+    c.reminders && n(c.reminders, 'renewal reminder', 'renewal reminders'),
+    c.covers && n(c.covers, 'family member covered', 'family members covered'),
+  ].filter(Boolean);
+  if (moved.length) lines.push('Also moves: ' + moved.join(', '));
+  if (p.login) {
+    lines.push({
+      move:   'The portal sign-in (' + p.login.email + ') moves to the kept record',
+      delete: 'The portal sign-in ' + p.login.email + ' is deleted; the kept record already has its own',
+      unlink: 'The officer sign-in ' + p.login.email + ' stays, but is no longer tied to a member record',
+    }[p.login.action]);
+  }
+  if (!lines.length) lines.push('Nothing is attached to ' + from + ', so nothing moves');
+  return lines;
+}
+
+async function previewMerge(intoId) {
+  if (!mergeFrom) return;
+  const fromId = mergeFrom.id;
+  let p;
+  try { p = await api('GET', `/members/${fromId}/merge?into=${intoId}`); }
+  catch(e) { toast(e.data?.error || e.message, 'error'); return; }
+
+  const person = (m, note) => `
+    <div class="card" style="flex:1;padding:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)">${note}</div>
+      <div class="callsign" style="font-size:16px">${escHtml(m.callsign || '—')}</div>
+      <div>${escHtml(m.first_name)} ${escHtml(m.last_name)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">${escHtml(m.email || 'no email')}</div>
+    </div>`;
+  const blocked = p.blockers.length > 0;
+
+  showModal(`
+    <div class="flex gap-8 align-center" style="margin-bottom:14px">
+      ${person(p.from, 'Deleted')}
+      <div style="font-size:20px">→</div>
+      ${person(p.into, 'Kept')}
+    </div>
+    ${blocked ? `
+      <div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.4);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;font-size:13px">
+        <div style="font-weight:600;margin-bottom:4px">These records can't be merged yet</div>
+        ${p.blockers.map(b => `<div>${escHtml(b)}</div>`).join('')}
+      </div>` : ''}
+    <ul style="font-size:13px;margin:0 0 12px 18px;line-height:1.6">
+      ${mergeSummary(p).map(l => `<li>${escHtml(l)}</li>`).join('')}
+    </ul>
+    <p style="font-size:13px" class="text-muted">
+      The kept record keeps its own callsign, name and contact details. If that is the wrong way round,
+      go back and start from the other record. A merge can't be undone.
+    </p>
+  `, 'Merge Duplicate Record', [
+    { label: '← Back', cls: 'btn-secondary', fn: 'openMergeMember(' + fromId + ')' },
+    ...(blocked ? [] : [{ label: 'Merge and delete ' + escHtml(p.from.callsign || 'this record'), cls: 'btn-danger', fn: 'doMerge(' + fromId + ',' + intoId + ')' }]),
+  ]);
+}
+
+async function doMerge(fromId, intoId) {
+  try {
+    await api('POST', `/members/${fromId}/merge`, { into: intoId });
+    mergeFrom = null;
+    toast('Records merged ✓');
+    viewMember(intoId);
   } catch(e) { toast(e.data?.error || e.message, 'error'); }
 }
 

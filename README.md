@@ -24,7 +24,7 @@ A Cloudflare Workers-based membership management system.
 - **Callsign report** — active member callsigns as a copyable list
 - **Membership certificate and card** — printable by an officer for any member whose dues are paid
 - **Terminal UI** — search members, inventory, and meetings from a terminal, record a meeting's attendance, and add, move, or check out equipment (`npm run tui`, see [Terminal UI](#terminal-ui))
-- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync and audit, and the annual membership cutoff
+- **Admin only** — user accounts, member password resets, audit log with filters, a list of active sessions with sign-out, the Google Groups sync and audit, the annual membership cutoff, and merging duplicate member records (see [Duplicate Member Records](#duplicate-member-records))
 
 **For members**
 - **Self-registration** (`/register`) — claim an existing record by email verification code, or sign up as a new member
@@ -214,7 +214,9 @@ in Church Hill, Kingsport, or Mount Carmel, TN is handled like this:
 - **New callsign for someone on the list** — their row moves to the new callsign
 - **Already a member** — added or refreshed the same way, and shown as a member
 - **Member with a new callsign** — their member record gets the new callsign (only when the
-  last name matches, since old callsigns get reissued), logged in the audit log
+  last name matches, since old callsigns get reissued), logged in the audit log. If the new
+  callsign was already added as a second member record, nothing is renamed: merge the two
+  (see [Duplicate Member Records](#duplicate-member-records))
 
 Hams on the list whose address moves out of the area, or whose license here expires or is
 cancelled, are marked *Moved away*, *License expired*, or *License cancelled*. They are left out of
@@ -616,6 +618,8 @@ PUT    /api/members/:id               Update member (board+)
 DELETE /api/members/:id               Deactivate member (admin only)
 GET    /api/members/:id/history       Membership year history
 POST   /api/members/:id/resolve-callsign  Resolve a HamDB callsign mismatch (board+)
+GET    /api/members/:id/merge?into=ID  What merging this record into another would do (admin only)
+POST   /api/members/:id/merge         Merge this record into { into: ID } and delete it (admin only)
 
 GET    /api/memberships               List memberships by year
 POST   /api/memberships               Record payment (board+)
@@ -735,6 +739,30 @@ GET    /api/admin/google-audit        Compare each Google Group with the members
 POST   /api/admin/weekly-roundup      Send the weekly board email (CRON_SECRET, no session)
 POST   /mcp                           MCP server for AI agents (MCP_TOKEN, no session; see below)
 ```
+
+---
+
+## Duplicate Member Records
+
+When one person ends up with two member records (usually a new callsign added as a new member
+instead of changed on the old record), an admin can merge them. Open the record to get rid of,
+choose **Merge…**, pick the record to keep, and check the summary before confirming. A merge
+cannot be undone, short of restoring a backup.
+
+- **Moves to the kept record** — dues history, donations, notes, meeting attendance, officer
+  positions, equipment on loan, renewal reminders, the Google Groups link, and any family
+  members whose dues the duplicate covered
+- **The kept record's own details win** — callsign, name and contact details stay as they are.
+  Only blanks are filled from the duplicate. Joined date becomes the earlier of the two, and
+  the kept record is made active if the duplicate was
+- **A year both records have dues for** — the better record is kept (paid, then covered or
+  honorary, then unpaid) and the other is dropped. If both were *paid* for the same year the
+  merge is refused until one is cleared, so a payment is never dropped from the books
+- **Portal sign-in** — moves to the kept record. If the kept record already has one, the
+  duplicate's is deleted (an officer's account is left in place, no longer tied to a member)
+- **Audit log** — a `member.merge` entry holds the whole deleted record and what was dropped
+
+Past attendance and officer entries keep the callsign that was written at the time.
 
 ---
 

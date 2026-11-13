@@ -136,6 +136,38 @@ describe('page addresses', () => {
     expect(parseRoute('/reset-password')).toBeNull();
   });
 
+  it('says in plain words what a merge will do', async () => {
+    const mergeSummary = await servedFunction('mergeSummary');
+    const person = (callsign) => ({ callsign, first_name: 'Pat', last_name: 'Ham' });
+    const counts = { notes: 0, donations: 2, attendance: 1, officers: 0, inventory: 0, reminders: 0, covers: 0 };
+
+    expect(mergeSummary({
+      from: person('KO4OLD'), into: person('W4NEW'),
+      fill: { phone: '423-555-0100', is_active: 1 },
+      dues: {
+        move: [2024, 2025],
+        conflicts: [{
+          year: 2026, keep: 'into',
+          kept: { status: 'active', amount_paid: 20, payment_method: 'stripe' },
+          dropped: { status: 'pending', amount_paid: null },
+        }],
+      },
+      counts,
+      login: { email: 'pat@example.com', action: 'move' },
+    })).toEqual([
+      'W4NEW Pat Ham gains: phone (423-555-0100), active status',
+      'Dues records move: 2024, 2025',
+      '2026: both records have dues. Keeping the one from W4NEW Pat Ham ($20.00 paid by stripe); the other (pending, nothing paid) is dropped',
+      'Also moves: 2 donations, 1 meeting attended',
+      'The portal sign-in (pat@example.com) moves to the kept record',
+    ]);
+
+    expect(mergeSummary({
+      from: person('KO4OLD'), into: person('W4NEW'), fill: {}, dues: { move: [], conflicts: [] },
+      counts: { ...counts, donations: 0, attendance: 0 }, login: null,
+    })).toEqual(['Nothing is attached to KO4OLD Pat Ham, so nothing moves']);
+  });
+
   it('gives every sidebar link the address its page answers to', async () => {
     const html = await serveUI(new Request('https://members.w4trc.org/'), {}).text();
     const adminPath = await servedFunction('adminPath');

@@ -6,6 +6,8 @@
  * PUT    /api/members/:id          - update (board+)
  * DELETE /api/members/:id          - admin only
  * GET    /api/members/:id/history  - membership year history
+ * GET    /api/members/:id/merge?into=ID - what merging this record into another would do (admin)
+ * POST   /api/members/:id/merge    - merge this record into { into: ID } and delete it (admin)
  */
 
 import { duesYear } from '../lib/duesYear.js';
@@ -15,6 +17,7 @@ import { isAdmin, isBoardOrAbove } from '../lib/auth.js';
 import { jsonResponse, jsonError }  from '../lib/response.js';
 import { audit }                    from '../lib/audit.js';
 import { normalizeName }            from '../lib/normalize.js';
+import { mergePlan, mergeMembers, mergeLabel } from '../lib/mergeMembers.js';
 
 // Route dispatcher
 export async function handleMembers(request, env, path, user) {
@@ -45,6 +48,7 @@ export async function handleMembers(request, env, path, user) {
 
   if (sub === 'history')          return getMemberHistory(request, env, user, memberId);
   if (sub === 'resolve-callsign') return resolveCallsignMismatch(request, env, user, memberId);
+  if (sub === 'merge')            return mergeMember(request, env, user, memberId, url);
 
   if (method === 'GET')    return getMember(request, env, user, memberId);
   if (method === 'PUT')    return updateMember(request, env, user, memberId);
@@ -527,4 +531,41 @@ async function resolveCallsignMismatch(request, env, user, memberId) {
 
   const updated = await env.DB.prepare('SELECT * FROM members WHERE id = ?').bind(memberId).first();
   return jsonResponse(updated);
+}
+
+// ── GET / POST /api/members/:id/merge ─────────────────────────────────────────
+// :id is the duplicate that goes away; `into` is the record that is kept.
+async function mergeMember(request, env, user, memberId, url) {
+  if (!isAdmin(user)) return jsonError('Forbidden - admin only', 403);
+
+  let intoId;
+  if (request.method === 'GET') {
+    intoId = parseInt(url.searchParams.get('into'), 10);
+  } else if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonError('Invalid JSON', 400); }
+    intoId = parseInt(body.into, 10);
+  } else {
+    return jsonError('Method not allowed', 405);
+  }
+
+  const plan = await mergePlan(env, memberId, intoId);
+  if (plan.error) return jsonError(plan.error, plan.status);
+
+  const { removed, ...preview } = plan;
+  if (request.method === 'GET') return jsonResponse(preview);
+
+  if (plan.blockers.length) return jsonError(plan.blockers[0], 409);
+  await mergeMembers(env, plan);
+
+  await audit(env, {
+    userId: user.id, action: 'member.merge', targetType: 'member', targetId: plan.into.id,
+    detail: {
+      merged: mergeLabel(plan.from), into: mergeLabel(plan.into),
+      removed, fill: plan.fill, dues: plan.dues, counts: plan.counts, login: plan.login,
+    },
+    request,
+  });
+
+  return jsonResponse({ ok: true, ...preview });
 }
